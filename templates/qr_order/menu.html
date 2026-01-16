@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order - Meja {{ table.number }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body class="bg-gray-100 min-h-screen pb-32">
+    <!-- Header -->
+    <div class="bg-white shadow sticky top-0 z-10">
+        <div class="p-4">
+            <h1 class="text-xl font-bold">{{ table.area.outlet.name }}</h1>
+            <p class="text-gray-500">Meja {{ table.number }} - {{ table.area.name }}</p>
+        </div>
+        
+        <!-- Categories -->
+        <div class="flex gap-2 px-4 pb-4 overflow-x-auto">
+            {% for category in categories %}
+            <button class="px-4 py-2 bg-gray-200 rounded-full whitespace-nowrap text-sm">
+                {{ category.name }}
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Products -->
+    <div class="p-4 space-y-4">
+        {% for product in products %}
+        <div class="bg-white rounded-lg shadow p-4 flex gap-4">
+            {% if product.image %}
+            <img src="{{ product.image.url }}" class="w-24 h-24 object-cover rounded">
+            {% else %}
+            <div class="w-24 h-24 bg-gray-200 rounded flex items-center justify-center text-3xl">🍽️</div>
+            {% endif %}
+            <div class="flex-1">
+                <h3 class="font-bold">{{ product.name }}</h3>
+                <p class="text-sm text-gray-500">{{ product.description|truncatewords:10 }}</p>
+                <p class="text-blue-600 font-bold mt-1">Rp {{ product.price|floatformat:0 }}</p>
+            </div>
+            <button 
+                class="self-center px-4 py-2 bg-blue-600 text-white rounded-lg"
+                hx-post="{% url 'qr_order:add_item' outlet_id table.id %}"
+                hx-vals='{"product_id": "{{ product.id }}"}'
+                hx-target="#cart-panel"
+                hx-swap="innerHTML">
+                +
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Cart Panel -->
+    <div id="cart-panel" class="fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t">
+        {% include 'qr_order/partials/cart.html' %}
+    </div>
+</body>
+</html>

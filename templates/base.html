@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}POS F&B{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/ws.js"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <style>
+        .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+        .htmx-request .htmx-indicator { opacity: 1; }
+        .htmx-request.htmx-indicator { opacity: 1; }
+        
+        /* Touch friendly */
+        .btn-touch {
+            min-height: 48px;
+            min-width: 48px;
+            padding: 12px 24px;
+            font-size: 16px;
+            touch-action: manipulation;
+        }
+        
+        .product-card {
+            min-height: 120px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .product-card:active {
+            transform: scale(0.98);
+        }
+        
+        .touch-scroll {
+            -webkit-overflow-scrolling: touch;
+            overflow-y: auto;
+        }
+        
+        input, select, textarea {
+            font-size: 16px;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-gray-100 min-h-screen" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% block content %}{% endblock %}
+    
+    <!-- Toast container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Modal container -->
+    <div id="modal-container"></div>
+    
+    <script>
+        // Global HTMX event handlers
+        document.body.addEventListener('itemAdded', function(e) {
+            showToast('Item ditambahkan', 'success');
+        });
+        
+        document.body.addEventListener('orderReady', function(e) {
+            showToast('Order siap!', 'info');
+            playSound('ready');
+        });
+        
+        document.body.addEventListener('sentToKitchen', function(e) {
+            showToast('Order dikirim ke kitchen', 'success');
+        });
+        
+        document.body.addEventListener('paymentComplete', function(e) {
+            showToast('Pembayaran berhasil!', 'success');
+        });
+        
+        function showToast(message, type = 'info') {
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                info: 'bg-blue-500',
+                warning: 'bg-yellow-500'
+            };
+            const toast = document.createElement('div');
+            toast.className = `${colors[type]} text-white px-4 py-2 rounded shadow-lg animate-pulse`;
+            toast.textContent = message;
+            document.getElementById('toast-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        
+        function playSound(type) {
+            try {
+                const audio = new Audio(`/static/sounds/${type}.mp3`);
+                audio.play();
+            } catch(e) {
+                console.log('Sound not available');
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

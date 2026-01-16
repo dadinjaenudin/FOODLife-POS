@@ -1,0 +1,63 @@
+{% load humanize %}
+
+<div class="divide-y">
+    {% for item in bill.items.all %}
+    {% if not item.is_void %}
+    <div class="p-3 flex items-start gap-3 hover:bg-gray-50">
+        <div class="flex-1">
+            <div class="font-medium">{{ item.product.name }}</div>
+            {% if item.modifiers %}
+            <div class="text-sm text-gray-500">
+                {% for mod in item.modifiers %}
+                {{ mod.name }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if item.notes %}
+            <div class="text-sm text-red-500">Note: {{ item.notes }}</div>
+            {% endif %}
+            <div class="text-sm text-gray-500">
+                {{ item.quantity }} x Rp {{ item.unit_price|floatformat:0|intcomma }}
+            </div>
+            <div class="mt-1">
+                <span class="text-xs px-2 py-1 rounded
+                    {% if item.status == 'pending' %}bg-gray-200 text-gray-700
+                    {% elif item.status == 'sent' %}bg-yellow-200 text-yellow-700
+                    {% elif item.status == 'preparing' %}bg-orange-200 text-orange-700
+                    {% elif item.status == 'ready' %}bg-green-200 text-green-700
+                    {% elif item.status == 'served' %}bg-blue-200 text-blue-700
+                    {% endif %}">
+                    {{ item.get_status_display }}
+                </span>
+            </div>
+        </div>
+        <div class="text-right">
+            <div class="font-bold">Rp {{ item.total|floatformat:0|intcomma }}</div>
+            {% if item.status == 'pending' %}
+            <div class="flex gap-1 mt-2">
+                <button class="w-8 h-8 rounded bg-gray-200 hover:bg-gray-300 text-lg"
+                        hx-post="{% url 'pos:update_item_qty' item.id %}"
+                        hx-vals='{"action": "decrease"}'
+                        hx-target="#bill-panel">-</button>
+                <span class="w-8 h-8 flex items-center justify-center">{{ item.quantity }}</span>
+                <button class="w-8 h-8 rounded bg-gray-200 hover:bg-gray-300 text-lg"
+                        hx-post="{% url 'pos:update_item_qty' item.id %}"
+                        hx-vals='{"action": "increase"}'
+                        hx-target="#bill-panel">+</button>
+            </div>
+            <button class="text-red-500 text-sm mt-1 hover:underline"
+                    hx-post="{% url 'pos:void_item' item.id %}"
+                    hx-target="#bill-panel"
+                    hx-confirm="Void item ini?">
+                Void
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% empty %}
+    <div class="p-8 text-center text-gray-400">
+        Belum ada item
+    </div>
+    {% endfor %}
+</div>

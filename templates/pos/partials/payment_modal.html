@@ -1,0 +1,148 @@
+{% load humanize %}
+
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+     x-data="paymentModal({{ bill.total }}, {{ bill.get_paid_amount }})"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-lg w-full max-w-lg" @click.stop>
+        <div class="p-4 border-b flex justify-between items-center">
+            <h2 class="text-xl font-bold">Pembayaran - {{ bill.bill_number }}</h2>
+            <button onclick="closeModal()" class="p-2 hover:bg-gray-100 rounded">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        
+        <div class="p-4">
+            <!-- Bill Summary -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                <div class="flex justify-between mb-2">
+                    <span>Total Bill</span>
+                    <span class="font-bold">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                </div>
+                {% if bill.get_paid_amount > 0 %}
+                <div class="flex justify-between mb-2 text-green-600">
+                    <span>Sudah Dibayar</span>
+                    <span>Rp {{ bill.get_paid_amount|floatformat:0|intcomma }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between pt-2 border-t text-lg font-bold">
+                    <span>Sisa</span>
+                    <span class="text-red-600">Rp {{ bill.get_remaining|floatformat:0|intcomma }}</span>
+                </div>
+            </div>
+            
+            <!-- Payment Method -->
+            <div class="mb-4">
+                <label class="text-sm font-medium text-gray-700 mb-2 block">Metode Pembayaran</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <button @click="method = 'cash'" 
+                            :class="method === 'cash' ? 'ring-2 ring-blue-500 bg-blue-50' : 'bg-gray-100'"
+                            class="p-3 rounded-lg text-center hover:bg-gray-200">
+                        <div class="font-medium">Cash</div>
+                    </button>
+                    <button @click="method = 'card'" 
+                            :class="method === 'card' ? 'ring-2 ring-blue-500 bg-blue-50' : 'bg-gray-100'"
+                            class="p-3 rounded-lg text-center hover:bg-gray-200">
+                        <div class="font-medium">Card</div>
+                    </button>
+                    <button @click="method = 'qris'" 
+                            :class="method === 'qris' ? 'ring-2 ring-blue-500 bg-blue-50' : 'bg-gray-100'"
+                            class="p-3 rounded-lg text-center hover:bg-gray-200">
+                        <div class="font-medium">QRIS</div>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Amount Input -->
+            <div class="mb-4">
+                <label class="text-sm font-medium text-gray-700 mb-2 block">Jumlah Bayar</label>
+                <input type="number" 
+                       x-model.number="amount"
+                       class="w-full px-4 py-3 border rounded-lg text-right text-xl font-bold"
+                       placeholder="0">
+                
+                <div x-show="method === 'cash'" class="grid grid-cols-4 gap-2 mt-2">
+                    <button @click="amount = remaining" class="py-2 bg-gray-200 rounded text-sm hover:bg-gray-300">Exact</button>
+                    <button @click="amount = 50000" class="py-2 bg-gray-200 rounded text-sm hover:bg-gray-300">50K</button>
+                    <button @click="amount = 100000" class="py-2 bg-gray-200 rounded text-sm hover:bg-gray-300">100K</button>
+                    <button @click="amount = Math.ceil(remaining/50000)*50000" class="py-2 bg-gray-200 rounded text-sm hover:bg-gray-300">Round</button>
+                </div>
+            </div>
+            
+            <!-- Reference for non-cash -->
+            <div x-show="method !== 'cash'" class="mb-4">
+                <label class="text-sm font-medium text-gray-700 mb-2 block">Referensi</label>
+                <input type="text" 
+                       x-model="reference"
+                       class="w-full px-4 py-3 border rounded-lg"
+                       placeholder="No. Ref / 4 digit terakhir">
+            </div>
+            
+            <!-- Change Display -->
+            <div x-show="method === 'cash' && change > 0" 
+                 class="mb-4 p-4 bg-green-100 rounded-lg text-center">
+                <span class="text-sm text-gray-600">Kembalian</span>
+                <div class="text-2xl font-bold text-green-700" x-text="'Rp ' + change.toLocaleString('id-ID')"></div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="flex gap-3">
+                <button onclick="closeModal()" 
+                        class="flex-1 py-3 rounded-lg border border-gray-300 font-medium hover:bg-gray-50">
+                    Batal
+                </button>
+                <button @click="submitPayment()" 
+                        :disabled="amount < 1"
+                        class="flex-1 py-3 rounded-lg bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-50">
+                    Bayar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function paymentModal(total, paid) {
+    return {
+        method: 'cash',
+        amount: total - paid,
+        reference: '',
+        total: total,
+        paid: paid,
+        
+        get remaining() {
+            return this.total - this.paid;
+        },
+        
+        get change() {
+            return Math.max(0, this.amount - this.remaining);
+        },
+        
+        async submitPayment() {
+            const formData = new FormData();
+            formData.append('method', this.method);
+            formData.append('amount', this.amount);
+            formData.append('reference', this.reference);
+            
+            const response = await fetch('{% url "pos:process_payment" bill.id %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: formData
+            });
+            
+            const html = await response.text();
+            
+            if (response.headers.get('HX-Trigger')?.includes('paymentComplete')) {
+                document.getElementById('modal-container').innerHTML = html;
+                document.getElementById('bill-panel').innerHTML = '<div class="flex flex-col items-center justify-center h-full text-gray-500 p-4"><p>Bill closed. Pilih meja baru.</p></div>';
+                htmx.trigger(document.body, 'paymentComplete');
+            } else {
+                document.getElementById('modal-container').innerHTML = html;
+            }
+        }
+    }
+}
+</script>

@@ -1,0 +1,21 @@
+{% load humanize %}
+
+{% if bill and bill.items.exists %}
+<div class="p-4">
+    <div class="flex justify-between items-center mb-2">
+        <span class="font-bold">{{ bill.items.count }} Item</span>
+        <span class="font-bold text-lg">Rp {{ bill.subtotal|floatformat:0|intcomma }}</span>
+    </div>
+    <button 
+        class="w-full py-3 bg-green-600 text-white font-bold rounded-lg"
+        hx-post="{% url 'qr_order:submit' outlet_id table_id %}"
+        hx-target="#cart-panel"
+        hx-swap="innerHTML">
+        Kirim Pesanan
+    </button>
+</div>
+{% else %}
+<div class="p-4 text-center text-gray-400">
+    Keranjang kosong
+</div>
+{% endif %}

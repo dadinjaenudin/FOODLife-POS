@@ -1,0 +1,25 @@
+{% for product in products %}
+<div class="product-card bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow"
+     {% if bill %}
+     hx-post="{% url 'pos:add_item' bill.id %}"
+     hx-vals='{"product_id": "{{ product.id }}", "quantity": "1"}'
+     hx-target="#bill-panel"
+     hx-swap="innerHTML"
+     {% else %}
+     onclick="showToast('Buka bill terlebih dahulu', 'warning')"
+     {% endif %}>
+    {% if product.image %}
+    <img src="{{ product.image.url }}" alt="{{ product.name }}" class="w-full h-20 object-cover rounded mb-2">
+    {% else %}
+    <div class="w-full h-20 bg-gray-200 rounded mb-2 flex items-center justify-center">
+        <span class="text-gray-400 text-2xl">🍽️</span>
+    </div>
+    {% endif %}
+    <div class="font-medium text-sm truncate">{{ product.name }}</div>
+    <div class="text-blue-600 font-bold">Rp {{ product.price|floatformat:0 }}</div>
+</div>
+{% empty %}
+<div class="col-span-4 text-center text-gray-400 py-8">
+    Tidak ada produk
+</div>
+{% endfor %}

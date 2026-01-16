@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}POS - {{ request.user.outlet.name }}{% endblock %}
+
+{% block content %}
+<div class="flex h-screen">
+    <!-- Left: Product Grid -->
+    <div class="flex-1 flex flex-col bg-white">
+        <!-- Header -->
+        <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+            <div>
+                <h1 class="text-xl font-bold">{{ request.user.outlet.name }}</h1>
+                <span class="text-sm text-gray-500">{{ request.user.get_full_name|default:request.user.username }} ({{ request.user.get_role_display }})</span>
+            </div>
+            <div class="flex gap-2">
+                <a href="{% url 'tables:floor_plan' %}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Meja</a>
+                <a href="{% url 'kitchen:kds' %}" class="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600">KDS</a>
+                <a href="{% url 'core:logout' %}" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Logout</a>
+            </div>
+        </div>
+        
+        <!-- Categories -->
+        <div class="flex gap-2 p-4 border-b overflow-x-auto">
+            <button 
+                class="px-4 py-2 rounded-lg bg-blue-600 text-white category-btn"
+                hx-get="{% url 'pos:products' %}?category=all"
+                hx-target="#product-grid"
+                hx-swap="innerHTML"
+            >
+                Semua
+            </button>
+            {% for category in categories %}
+            <button 
+                class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 category-btn whitespace-nowrap"
+                hx-get="{% url 'pos:products' %}?category={{ category.id }}"
+                hx-target="#product-grid"
+                hx-swap="innerHTML"
+            >
+                {{ category.name }}
+            </button>
+            {% endfor %}
+        </div>
+        
+        <!-- Product Grid -->
+        <div id="product-grid" class="flex-1 p-4 overflow-y-auto grid grid-cols-4 gap-4 content-start touch-scroll">
+            {% include 'pos/partials/product_grid.html' %}
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="p-4 border-t flex gap-2 bg-gray-50">
+            <button 
+                class="px-4 py-2 rounded bg-gray-500 text-white btn-touch"
+                hx-get="{% url 'pos:held_bills' %}"
+                hx-target="#modal-container"
+            >
+                Hold ({{ held_count }})
+            </button>
+            <button 
+                class="px-4 py-2 rounded bg-purple-500 text-white btn-touch"
+                hx-get="{% url 'pos:quick_order' %}"
+                hx-target="#modal-container"
+            >
+                Quick Order
+            </button>
+            <a href="{% url 'pos:queue_display' %}" target="_blank"
+               class="px-4 py-2 rounded bg-indigo-500 text-white btn-touch">
+                Queue Display
+            </a>
+        </div>
+    </div>
+    
+    <!-- Right: Bill Panel -->
+    <div id="bill-panel" class="w-96 bg-gray-50 border-l flex flex-col">
+        {% include 'pos/partials/bill_panel.html' %}
+    </div>
+</div>
+
+<script>
+    // Category button active state
+    document.querySelectorAll('.category-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.category-btn').forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white');
+                b.classList.add('bg-gray-200');
+            });
+            this.classList.remove('bg-gray-200');
+            this.classList.add('bg-blue-600', 'text-white');
+        });
+    });
+</script>
+{% endblock %}
