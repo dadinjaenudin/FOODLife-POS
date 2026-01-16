@@ -22,7 +22,7 @@ Aplikasi Point of Sale untuk Food & Beverage dengan Django dan HTMX.
 
 ### 1. Clone and setup
 
-```bash
+\`\`\`bash
 # Create virtual environment
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
@@ -31,33 +31,33 @@ venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
-```
+\`\`\`
 
 ### 2. Configure environment
 
 For quick development with SQLite:
 
-```bash
+\`\`\`bash
 export USE_SQLITE=True
 export USE_LOCMEM_CACHE=True
 export USE_INMEMORY_CHANNEL=True
 export DEBUG=True
-```
+\`\`\`
 
 Or create `.env` file for production setup.
 
 ### 3. Initialize database
 
-```bash
+\`\`\`bash
 python manage.py migrate
 python manage.py setup_demo
-```
+\`\`\`
 
 ### 4. Run server
 
-```bash
+\`\`\`bash
 python manage.py runserver
-```
+\`\`\`
 
 Visit http://localhost:8000
 
@@ -70,7 +70,7 @@ Visit http://localhost:8000
 
 ### With PostgreSQL and Redis
 
-```bash
+\`\`\`bash
 export DB_NAME=pos_fnb
 export DB_USER=postgres
 export DB_PASSWORD=yourpassword
@@ -78,23 +78,23 @@ export DB_HOST=localhost
 export REDIS_URL=redis://localhost:6379/0
 export DEBUG=False
 export SECRET_KEY=your-secret-key
-```
+\`\`\`
 
 ### Run with Daphne (for WebSocket support)
 
-```bash
+\`\`\`bash
 daphne -b 0.0.0.0 -p 8000 pos_fnb.asgi:application
-```
+\`\`\`
 
 ### Run Celery (for background tasks)
 
-```bash
+\`\`\`bash
 celery -A pos_fnb worker -l info
-```
+\`\`\`
 
 ## Project Structure
 
-```
+\`\`\`
 pos_fnb/
 ├── apps/
 │   ├── core/          # User, Outlet, Product, Category
@@ -106,7 +106,7 @@ pos_fnb/
 ├── templates/
 ├── static/
 └── pos_fnb/           # Django settings
-```
+\`\`\`
 
 ## API Endpoints
 
