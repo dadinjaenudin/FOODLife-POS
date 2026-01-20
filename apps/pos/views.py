@@ -138,16 +138,29 @@ def add_item(request, bill_id):
     try:
         # Get bill - allow both 'open' and 'hold' status, but prefer active bill from session
         active_bill_id = request.session.get('active_bill_id')
+        bill = None
         
         if active_bill_id:
             # Use active bill from session if available
             try:
                 bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=active_bill_id, status='open')
             except Bill.DoesNotExist:
-                # Fallback to bill_id from URL
-                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
+                # Active bill from session no longer exists or not open, clear it
+                request.session.pop('active_bill_id', None)
+                # Try bill_id from URL as fallback
+                try:
+                    bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
+                except Bill.DoesNotExist:
+                    # No valid bill found - return empty bill panel
+                    response = render(request, 'pos/partials/bill_panel.html', {'bill': None})
+                    return trigger_client_event(response, 'billNotFound', {'message': 'Bill not found or already closed. Please select a table to start new order.'})
         else:
-            bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
+            try:
+                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
+            except Bill.DoesNotExist:
+                # No valid bill found - return empty bill panel
+                response = render(request, 'pos/partials/bill_panel.html', {'bill': None})
+                return trigger_client_event(response, 'billNotFound', {'message': 'Bill not found or already closed. Please select a table to start new order.'})
         
         product_id = request.POST.get('product_id')
         
@@ -718,8 +731,21 @@ def process_payment(request, bill_id):
             bill.table.status = 'dirty'
             bill.table.save()
         
-        # Clear active bill from session
-        request.session.pop('active_bill_id', None)
+        # Check if this was a split bill and auto-resume original bill
+        split_original_bill_id = request.session.pop('split_original_bill_id', None)
+        if split_original_bill_id:
+            # Check if original bill still exists and is open
+            original_bill = Bill.objects.filter(id=split_original_bill_id, status='open').first()
+            if original_bill:
+                # Set original bill as active
+                request.session['active_bill_id'] = original_bill.id
+                request.session.modified = True
+            else:
+                # Original bill already paid or doesn't exist, clear session
+                request.session.pop('active_bill_id', None)
+        else:
+            # Normal flow - clear active bill from session
+            request.session.pop('active_bill_id', None)
         
         BillLog.objects.create(
             bill=bill, 
@@ -796,6 +822,17 @@ def split_bill(request, bill_id):
         original_bill.calculate_totals()
         new_bill.calculate_totals()
         
+        # Keep both bills as 'open' (not held) so both can be paid immediately
+        # This is the key change - both bills stay active for immediate payment
+        new_bill.status = 'open'
+        new_bill.save()
+        
+        # Keep original bill as active in session
+        # After payment of new bill, user will return to original bill
+        request.session['active_bill_id'] = original_bill.id
+        request.session['split_original_bill_id'] = original_bill.id  # Store for after payment
+        request.session.modified = True
+        
         # Update table status if different
         if new_table_id and new_table_id != str(original_bill.table_id):
             new_table = Table.objects.get(id=new_table_id)
@@ -823,23 +860,34 @@ def split_bill(request, bill_id):
     
     return JsonResponse({
         'success': True,
-        'message': f'Bill split successfully! {moved_count} items moved to {new_bill.bill_number}',
-        'original_bill': original_bill.bill_number,
-        'new_bill': new_bill.bill_number,
-        'new_bill_id': new_bill.id
+        'message': f'Bill split successfully! {moved_count} items moved',
+        'original_bill': {
+            'id': original_bill.id,
+            'number': original_bill.bill_number,
+            'total': float(original_bill.total),
+            'items_count': original_bill.items.count()
+        },
+        'new_bill': {
+            'id': new_bill.id,
+            'number': new_bill.bill_number,
+            'total': float(new_bill.total),
+            'items_count': new_bill.items.count()
+        }
     })
 
 
 @login_required
-def merge_bills_modal(request):
+def merge_bills_modal(request, bill_id):
     """Merge bills modal - Select bills to merge"""
+    current_bill = get_object_or_404(Bill, id=bill_id, outlet=request.user.outlet)
     outlet = request.user.outlet
     open_bills = Bill.objects.filter(
         outlet=outlet,
         status='open'
-    ).prefetch_related('items').order_by('-created_at')[:20]
+    ).exclude(id=bill_id).prefetch_related('items').order_by('-created_at')[:20]
     
     context = {
+        'current_bill': current_bill,
         'open_bills': open_bills,
     }
     return render(request, 'pos/partials/merge_bills_modal.html', context)

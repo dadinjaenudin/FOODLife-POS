@@ -1,6 +1,5 @@
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
-     x-data="{ selectedBills: [], targetBill: null }" 
-     @keydown.escape.window="$el.remove()">
+<div id="merge-bills-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
+     onclick="if(event.target === this) closeModal()">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <!-- Header -->
         <div class="p-4 border-b flex items-center justify-between">
@@ -8,7 +7,7 @@
                 <h2 class="text-xl font-bold text-gray-800">Merge Bills</h2>
                 <p class="text-sm text-gray-600">Combine multiple bills into one</p>
             </div>
-            <button @click="$el.closest('.fixed').remove()" 
+            <button onclick="closeModal()" 
                     class="text-gray-400 hover:text-gray-600">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -38,12 +37,12 @@
             <!-- Bill Selection -->
             <div class="space-y-2">
                 {% for bill in open_bills %}
-                <div class="border rounded-lg p-4 hover:border-blue-500 transition">
+                <div class="border rounded-lg p-4 hover:border-blue-500 transition bill-item">
                     <div class="flex items-start">
                         <input type="checkbox" 
                                value="{{ bill.id }}" 
-                               x-model="selectedBills"
-                               class="h-4 w-4 text-blue-600 rounded mt-1">
+                               class="bill-checkbox h-4 w-4 text-blue-600 rounded mt-1"
+                               onchange="updateMergeSummary()">
                         <div class="ml-3 flex-1">
                             <div class="flex items-center justify-between">
                                 <div>
@@ -69,12 +68,11 @@
                             </div>
                             
                             <!-- Target Bill Radio -->
-                            <div class="mt-2" x-show="selectedBills.includes('{{ bill.id }}')">
+                            <div class="mt-2 target-radio-container" style="display: none;">
                                 <label class="inline-flex items-center text-sm">
                                     <input type="radio" 
                                            name="target_bill" 
                                            value="{{ bill.id }}"
-                                           x-model="targetBill"
                                            class="h-4 w-4 text-blue-600">
                                     <span class="ml-2 text-blue-600 font-medium">Set as target bill (merge into this)</span>
                                 </label>
@@ -93,12 +91,12 @@
             </div>
 
             <!-- Merge Summary -->
-            <div class="mt-6 p-4 bg-gray-50 rounded-lg" x-show="selectedBills.length >= 2">
+            <div id="merge-summary" class="mt-6 p-4 bg-gray-50 rounded-lg" style="display: none;">
                 <h3 class="font-semibold text-gray-800 mb-2">Merge Summary</h3>
                 <div class="text-sm text-gray-600">
-                    <p><span x-text="selectedBills.length"></span> bills selected</p>
-                    <p x-show="targetBill" class="mt-1">
-                        Target: <span class="font-medium" x-text="targetBill"></span>
+                    <p><span id="selected-bill-count">0</span> bills selected</p>
+                    <p id="target-bill-info" class="mt-1" style="display: none;">
+                        Target: <span class="font-medium" id="target-bill-number"></span>
                     </p>
                 </div>
             </div>
@@ -106,16 +104,16 @@
 
         <!-- Footer -->
         <div class="p-4 border-t bg-gray-50 flex items-center justify-between">
-            <button @click="$el.closest('.fixed').remove()" 
+            <button onclick="closeModal()" 
                     type="button"
                     class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">
                 Cancel
             </button>
             <button type="button"
-                    @click="submitMerge()"
-                    :disabled="selectedBills.length < 2 || !targetBill"
-                    :class="(selectedBills.length < 2 || !targetBill) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-700'"
-                    class="px-6 py-2 bg-green-600 text-white rounded-lg font-semibold">
+                    id="merge-submit-btn"
+                    onclick="submitMerge()"
+                    disabled
+                    class="px-6 py-2 bg-green-600 text-white rounded-lg font-semibold opacity-50 cursor-not-allowed">
                 Merge Bills
             </button>
         </div>
@@ -123,24 +121,71 @@
 </div>
 
 <script>
-function submitMerge() {
-    const data = this;
+function updateMergeSummary() {
+    const checkboxes = document.querySelectorAll('.bill-checkbox:checked');
+    const selectedCount = checkboxes.length;
+    const targetRadios = document.querySelectorAll('input[name="target_bill"]');
+    const targetRadio = Array.from(targetRadios).find(r => r.checked);
     
-    if (data.selectedBills.length < 2) {
+    // Update summary display
+    document.getElementById('selected-bill-count').textContent = selectedCount;
+    const summary = document.getElementById('merge-summary');
+    summary.style.display = selectedCount >= 2 ? 'block' : 'none';
+    
+    // Show/hide target bill options
+    document.querySelectorAll('.bill-item').forEach(item => {
+        const checkbox = item.querySelector('.bill-checkbox');
+        const radioContainer = item.querySelector('.target-radio-container');
+        radioContainer.style.display = checkbox.checked ? 'block' : 'none';
+    });
+    
+    // Update target bill info
+    const targetInfo = document.getElementById('target-bill-info');
+    if (targetRadio) {
+        const billItem = targetRadio.closest('.bill-item');
+        const billNumber = billItem.querySelector('.font-semibold').textContent;
+        document.getElementById('target-bill-number').textContent = billNumber;
+        targetInfo.style.display = 'block';
+    } else {
+        targetInfo.style.display = 'none';
+    }
+    
+    // Enable/disable submit button
+    const submitBtn = document.getElementById('merge-submit-btn');
+    if (selectedCount >= 2 && targetRadio) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        submitBtn.classList.add('hover:bg-green-700');
+    } else {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        submitBtn.classList.remove('hover:bg-green-700');
+    }
+}
+
+function submitMerge() {
+    const checkboxes = document.querySelectorAll('.bill-checkbox:checked');
+    const targetRadio = document.querySelector('input[name="target_bill"]:checked');
+    
+    if (checkboxes.length < 2) {
         alert('Please select at least 2 bills to merge');
         return;
     }
     
-    if (!data.targetBill) {
+    if (!targetRadio) {
         alert('Please select a target bill');
         return;
     }
     
+    const submitBtn = document.getElementById('merge-submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+    
     const formData = new FormData();
-    data.selectedBills.forEach(id => {
-        formData.append('bill_ids[]', id);
+    checkboxes.forEach(cb => {
+        formData.append('bill_ids', cb.value);
     });
-    formData.append('target_bill_id', data.targetBill);
+    formData.append('target_bill_id', targetRadio.value);
     
     fetch('{% url "pos:merge_bills" %}', {
         method: 'POST',
@@ -152,17 +197,37 @@ function submitMerge() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
-            document.querySelector('.fixed').remove();
-            // Refresh page to show merged bill
-            window.location.reload();
+            // Show success toast
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
+            toast.innerHTML = `
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <p class="font-bold">${data.message || 'Bills merged successfully!'}</p>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+            
+            // Close modal and reload
+            closeModal();
+            setTimeout(() => window.location.reload(), 500);
         } else {
             alert(data.error || 'Failed to merge bills');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Merge Bills';
         }
     })
     .catch(error => {
         console.error('Error:', error);
         alert('An error occurred while merging bills');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Merge Bills';
     });
 }
 </script>

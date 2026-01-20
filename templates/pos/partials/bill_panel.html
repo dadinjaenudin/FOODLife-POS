@@ -59,17 +59,24 @@
                 <span class="font-semibold text-right">Rp {{ bill.subtotal|floatformat:0|intcomma }}</span>
             </div>
             
-            {% if bill.tax_amount > 0 %}
-            <div class="flex justify-between text-xs text-gray-600">
-                <span>Taxes</span>
-                <span class="font-medium text-right">Rp {{ bill.tax_amount|floatformat:0|intcomma }}</span>
-            </div>
-            {% endif %}
-            
             {% if bill.discount_amount > 0 %}
             <div class="flex justify-between text-xs text-red-600">
                 <span>Discount ({{ bill.discount_percent }}%)</span>
                 <span class="font-medium text-right">-Rp {{ bill.discount_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.tax_amount > 0 %}
+            <div class="flex justify-between text-xs text-gray-600">
+                <span>Tax ({{ bill.outlet.tax_rate }}%)</span>
+                <span class="font-medium text-right">Rp {{ bill.tax_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.service_charge > 0 %}
+            <div class="flex justify-between text-xs text-gray-600">
+                <span>Service ({{ bill.outlet.service_charge }}%)</span>
+                <span class="font-medium text-right">Rp {{ bill.service_charge|floatformat:0|intcomma }}</span>
             </div>
             {% endif %}
             
@@ -97,6 +104,20 @@
         </button>
         {% endwith %}
         
+        <!-- Split Bill Button -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg {% if bill.items.count < 2 %}opacity-50 cursor-not-allowed{% endif %}"
+            hx-get="{% url 'pos:split_bill_modal' bill.id %}"
+            hx-target="#modal-container"
+            hx-swap="innerHTML"
+            {% if bill.items.count < 2 %}disabled{% endif %}
+            title="{% if bill.items.count < 2 %}Need at least 2 items to split{% else %}Split bill into multiple bills{% endif %}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+            </svg>
+            <span class="text-sm">Split Bill</span>
+        </button>
+        
         <!-- Confirm Payment Button -->
         <button 
             class="w-full py-2.5 bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
@@ -108,7 +129,19 @@
             <span class="text-sm">Confirm Payment</span>
         </button>
         
-        <div class="grid grid-cols-2 gap-2">
+        <!-- Held Bills Button -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+            hx-get="{% url 'pos:held_bills' %}"
+            hx-target="#modal-container"
+            hx-swap="innerHTML">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="text-sm">Held Bills</span>
+        </button>
+        
+        <div class="grid grid-cols-3 gap-2">
             <button 
                 class="py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
                 hx-get="{% url 'pos:hold_modal' bill.id %}"
@@ -120,6 +153,14 @@
                 hx-get="{% url 'pos:confirm_void_modal' bill.id %}"
                 hx-target="#modal-container">
                 Void
+            </button>
+            <button 
+                class="py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:merge_bills_modal' bill.id %}"
+                hx-target="#modal-container"
+                hx-swap="innerHTML"
+                title="Merge with another bill">
+                Merge
             </button>
         </div>
     </div>

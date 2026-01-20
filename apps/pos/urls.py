@@ -29,7 +29,7 @@ urlpatterns = [
     # Bill Management - Split, Merge, Move, Transfer
     path('bill/<int:bill_id>/split/', views.split_bill_modal, name='split_bill_modal'),
     path('bill/<int:bill_id>/split/process/', views.split_bill, name='split_bill'),
-    path('bills/merge/', views.merge_bills_modal, name='merge_bills_modal'),
+    path('bill/<int:bill_id>/merge/', views.merge_bills_modal, name='merge_bills_modal'),
     path('bills/merge/process/', views.merge_bills, name='merge_bills'),
     path('bill/<int:bill_id>/move-table/', views.move_table_modal, name='move_table_modal'),
     path('bill/<int:bill_id>/move-table/process/', views.move_table, name='move_table'),
