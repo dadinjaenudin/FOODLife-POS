@@ -23,6 +23,19 @@ def trigger_client_event(response, event_name, data=None):
     return response
 
 
+def render_bill_panel(request, bill):
+    """Helper to render bill panel with store_config context"""
+    store_config = StoreConfig.get_current()
+    context = {
+        'bill': bill,
+        'store_config': store_config
+    }
+    # Add active items count for conditional logic
+    if bill:
+        context['active_items_count'] = bill.items.filter(is_void=False).count()
+    return render(request, 'pos/partials/bill_panel.html', context)
+
+
 @login_required
 @ensure_csrf_cookie
 def pos_main(request):
@@ -152,14 +165,14 @@ def add_item(request, bill_id):
                     bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
                 except Bill.DoesNotExist:
                     # No valid bill found - return empty bill panel
-                    response = render(request, 'pos/partials/bill_panel.html', {'bill': None})
+                    response = render_bill_panel(request, None)
                     return trigger_client_event(response, 'billNotFound', {'message': 'Bill not found or already closed. Please select a table to start new order.'})
         else:
             try:
                 bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
             except Bill.DoesNotExist:
                 # No valid bill found - return empty bill panel
-                response = render(request, 'pos/partials/bill_panel.html', {'bill': None})
+                response = render_bill_panel(request, None)
                 return trigger_client_event(response, 'billNotFound', {'message': 'Bill not found or already closed. Please select a table to start new order.'})
         
         product_id = request.POST.get('product_id')
@@ -257,7 +270,7 @@ def add_item(request, bill_id):
             details={'product': product.name, 'quantity': quantity}
         )
         
-        response = render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+        response = render_bill_panel(request, bill)
         return trigger_client_event(response, 'itemAdded')
         
     except Exception as e:
@@ -308,7 +321,7 @@ def void_item(request, item_id):
         
         # Refresh bill with table relation
         bill = Bill.objects.select_related('table', 'table__area').get(id=item.bill.id)
-        return render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+        return render_bill_panel(request, bill)
     
     # GET method - Show PIN modal for SENT items
     if request.method == 'GET':
@@ -382,7 +395,7 @@ def update_item_qty(request, item_id):
     
     # Refresh bill with table relation
     bill = Bill.objects.select_related('table', 'table__area').get(id=item.bill.id)
-    return render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+    return render_bill_panel(request, bill)
 
 
 @login_required
@@ -391,6 +404,42 @@ def hold_modal(request, bill_id):
     """Show hold bill confirmation modal - HTMX"""
     bill = get_object_or_404(Bill, id=bill_id, status='open')
     return render(request, 'pos/partials/confirm_hold_modal.html', {'bill': bill})
+
+
+@login_required
+@require_http_methods(["POST"])
+def cancel_empty_bill(request, bill_id):
+    """Cancel empty bill and clear table if exists"""
+    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    
+    # Check if bill is empty
+    if bill.items.filter(is_void=False).exists():
+        return HttpResponse("Cannot cancel bill with items", status=400)
+    
+    with transaction.atomic():
+        # Clear table if exists
+        if bill.table:
+            bill.table.status = 'available'
+            bill.table.current_bill = None
+            bill.table.save()
+        
+        # Log the cancellation
+        BillLog.objects.create(
+            bill=bill,
+            action='cancel_empty',
+            user=request.user,
+            details={'reason': 'Empty bill cancelled by user'}
+        )
+        
+        # Delete the bill
+        bill.delete()
+    
+    # Clear session
+    request.session.pop('active_bill_id', None)
+    
+    # Return empty bill panel
+    response = render_bill_panel(request, None)
+    return trigger_client_event(response, 'billCancelled')
 
 
 @login_required
@@ -423,7 +472,7 @@ def hold_bill(request, bill_id):
         details={'reason': hold_reason} if hold_reason else {}
     )
     
-    response = render(request, 'pos/partials/bill_panel.html', {'bill': None})
+    response = render_bill_panel(request, None)
     return trigger_client_event(response, 'billHeld')
 
 
@@ -439,7 +488,7 @@ def resume_bill(request, bill_id):
     
     BillLog.objects.create(bill=bill, action='resume', user=request.user)
     
-    return render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+    return render_bill_panel(request, bill)
 
 
 @login_required
@@ -793,7 +842,7 @@ def split_bill_modal(request, bill_id):
 @login_required
 @require_http_methods(["POST"])
 def split_bill(request, bill_id):
-    """Split bill into multiple bills - Enhanced with table selection"""
+    """Split bill into multiple bills - Enhanced with qty split support"""
     original_bill = get_object_or_404(Bill, id=bill_id, status='open')
     split_items = request.POST.getlist('split_items[]')
     new_table_id = request.POST.get('new_table_id')
@@ -813,10 +862,36 @@ def split_bill(request, bill_id):
             notes=f"Split from {original_bill.bill_number}"
         )
         
-        # Move selected items to new bill
-        moved_items = BillItem.objects.filter(id__in=split_items, bill=original_bill)
-        moved_count = moved_items.count()
-        moved_items.update(bill=new_bill)
+        moved_count = 0
+        # Process each selected item with qty split support
+        for item_id in split_items:
+            item = BillItem.objects.get(id=item_id, bill=original_bill)
+            split_qty_key = f'split_qty_{item_id}'
+            split_qty = int(request.POST.get(split_qty_key, item.quantity))
+            
+            if split_qty >= item.quantity:
+                # Move entire item to new bill
+                item.bill = new_bill
+                item.save()
+                moved_count += 1
+            else:
+                # Split qty: create new item in new bill with split qty
+                BillItem.objects.create(
+                    bill=new_bill,
+                    product=item.product,
+                    quantity=split_qty,
+                    unit_price=item.unit_price,
+                    modifier_price=item.modifier_price,
+                    notes=item.notes,
+                    modifiers=item.modifiers,
+                    status=item.status,
+                    created_by=request.user
+                )
+                
+                # Reduce qty in original bill
+                item.quantity -= split_qty
+                item.save()
+                moved_count += 1
         
         # Recalculate totals
         original_bill.calculate_totals()
@@ -897,11 +972,11 @@ def merge_bills_modal(request, bill_id):
 @require_http_methods(["POST"])
 def merge_bills(request):
     """Merge multiple bills into one"""
-    bill_ids = request.POST.getlist('bill_ids[]')
+    bill_ids = request.POST.getlist('bill_ids')
     target_bill_id = request.POST.get('target_bill_id')
     
-    if len(bill_ids) < 2:
-        return JsonResponse({'error': 'Please select at least 2 bills to merge'}, status=400)
+    if len(bill_ids) < 1:
+        return JsonResponse({'error': 'Please select at least 1 bill to merge'}, status=400)
     
     if not target_bill_id:
         return JsonResponse({'error': 'Please select target bill'}, status=400)

@@ -14,6 +14,7 @@ urlpatterns = [
     path('bill/<int:bill_id>/hold-modal/', views.hold_modal, name='hold_modal'),
     path('bill/<int:bill_id>/resume/', views.resume_bill, name='resume_bill'),
     path('bill/<int:bill_id>/cancel/', views.cancel_bill, name='cancel_bill'),
+    path('bill/<int:bill_id>/cancel-empty/', views.cancel_empty_bill, name='cancel_empty_bill'),
     path('bill/<int:bill_id>/confirm-void/', views.confirm_void_modal, name='confirm_void_modal'),
     path('bill/<int:bill_id>/send-kitchen/', views.send_to_kitchen, name='send_to_kitchen'),
     

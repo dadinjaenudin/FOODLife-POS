@@ -47,7 +47,9 @@
                         {% for item in items %}
                         <label class="flex items-center p-3 border rounded-lg hover:bg-teal-50 cursor-pointer transition item-checkbox"
                                data-item-id="{{ item.id }}"
-                               data-item-total="{{ item.total|default:'0' }}">
+                               data-item-total="{{ item.total|stringformat:'f' }}"
+                               data-item-qty="{{ item.quantity }}"
+                               data-unit-price="{{ item.unit_price|stringformat:'f' }}">
                             <input type="checkbox" 
                                    name="split_items" 
                                    value="{{ item.id }}" 
@@ -55,12 +57,22 @@
                             <div class="ml-2 flex-1 min-w-0">
                                 <div class="flex items-center justify-between gap-2">
                                     <span class="font-semibold text-sm text-gray-900 truncate">{{ item.product.name }}</span>
-                                    <span class="font-bold text-sm text-gray-900 whitespace-nowrap">Rp {{ item.total|floatformat:0|intcomma }}</span>
+                                    <span class="font-bold text-sm text-gray-900 whitespace-nowrap item-total-display">Rp {{ item.total|floatformat:0|intcomma }}</span>
                                 </div>
-                                <div class="flex items-center text-xs text-gray-600 mt-0.5">
-                                    <span>Qty: {{ item.quantity }}</span>
-                                    <span class="mx-1">•</span>
-                                    <span>@ Rp {{ item.unit_price|floatformat:0|intcomma }}</span>
+                                <div class="flex items-center justify-between text-xs text-gray-600 mt-1">
+                                    <div class="flex items-center gap-2">
+                                        <span>Qty:</span>
+                                        <input type="number" 
+                                               name="split_qty_{{ item.id }}"
+                                               value="{{ item.quantity }}"
+                                               min="1"
+                                               max="{{ item.quantity }}"
+                                               class="split-qty-input w-16 px-2 py-1 border border-gray-300 rounded text-center font-semibold"
+                                               data-original-qty="{{ item.quantity }}"
+                                               disabled>
+                                        <span class="text-gray-400">/ {{ item.quantity }}</span>
+                                    </div>
+                                    <span class="text-gray-500">@ Rp {{ item.unit_price|floatformat:0|intcomma }}</span>
                                 </div>
                             </div>
                         </label>
@@ -154,47 +166,71 @@ const itemData = [
 // Calculate original total from items (not bill.total which may include tax/service)
 const originalTotal = itemData.reduce((sum, item) => sum + item.total, 0);
 
-console.log('Original Total:', originalTotal);
-console.log('Item Data:', itemData);
-
-// Format number to Indonesian Rupiah format
-function formatRupiah(number) {
-    const formatted = new Intl.NumberFormat('id-ID', {
+// Format number to Indonesian Rupiah format - single source of truth
+function formatNumber(number) {
+    return new Intl.NumberFormat('id-ID', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
     }).format(Math.round(number));
-    console.log('Formatting', number, 'to', formatted);
-    return formatted;
 }
 
 function updateSplitSummary() {
     const checkboxes = document.querySelectorAll('input[name="split_items"]:checked');
     const selectedCount = checkboxes.length;
     
-    // Calculate new bill total
+    // Calculate new bill total based on selected items and their qty
     let newBillTotal = 0;
+    let remainingItems = 0;
+    
     checkboxes.forEach(cb => {
         const itemId = parseInt(cb.value);
-        const item = itemData.find(i => i.id === itemId);
-        if (item) {
-            newBillTotal += item.total;
+        const label = cb.closest('.item-checkbox');
+        const qtyInput = label.querySelector('.split-qty-input');
+        const splitQty = parseInt(qtyInput.value);
+        const unitPrice = parseFloat(label.dataset.unitPrice);
+        
+        // Calculate total for this item based on split qty
+        newBillTotal += splitQty * unitPrice;
+    });
+    
+    // Calculate remaining total from all items
+    const allLabels = document.querySelectorAll('.item-checkbox');
+    let originalTotalCalc = 0;
+    allLabels.forEach(label => {
+        const checkbox = label.querySelector('.split-item-checkbox');
+        const originalQty = parseInt(label.dataset.itemQty);
+        const unitPrice = parseFloat(label.dataset.unitPrice);
+        const qtyInput = label.querySelector('.split-qty-input');
+        const splitQty = parseInt(qtyInput.value);
+        
+        if (checkbox.checked) {
+            // Item will be split
+            const remainingQty = originalQty - splitQty;
+            if (remainingQty > 0) {
+                originalTotalCalc += remainingQty * unitPrice;
+                remainingItems++;
+            }
+        } else {
+            // Item stays in original bill
+            originalTotalCalc += originalQty * unitPrice;
+            remainingItems++;
         }
     });
     
-    // Calculate remaining total
-    const remainingTotal = originalTotal - newBillTotal;
-    const remainingItems = totalItems - selectedCount;
-    
     // Update UI with proper formatting
     document.getElementById('selected-count').textContent = selectedCount + ' selected';
-    document.getElementById('new-bill-total').textContent = formatRupiah(newBillTotal);
-    document.getElementById('original-remaining').textContent = formatRupiah(remainingTotal);
+    document.getElementById('new-bill-total').textContent = formatNumber(newBillTotal);
+    document.getElementById('original-remaining').textContent = formatNumber(originalTotalCalc);
     document.getElementById('items-selected').textContent = selectedCount;
     document.getElementById('items-remaining').textContent = remainingItems;
     
     // Enable/disable submit button
+    // Button is enabled if:
+    // 1. At least one item is selected
+    // 2. New bill total > 0 (has something to split)
+    // 3. Original bill will still have something (not moving everything)
     const submitBtn = document.getElementById('submit-split-btn');
-    if (selectedCount > 0 && selectedCount < totalItems) {
+    if (selectedCount > 0 && newBillTotal > 0 && originalTotalCalc > 0) {
         submitBtn.disabled = false;
         submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     } else {
@@ -222,10 +258,9 @@ function submitSplitBill() {
         return;
     }
     
-    if (checkboxes.length === totalItems) {
-        alert('You must leave at least one item in the original bill');
-        return;
-    }
+    // Validate that original bill will still have remaining items/qty
+    // This is now handled by the button enable/disable logic in updateSplitSummary
+    // which checks: newBillTotal > 0 && originalTotalCalc > 0
     
     const submitBtn = document.getElementById('submit-split-btn');
     submitBtn.disabled = true;
@@ -234,9 +269,15 @@ function submitSplitBill() {
     // Build FormData manually to ensure correct format
     const formData = new FormData();
     
-    // Add selected items with [] notation
+    // Add selected items with [] notation and their qty
     checkboxes.forEach(cb => {
-        formData.append('split_items[]', cb.value);
+        const itemId = cb.value;
+        const label = cb.closest('.item-checkbox');
+        const qtyInput = label.querySelector('.split-qty-input');
+        const splitQty = qtyInput.value;
+        
+        formData.append('split_items[]', itemId);
+        formData.append(`split_qty_${itemId}`, splitQty);
     });
     
     // Add other form fields
@@ -309,8 +350,82 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Also attach when HTMX swaps content
 function attachSplitEventListeners() {
+    // Checkbox change listeners
     document.querySelectorAll('.split-item-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', updateSplitSummary);
+        checkbox.addEventListener('change', function() {
+            const label = this.closest('.item-checkbox');
+            const qtyInput = label.querySelector('.split-qty-input');
+            
+            // Enable/disable qty input based on checkbox
+            qtyInput.disabled = !this.checked;
+            
+            // Update styling
+            if (this.checked) {
+                label.classList.add('border-teal-500', 'bg-teal-50');
+                label.classList.remove('border-gray-200');
+                
+                // Update total display with current qty when checked
+                const qty = parseInt(qtyInput.value);
+                const unitPrice = parseFloat(label.dataset.unitPrice);
+                const newTotal = qty * unitPrice;
+                const totalDisplay = label.querySelector('.item-total-display');
+                if (totalDisplay) {
+                    totalDisplay.textContent = 'Rp ' + formatNumber(newTotal);
+                }
+            } else {
+                label.classList.remove('border-teal-500', 'bg-teal-50');
+                label.classList.add('border-gray-200');
+                
+                // Reset to original total when unchecked
+                const originalQty = parseInt(label.dataset.itemQty);
+                const unitPrice = parseFloat(label.dataset.unitPrice);
+                const originalTotal = originalQty * unitPrice;
+                const totalDisplay = label.querySelector('.item-total-display');
+                if (totalDisplay) {
+                    totalDisplay.textContent = 'Rp ' + formatNumber(originalTotal);
+                }
+            }
+            
+            updateSplitSummary();
+        });
+    });
+    
+    // Qty input change listeners - handle both 'input' and 'change' events
+    document.querySelectorAll('.split-qty-input').forEach(input => {
+        console.log('Found qty input:', input, 'Value:', input.value);
+        const handleQtyChange = function() {
+            console.log('Qty input changed, new value:', this.value);
+            const label = this.closest('.item-checkbox');
+            const originalQty = parseInt(this.dataset.originalQty);
+            const unitPrice = parseFloat(label.dataset.unitPrice);
+            let value = parseInt(this.value) || 0;
+            console.log('originalQty:', originalQty, 'unitPrice:', unitPrice, 'value:', value);
+            
+            // Validate qty
+            if (value < 1) value = 1;
+            if (value > originalQty) value = originalQty;
+            this.value = value;
+            console.log('After validation, value:', value);
+            
+            // Update item total display
+            const newTotal = value * unitPrice;
+            console.log('Calculated newTotal:', newTotal);
+            const totalDisplay = label.querySelector('.item-total-display');
+            if (totalDisplay) {
+                console.log('Before format, totalDisplay.textContent:', totalDisplay.textContent);
+                totalDisplay.textContent = 'Rp ' + formatNumber(newTotal);
+                console.log('After format, totalDisplay.textContent:', totalDisplay.textContent);
+            }
+            
+            updateSplitSummary();
+        };
+        
+        // Listen to both input (typing) and change (spinner arrows)
+        input.addEventListener('input', handleQtyChange);
+        input.addEventListener('change', handleQtyChange);
+        console.log('Attached input and change listeners to:', input);
+        input.addEventListener('input', handleQtyChange);
+        input.addEventListener('change', handleQtyChange);
     });
 }
 
