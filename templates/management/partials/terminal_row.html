@@ -1,0 +1,70 @@
+<tr class="hover:bg-gray-50">
+    <td class="px-6 py-4 whitespace-nowrap">
+        {% if terminal.status == 'online' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            🟢 Online
+        </span>
+        {% elif terminal.status == 'warning' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            ⚠️ Warning
+        </span>
+        {% elif terminal.status == 'inactive' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+            ⏸️ Inactive
+        </span>
+        {% else %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            ⚫ Offline
+        </span>
+        {% endif %}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <div class="font-medium text-gray-900">{{ terminal.terminal_code }}</div>
+        <div class="text-sm text-gray-500">{{ terminal.terminal_name|default:"—" }}</div>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {{ terminal.get_device_type_display }}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {{ terminal.ip_address|default:"—" }}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {% if terminal.last_heartbeat %}
+        {{ terminal.last_heartbeat|timesince }} ago
+        {% else %}
+        Never
+        {% endif %}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {% if terminal.current_shift %}
+        {{ terminal.current_shift.cashier.get_full_name }}
+        {% else %}
+        <span class="text-gray-400">—</span>
+        {% endif %}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+        <button hx-get="{% url 'management:terminal_detail' terminal.id %}"
+                hx-target="#modal-content"
+                onclick="document.getElementById('detail-modal').classList.remove('hidden')"
+                class="text-indigo-600 hover:text-indigo-900">
+            View
+        </button>
+        
+        {% if terminal.is_active %}
+        <button hx-post="{% url 'management:terminal_deactivate' terminal.id %}"
+                hx-confirm="Deactivate terminal {{ terminal.terminal_code }}?"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                class="text-orange-600 hover:text-orange-900">
+            Deactivate
+        </button>
+        {% else %}
+        <button hx-post="{% url 'management:terminal_reactivate' terminal.id %}"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                class="text-green-600 hover:text-green-900">
+            Reactivate
+        </button>
+        {% endif %}
+    </td>
+</tr>

@@ -1,0 +1,163 @@
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
+     x-data="{ selectedTable: null, selectedArea: null }" 
+     @keydown.escape.window="$el.remove()">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <!-- Header -->
+        <div class="p-4 border-b flex items-center justify-between">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">Move Table</h2>
+                <p class="text-sm text-gray-600">
+                    {{ bill.bill_number }} - Current: Table {{ bill.table.number }}
+                </p>
+            </div>
+            <button @click="$el.closest('.fixed').remove()" 
+                    class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4">
+            <!-- Current Bill Info -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600">Moving Bill:</p>
+                        <p class="font-semibold text-gray-800">{{ bill.bill_number }}</p>
+                        <p class="text-sm text-gray-600 mt-1">
+                            {{ bill.items.count }} items • {{ bill.guest_count }} guests • Rp {{ bill.get_total|floatformat:0 }}
+                        </p>
+                    </div>
+                    <div class="text-center px-4 py-2 bg-white rounded-lg">
+                        <p class="text-xs text-gray-500">FROM</p>
+                        <p class="text-2xl font-bold text-gray-800">{{ bill.table.number }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tables by Area -->
+            {% regroup tables by area as area_list %}
+            {% for area_group in area_list %}
+            <div class="mb-6">
+                <h3 class="font-semibold text-gray-800 mb-3 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                    </svg>
+                    {{ area_group.grouper.name }}
+                </h3>
+                <div class="grid grid-cols-4 gap-3">
+                    {% for table in area_group.list %}
+                    <button type="button"
+                            @click="selectedTable = {{ table.id }}; selectedArea = '{{ area_group.grouper.name }}'"
+                            :class="selectedTable === {{ table.id }} ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'"
+                            class="border-2 rounded-lg p-4 text-center transition cursor-pointer">
+                        <div class="flex items-center justify-center mb-2">
+                            <svg class="w-8 h-8" :class="selectedTable === {{ table.id }} ? 'text-blue-600' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <p class="text-xl font-bold" :class="selectedTable === {{ table.id }} ? 'text-blue-600' : 'text-gray-800'">
+                            {{ table.number }}
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">{{ table.capacity }} seats</p>
+                        <div class="mt-2">
+                            {% if table.status == 'available' %}
+                            <span class="inline-block px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded">
+                                Available
+                            </span>
+                            {% elif table.status == 'reserved' %}
+                            <span class="inline-block px-2 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded">
+                                Reserved
+                            </span>
+                            {% endif %}
+                        </div>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-8 text-gray-500">
+                <svg class="w-16 h-16 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <p>No available tables</p>
+            </div>
+            {% endfor %}
+
+            <!-- Selection Summary -->
+            <div class="mt-6 p-4 bg-gray-50 rounded-lg" x-show="selectedTable">
+                <h3 class="font-semibold text-gray-800 mb-2">Move Summary</h3>
+                <div class="flex items-center justify-center text-sm text-gray-600 space-x-4">
+                    <div class="text-center">
+                        <p class="text-xs text-gray-500">FROM</p>
+                        <p class="text-2xl font-bold text-gray-800">{{ bill.table.number }}</p>
+                        <p class="text-xs">{{ bill.table.area.name }}</p>
+                    </div>
+                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                    </svg>
+                    <div class="text-center">
+                        <p class="text-xs text-gray-500">TO</p>
+                        <p class="text-2xl font-bold text-blue-600" x-text="selectedTable || '-'"></p>
+                        <p class="text-xs" x-text="selectedArea || '-'"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-4 border-t bg-gray-50 flex items-center justify-between">
+            <button @click="$el.closest('.fixed').remove()" 
+                    type="button"
+                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">
+                Cancel
+            </button>
+            <button type="button"
+                    @click="submitMove()"
+                    :disabled="!selectedTable"
+                    :class="!selectedTable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'"
+                    class="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold">
+                Move to Selected Table
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function submitMove() {
+    const data = this;
+    
+    if (!data.selectedTable) {
+        alert('Please select a table');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('new_table_id', data.selectedTable);
+    
+    fetch('{% url "pos:move_table" bill.id %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            document.querySelector('.fixed').remove();
+            // Refresh page to show new table
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to move table');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while moving table');
+    });
+}
+</script>

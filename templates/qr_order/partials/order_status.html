@@ -1,0 +1,208 @@
+{% load humanize %}
+
+<div class="bg-white">
+    <!-- Header -->
+    <div class="flex items-center justify-between p-4 border-b">
+        <h2 class="text-xl font-bold text-gray-800">Status Pesanan</h2>
+        <button 
+            @click="showCart = false"
+            class="text-gray-400 hover:text-gray-600 p-1">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+
+    {% if bill %}
+    <!-- Order Info -->
+    <div class="p-4 bg-blue-50 border-b">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-gray-600">Nomor Bill</span>
+            <span class="font-bold text-gray-800">#{{ bill.bill_number }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-600">Meja</span>
+            <span class="font-medium text-gray-800">{{ table.number }} - {{ table.area.name }}</span>
+        </div>
+    </div>
+    
+    <!-- Progress Timeline -->
+    <div class="p-6">
+        <div class="relative">
+            <!-- Timeline Line -->
+            <div class="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+            
+            {% with all_items=bill.items.all|dictsort:"status" %}
+            {% with pending_count=all_items|filter:"status='pending'"|length %}
+            {% with sent_count=all_items|filter:"status='sent'"|length %}
+            {% with ready_count=all_items|filter:"status='ready'"|length %}
+            
+            <!-- Step 1: Order Placed -->
+            <div class="relative flex items-start mb-8">
+                <div class="flex-shrink-0 w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg z-10">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </div>
+                <div class="ml-4 flex-1">
+                    <h3 class="font-bold text-gray-800">Pesanan Diterima</h3>
+                    <p class="text-sm text-gray-500">{{ bill.created_at|date:"H:i" }}</p>
+                    <span class="inline-block mt-1 px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                        Selesai
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Step 2: Preparing -->
+            <div class="relative flex items-start mb-8">
+                {% if sent_count > 0 or ready_count > 0 %}
+                <div class="flex-shrink-0 w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg z-10 animate-pulse">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                {% else %}
+                <div class="flex-shrink-0 w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center text-gray-500 z-10">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                {% endif %}
+                <div class="ml-4 flex-1">
+                    <h3 class="font-bold text-gray-800">Sedang Diproses</h3>
+                    <p class="text-sm text-gray-500">Dapur sedang menyiapkan pesanan Anda</p>
+                    {% if sent_count > 0 %}
+                    <span class="inline-block mt-1 px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                        {{ sent_count }} item sedang dimasak
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Step 3: Ready -->
+            <div class="relative flex items-start mb-8">
+                {% if ready_count > 0 %}
+                <div class="flex-shrink-0 w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg z-10">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                {% else %}
+                <div class="flex-shrink-0 w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center text-gray-500 z-10">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </div>
+                {% endif %}
+                <div class="ml-4 flex-1">
+                    <h3 class="font-bold text-gray-800">Siap Disajikan</h3>
+                    <p class="text-sm text-gray-500">Pesanan siap untuk dihidangkan</p>
+                    {% if ready_count > 0 %}
+                    <span class="inline-block mt-1 px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                        {{ ready_count }} item siap
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Step 4: Served -->
+            <div class="relative flex items-start">
+                <div class="flex-shrink-0 w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center text-gray-500 z-10">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/>
+                    </svg>
+                </div>
+                <div class="ml-4 flex-1">
+                    <h3 class="font-bold text-gray-800">Terhidang</h3>
+                    <p class="text-sm text-gray-500">Selamat menikmati!</p>
+                </div>
+            </div>
+            
+            {% endwith %}
+            {% endwith %}
+            {% endwith %}
+            {% endwith %}
+        </div>
+    </div>
+    
+    <!-- Order Items List -->
+    <div class="border-t p-4">
+        <h3 class="font-bold text-gray-800 mb-3">Detail Pesanan</h3>
+        <div class="space-y-2">
+            {% for item in bill.items.all %}
+            {% if not item.is_void %}
+            <div class="flex items-center justify-between py-2 border-b last:border-0">
+                <div class="flex-1">
+                    <p class="font-medium text-gray-800">{{ item.product.name }}</p>
+                    <p class="text-sm text-gray-500">{{ item.quantity }}x - Rp {{ item.unit_price|floatformat:0|intcomma }}</p>
+                </div>
+                <div class="text-right">
+                    {% if item.status == 'pending' %}
+                    <span class="inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">
+                        ⏳ Menunggu
+                    </span>
+                    {% elif item.status == 'sent' %}
+                    <span class="inline-block px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                        👨‍🍳 Diproses
+                    </span>
+                    {% elif item.status == 'ready' %}
+                    <span class="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full">
+                        ✓ Siap
+                    </span>
+                    {% elif item.status == 'served' %}
+                    <span class="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                        ✓ Terhidang
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Total -->
+    <div class="border-t p-4 bg-gray-50">
+        <div class="flex justify-between items-center mb-4">
+            <span class="text-lg font-bold text-gray-800">Total Pesanan</span>
+            <span class="text-2xl font-bold text-blue-600">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+        </div>
+        
+        <!-- Refresh Button -->
+        <button 
+            class="w-full py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
+            hx-get="{% url 'qr_order:status' outlet_id table.id %}"
+            hx-target="#cart-panel"
+            hx-swap="innerHTML">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh Status
+        </button>
+        
+        <!-- Add More Items -->
+        {% with pending_items=bill.items.filter|status='pending' %}
+        {% if pending_items %}
+        <button 
+            @click="showCart = false"
+            class="w-full mt-2 py-3 border-2 border-blue-600 text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition">
+            Tambah Pesanan
+        </button>
+        {% endif %}
+        {% endwith %}
+    </div>
+    
+    {% else %}
+    <!-- No Order -->
+    <div class="p-8 text-center">
+        <div class="text-6xl mb-4">📋</div>
+        <h3 class="text-lg font-bold text-gray-800 mb-2">Belum Ada Pesanan</h3>
+        <p class="text-gray-500 mb-6">Mulai pesan sekarang!</p>
+        <button 
+            @click="showCart = false"
+            class="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition">
+            Lihat Menu
+        </button>
+    </div>
+    {% endif %}
+</div>

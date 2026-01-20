@@ -1,0 +1,245 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Edit {{ product.name }} - Product Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-1.5">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-1.5">
+        <div>
+            <h1 class="text-xl font-bold text-gray-800">Edit Product</h1>
+            <p class="text-xs text-gray-600">Update product information</p>
+        </div>
+        <div class="flex gap-1.5">
+            <a href="{% url 'management:product_detail' product.id %}" 
+               class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs">
+                View Details
+            </a>
+            <a href="{% url 'management:products' %}" 
+               class="px-2.5 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
+                ← Back to Products
+            </a>
+        </div>
+    </div>
+
+    <!-- Form -->
+    <form method="POST" enctype="multipart/form-data" class="space-y-2">
+        {% csrf_token %}
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <!-- Image Upload -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-lg shadow p-2.5">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-2">Product Image</h3>
+                    
+                    <!-- Current Image -->
+                    <div class="mb-2">
+                        {% if product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}" 
+                             id="image-preview"
+                             class="w-full rounded-lg shadow-md mb-1">
+                        {% else %}
+                        <div id="image-preview" class="w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center mb-1">
+                            <div class="text-center text-gray-400">
+                                <svg class="w-12 h-12 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                <p class="text-xs">No Image</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Upload Button -->
+                    <label class="block w-full px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-center rounded-lg cursor-pointer transition text-xs">
+                        📤 Upload New Image
+                        <input type="file" name="image" accept="image/*" class="hidden" 
+                               onchange="previewImage(event)">
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1">Max 5MB</p>
+                </div>
+
+                <!-- Status -->
+                <div class="bg-white rounded-lg shadow p-2.5 mt-2">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-2">Status</h3>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="checkbox" name="is_active" {% if product.is_active %}checked{% endif %}
+                                   class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                            <span class="ml-2 text-xs text-gray-700">Product is Active</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" name="track_stock" {% if product.track_stock %}checked{% endif %}
+                                   class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <span class="ml-2 text-xs text-gray-700">Track Stock Quantity</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product Details Form -->
+            <div class="lg:col-span-2 space-y-2">
+                <!-- Basic Information -->
+                <div class="bg-white rounded-lg shadow p-2.5">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-2 border-b pb-1.5">Basic Information</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="col-span-2">
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Product Name *</label>
+                            <input type="text" name="name" value="{{ product.name }}" required
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">PLU Product *</label>
+                            <input type="text" name="sku" value="{{ product.sku }}" required
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Category *</label>
+                            <select name="category" required
+                                    class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                {% for cat in categories %}
+                                <option value="{{ cat.id }}" {% if product.category.id == cat.id %}selected{% endif %}>
+                                    {{ cat.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Menu Category</label>
+                            <input type="text" name="description" value="{{ product.description }}"
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                   placeholder="e.g., Hot Coffee, Ice Coffee, Cold Beverage">
+                            <p class="mt-0.5 text-xs text-gray-500">Sub-category for grouping similar products</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pricing -->
+                <div class="bg-white rounded-lg shadow p-2.5">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-2 border-b pb-1.5">Pricing</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Selling Price (Rp) *</label>
+                            <input type="number" name="price" value="{{ product.price }}" required min="0" step="0.01"
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Cost Price (Rp)</label>
+                            <input type="number" name="cost" value="{{ product.cost }}" min="0" step="0.01"
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock & Printer -->
+                <div class="bg-white rounded-lg shadow p-2.5">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-2 border-b pb-1.5">Stock & Printer Settings</h3>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Stock Quantity</label>
+                            <input type="number" name="stock_quantity" value="{{ product.stock_quantity }}" min="0"
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Low Stock Alert</label>
+                            <input type="number" name="low_stock_alert" value="{{ product.low_stock_alert }}" min="0"
+                                   class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-0.5">Printer Target</label>
+                            <select name="printer_target"
+                                    class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="kitchen" {% if product.printer_target == 'kitchen' %}selected{% endif %}>Kitchen</option>
+                                <option value="bar" {% if product.printer_target == 'bar' %}selected{% endif %}>Bar</option>
+                                <option value="dessert" {% if product.printer_target == 'dessert' %}selected{% endif %}>Dessert</option>
+                                <option value="none" {% if product.printer_target == 'none' %}selected{% endif %}>No Print</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Condiments / Modifiers (Read-only) -->
+                {% if product.modifiers.all %}
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-2.5">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-semibold text-purple-900">🎛️ Condiments / Modifiers</h3>
+                        <span class="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">Read-only</span>
+                    </div>
+                    <p class="text-xs text-purple-700 mb-2">
+                        <svg class="w-3 h-3 inline-block mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Condiments are managed through Excel import and cannot be edited here.
+                    </p>
+                    <div class="space-y-1.5">
+                        {% for modifier in product.modifiers.all %}
+                        <div class="bg-white rounded-lg p-2 border border-purple-200">
+                            <div class="flex items-center justify-between mb-1">
+                                <h4 class="text-xs font-semibold text-gray-900">{{ modifier.name }}</h4>
+                                <div class="text-xs">
+                                    {% if modifier.is_required %}
+                                    <span class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs">Required</span>
+                                    {% else %}
+                                    <span class="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">Optional</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {% for option in modifier.options.all %}
+                                <div class="flex items-center justify-between bg-gray-50 p-1.5 rounded text-xs">
+                                    <div>
+                                        <span class="text-gray-700">{{ option.name }}</span>
+                                    </div>
+                                    <span class="font-semibold {% if option.price_adjustment > 0 %}text-green-600{% elif option.price_adjustment < 0 %}text-red-600{% else %}text-gray-600{% endif %}">
+                                        {% if option.price_adjustment > 0 %}
+                                        +{{ option.price_adjustment|floatformat:0 }}
+                                        {% elif option.price_adjustment < 0 %}
+                                        {{ option.price_adjustment|floatformat:0 }}
+                                        {% else %}
+                                        Free
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Actions -->
+                <div class="bg-white rounded-lg shadow p-2.5">
+                    <div class="flex justify-end gap-1.5">
+                        <a href="{% url 'management:products' %}" 
+                           class="px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+                            Cancel
+                        </a>
+                        <button type="submit" 
+                                class="px-2.5 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center font-medium">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function previewImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('image-preview');
+            preview.innerHTML = '<img src="' + e.target.result + '" class="w-full rounded-lg shadow-md">';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+</script>
+{% endblock %}

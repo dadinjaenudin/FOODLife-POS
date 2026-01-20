@@ -1,0 +1,275 @@
+{% load humanize %}
+<!-- Void Bill with PIN Modal -->
+<div id="void-bill-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fadeIn"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl transform animate-slideUp">
+        <!-- Header with Icon -->
+        <div class="bg-gradient-to-br from-red-500 via-rose-600 to-red-600 p-6 text-center">
+            <div class="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+            </div>
+            <h2 class="text-3xl font-bold text-white mb-2">Void Entire Bill</h2>
+            <p class="text-red-100 text-sm">⚠️ Items already sent to kitchen - Supervisor approval required</p>
+        </div>
+        
+        <!-- Content -->
+        <div class="p-6 space-y-4">
+            <!-- Bill Summary -->
+            <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Bill Number:</span>
+                        <span class="font-bold text-gray-900">{{ bill.bill_number }}</span>
+                    </div>
+                    {% if bill.table %}
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Table:</span>
+                        <span class="font-semibold text-blue-600">{{ bill.table.number }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Total Items:</span>
+                        <span class="font-semibold text-gray-900">{{ bill.items.count }} items</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Sent to Kitchen:</span>
+                        <span class="font-semibold text-orange-600">{{ bill.items.filter.count }} items</span>
+                    </div>
+                    <div class="flex justify-between items-center pt-2 border-t border-gray-300">
+                        <span class="text-gray-900 font-bold">Total Amount:</span>
+                        <span class="font-bold text-red-600 text-xl">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Error Message -->
+            <div id="void-bill-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+                <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                </svg>
+                <p class="text-sm font-medium"></p>
+            </div>
+            
+            <!-- Form Fields -->
+            <div class="space-y-4">
+                <!-- Supervisor PIN -->
+                <div>
+                    <label class="flex items-center gap-2 text-sm font-bold text-gray-900 mb-2">
+                        <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                        Supervisor PIN
+                    </label>
+                    <input 
+                        type="password"
+                        id="supervisor-pin-bill"
+                        name="supervisor_pin"
+                        maxlength="6"
+                        pattern="[0-9]{6}"
+                        placeholder="Enter 6-digit PIN"
+                        class="w-full text-2xl text-center tracking-widest font-bold px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                        autocomplete="off"
+                        required>
+                    <p class="text-xs text-gray-500 mt-1">Ask supervisor for their 6-digit PIN</p>
+                </div>
+                
+                <!-- Void Reason -->
+                <div>
+                    <label class="flex items-center gap-2 text-sm font-bold text-gray-900 mb-2">
+                        <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Void Reason
+                    </label>
+                    <textarea 
+                        id="void-bill-reason"
+                        name="reason"
+                        rows="3"
+                        placeholder="Explain why this bill needs to be voided..."
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                        required></textarea>
+                    <p class="text-xs text-gray-500 mt-1">Required: Provide detailed reason for audit trail</p>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
+                <svg class="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <p class="text-xs text-yellow-800 font-medium">This will void the entire bill and all its items. Kitchen will be notified to stop preparation if possible. This action cannot be undone.</p>
+            </div>
+        </div>
+        
+        <!-- Actions -->
+        <div class="flex gap-3 p-6 pt-0 bg-gray-50">
+            <button 
+                onclick="closeModal()"
+                class="flex-1 px-4 py-2.5 bg-white border-2 border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 transition-all">
+                Cancel
+            </button>
+            <button 
+                onclick="submitVoidBill()"
+                class="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold rounded-lg hover:from-red-700 hover:to-rose-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                Void Bill
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function submitVoidBill() {
+    const pin = document.getElementById('supervisor-pin-bill').value;
+    const reason = document.getElementById('void-bill-reason').value;
+    const errorDiv = document.getElementById('void-bill-error');
+    const errorText = errorDiv.querySelector('p');
+    
+    // Validation
+    if (!pin || pin.length !== 6) {
+        errorDiv.classList.remove('hidden');
+        errorText.textContent = 'Please enter a valid 6-digit PIN';
+        return;
+    }
+    
+    if (!reason.trim()) {
+        errorDiv.classList.remove('hidden');
+        errorText.textContent = 'Please provide a reason for voiding this bill';
+        return;
+    }
+    
+    // Hide error
+    errorDiv.classList.add('hidden');
+    
+    // Submit via fetch
+    const formData = new FormData();
+    formData.append('supervisor_pin', pin);
+    formData.append('reason', reason);
+    
+    fetch('{% url "pos:cancel_bill" bill.id %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(text || 'Invalid PIN or unauthorized');
+            });
+        }
+        return response.text();
+    })
+    .then(html => {
+        // Update bill panel using outerHTML to replace entire element
+        const billPanel = document.getElementById('bill-panel');
+        if (billPanel) {
+            billPanel.outerHTML = html;
+        }
+        
+        // Close modal
+        const modal = document.getElementById('void-bill-modal');
+        if (modal) {
+            modal.remove();
+        }
+        
+        // Reprocess HTMX on new bill-panel
+        setTimeout(function() {
+            const newBillPanel = document.getElementById('bill-panel');
+            if (newBillPanel) {
+                htmx.process(newBillPanel);
+                console.log('Bill panel reprocessed after void bill');
+            }
+            
+            // Refresh product grid
+            const productGrid = document.getElementById('product-grid');
+            if (productGrid) {
+                htmx.process(productGrid);
+            }
+        }, 100);
+        
+        // Show success toast
+        showToast('success', 'Bill voided successfully. Next bill loaded.');
+    })
+    .catch(error => {
+        errorDiv.classList.remove('hidden');
+        errorText.textContent = error.message || 'Invalid PIN or you do not have permission';
+    });
+}
+
+function showToast(type, message) {
+    const toast = document.createElement('div');
+    const bgColor = type === 'success' ? 'from-green-500 to-emerald-600' : 'from-red-500 to-rose-600';
+    toast.className = `fixed top-4 right-4 bg-gradient-to-r ${bgColor} text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-50`;
+    toast.innerHTML = `
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <p class="font-bold">${message}</p>
+    `;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// Auto-focus on PIN input
+setTimeout(() => {
+    const pinInput = document.getElementById('supervisor-pin-bill');
+    if (pinInput) pinInput.focus();
+}, 100);
+
+// Limit PIN to 6 digits
+document.getElementById('supervisor-pin-bill').addEventListener('input', function(e) {
+    this.value = this.value.replace(/\D/g, '').slice(0, 6);
+});
+
+// Submit on Enter key in PIN field
+document.getElementById('supervisor-pin-bill').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('void-bill-reason').focus();
+    }
+});
+
+// Submit on Enter key in reason field (with Ctrl/Cmd)
+document.getElementById('void-bill-reason').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        submitVoidBill();
+    }
+});
+</script>
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideUp {
+    animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+</style>

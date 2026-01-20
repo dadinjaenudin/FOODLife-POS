@@ -1,0 +1,219 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Store Sessions - Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">Store Sessions</h1>
+            <p class="text-gray-600 mt-2">Daily business sessions & EOD - Push to HO</p>
+        </div>
+        <a href="{% url 'management:master_data' %}" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors">
+            ← Back to Master Data
+        </a>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <form method="get" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select name="status" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">All Status</option>
+                    <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Open</option>
+                    <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Closed</option>
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
+                    Apply Filter
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="text-3xl font-bold text-gray-800">{{ total_count }}</div>
+            <div class="text-sm text-gray-600">Total Sessions</div>
+        </div>
+        <div class="bg-green-50 rounded-lg shadow p-6">
+            <div class="text-3xl font-bold text-green-700">{{ open_count }}</div>
+            <div class="text-sm text-gray-600">Open Sessions</div>
+        </div>
+        <div class="bg-blue-50 rounded-lg shadow p-6">
+            <div class="text-3xl font-bold text-blue-700">{{ closed_count }}</div>
+            <div class="text-sm text-gray-600">Closed Sessions</div>
+        </div>
+    </div>
+
+    <!-- Sessions List -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Session ID
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Business Date
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Opened By
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Opened At
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Closed At
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for session in sessions %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-mono text-gray-900">{{ session.id }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-semibold text-gray-900">{{ session.business_date|date:"d M Y" }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">
+                            {% if session.opened_by %}
+                                {{ session.opened_by.get_full_name|default:session.opened_by.username }}
+                            {% else %}
+                                <span class="text-gray-400">System</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-500">
+                            {{ session.opened_at|date:"d M Y" }}<br>
+                            {{ session.opened_at|time:"H:i" }}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if session.closed_at %}
+                        <div class="text-sm text-gray-500">
+                            {{ session.closed_at|date:"d M Y" }}<br>
+                            {{ session.closed_at|time:"H:i" }}
+                        </div>
+                        {% else %}
+                        <span class="text-sm text-gray-400">Still open</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if session.closed_at %}
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                Closed
+                            </span>
+                        {% else %}
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                🟢 Open
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p class="mt-2">No store sessions found</p>
+                        <p class="text-sm">Sessions track daily business operations (open/close store)</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if sessions.has_other_pages %}
+    <div class="bg-white rounded-lg shadow px-6 py-4 mt-6">
+        <div class="flex items-center justify-between">
+            <div class="text-sm text-gray-700">
+                Showing <span class="font-medium">{{ sessions.start_index }}</span> to 
+                <span class="font-medium">{{ sessions.end_index }}</span> of 
+                <span class="font-medium">{{ sessions.paginator.count }}</span> results
+            </div>
+            
+            <nav class="inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                {% if sessions.has_previous %}
+                    <a href="?page={{ sessions.previous_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+                       class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                        </svg>
+                    </a>
+                {% endif %}
+                
+                {% for num in sessions.paginator.page_range %}
+                    {% if sessions.number == num %}
+                        <span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+                            {{ num }}
+                        </span>
+                    {% elif num > sessions.number|add:'-3' and num < sessions.number|add:'3' %}
+                        <a href="?page={{ num }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+                           class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            {{ num }}
+                        </a>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if sessions.has_next %}
+                    <a href="?page={{ sessions.next_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+                       class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                        </svg>
+                    </a>
+                {% endif %}
+            </nav>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Info Note -->
+    <div class="mt-6 bg-green-50 border-l-4 border-green-400 p-4 rounded">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-green-700">
+                    <strong>⬆️ PUSH to HO:</strong> Store sessions represent daily business operations (open/close) and End-of-Day (EOD) data. 
+                    This data is pushed to Head Office for business intelligence and reporting.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- What is a Store Session? -->
+    <div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-3">📊 What is a Store Session?</h3>
+        <div class="text-sm text-gray-700 space-y-2">
+            <p><strong>Store Session</strong> represents a single business day or operational period at the store:</p>
+            <ul class="list-disc list-inside ml-4 space-y-1">
+                <li><strong>Opened:</strong> When the store opens for business (manual or automatic)</li>
+                <li><strong>Business Date:</strong> The accounting date for all transactions in this session</li>
+                <li><strong>Closed:</strong> When End-of-Day (EOD) is performed</li>
+                <li><strong>Contains:</strong> All bills, payments, cash movements for that day</li>
+            </ul>
+            <p class="pt-2"><em>Note: In Phase 1, sessions are auto-created. Full session management coming in Phase 2.</em></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+
+{% block title %}KDS - {{ station|title }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 p-4" x-data="{ showNotifications: false, notifications: [] }">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-4">
+        <div class="flex items-center gap-4">
+            <h1 class="text-2xl font-bold text-white">Kitchen Display - {{ station|title }}</h1>
+            
+            <!-- Performance Metrics Badge -->
+            {% if today_performance %}
+            <div class="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-2 text-white">
+                <div class="text-center border-r border-gray-700 pr-3">
+                    <p class="text-xs text-gray-400">Today's Orders</p>
+                    <p class="text-lg font-bold">{{ today_performance.completed_orders }}/{{ today_performance.total_orders }}</p>
+                </div>
+                <div class="text-center border-r border-gray-700 pr-3">
+                    <p class="text-xs text-gray-400">Avg Time</p>
+                    <p class="text-lg font-bold">{{ today_performance.get_avg_prep_minutes|floatformat:1 }}m</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-xs text-gray-400">Overdue</p>
+                    <p class="text-lg font-bold text-red-400">{{ today_performance.overdue_orders }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="flex gap-2">
+            <!-- Station Buttons -->
+            <a href="{% url 'kitchen:kds_station' 'kitchen' %}" 
+               class="px-4 py-2 rounded {% if station == 'kitchen' %}bg-blue-600{% else %}bg-gray-700{% endif %} text-white">
+                🍳 Kitchen
+            </a>
+            <a href="{% url 'kitchen:kds_station' 'bar' %}" 
+               class="px-4 py-2 rounded {% if station == 'bar' %}bg-blue-600{% else %}bg-gray-700{% endif %} text-white">
+                🍹 Bar
+            </a>
+            
+            <!-- Notification Bell -->
+            <button @click="showNotifications = !showNotifications" 
+                    class="relative px-4 py-2 rounded bg-gray-700 text-white hover:bg-gray-600">
+                🔔
+                <span x-show="notifications.length > 0" 
+                      class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
+                      x-text="notifications.length"></span>
+            </button>
+            
+            <a href="{% url 'pos:main' %}" class="px-4 py-2 rounded bg-gray-700 text-white hover:bg-gray-600">
+                ← POS
+            </a>
+        </div>
+    </div>
+    
+    <!-- Notification Panel -->
+    <div x-show="showNotifications" 
+         x-transition
+         class="mb-4 bg-yellow-900 border-l-4 border-yellow-500 text-yellow-100 p-4 rounded"
+         x-cloak>
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold">⚠️ Alerts</h3>
+            <button @click="showNotifications = false" class="text-yellow-300 hover:text-white">✕</button>
+        </div>
+        <template x-for="notification in notifications" :key="notification.message">
+            <div class="text-sm py-1" 
+                 :class="notification.type === 'overdue' ? 'text-red-300 font-bold' : 'text-yellow-200'"
+                 x-text="notification.message"></div>
+        </template>
+    </div>
+    
+    <!-- Orders Grid -->
+    <div 
+        id="kds-orders"
+        hx-get="{% url 'kitchen:kds_orders' station %}"
+        hx-trigger="every 5s"
+        hx-swap="innerHTML"
+        class="grid grid-cols-4 gap-4">
+        {% include 'kitchen/partials/kds_orders.html' %}
+    </div>
+</div>
+
+<!-- Overdue check polling -->
+<div hx-get="{% url 'kitchen:check_overdue' station %}"
+     hx-trigger="every 30s"
+     hx-swap="none"
+     @htmx:after-request="if($event.detail.xhr.response) { 
+         const data = JSON.parse($event.detail.xhr.response);
+         if(data.notifications && data.notifications.length > 0) {
+             notifications = data.notifications;
+             showNotifications = true;
+             // Play sound alert
+             const audio = new Audio('/static/alert.mp3');
+             audio.play().catch(e => console.log('Audio play failed'));
+         }
+     }">
+</div>
+
+<script>
+    // Auto-hide notifications after 10 seconds
+    document.addEventListener('alpine:init', () => {
+        Alpine.effect(() => {
+            if (Alpine.store('notifications') && Alpine.store('notifications').length > 0) {
+                setTimeout(() => {
+                    Alpine.store('notifications', []);
+                }, 10000);
+            }
+        });
+    });
+</script>
+{% endblock %}

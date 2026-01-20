@@ -1,0 +1,210 @@
+{% load humanize %}
+
+<div class="bg-white">
+    <!-- Cart Header -->
+    <div class="flex items-center justify-between p-4 border-b">
+        <h2 class="text-xl font-bold text-gray-800">Keranjang Belanja</h2>
+        <button 
+            @click="showCart = false"
+            class="text-gray-400 hover:text-gray-600 p-1">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+
+    {% if bill and bill.items.exists %}
+    <!-- Cart Items -->
+    <div class="max-h-96 overflow-y-auto p-4 space-y-3">
+        {% for item in bill.items.all %}
+        {% if not item.is_void %}
+        <div class="bg-gray-50 rounded-lg p-3 flex gap-3 fade-in" 
+             x-data="{ quantity: {{ item.quantity }} }">
+            <!-- Product Image -->
+            <div class="flex-shrink-0">
+                {% if item.product.image %}
+                <img src="{{ item.product.image.url }}" class="w-16 h-16 object-cover rounded-lg" alt="{{ item.product.name }}">
+                {% else %}
+                <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center text-2xl">
+                    {{ item.product.icon|default:"🍽️" }}
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Item Info -->
+            <div class="flex-1 min-w-0">
+                <h3 class="font-semibold text-gray-800">{{ item.product.name }}</h3>
+                <p class="text-sm text-blue-600 font-medium">Rp {{ item.unit_price|floatformat:0|intcomma }}</p>
+                
+                {% if item.notes %}
+                <p class="text-xs text-gray-500 mt-1">
+                    <svg class="w-3 h-3 inline" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                    </svg>
+                    {{ item.notes }}
+                </p>
+                {% endif %}
+                
+                <!-- Status Badge -->
+                {% if item.status == 'pending' %}
+                <span class="inline-block mt-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">
+                    Belum dikirim
+                </span>
+                {% elif item.status == 'sent' %}
+                <span class="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                    Sedang diproses
+                </span>
+                {% elif item.status == 'ready' %}
+                <span class="inline-block mt-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                    Siap disajikan
+                </span>
+                {% endif %}
+            </div>
+            
+            <!-- Quantity Controls -->
+            <div class="flex flex-col items-end justify-between">
+                <!-- Quantity & Price -->
+                <div class="text-right">
+                    <div class="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
+                        {% if item.status == 'pending' %}
+                        <button 
+                            hx-post="{% url 'qr_order:update_item' outlet_id table.id item.id %}"
+                            hx-vals='{"action": "decrease"}'
+                            hx-target="#cart-panel"
+                            hx-swap="innerHTML"
+                            @htmx:after-request="cartCount = cartCount > 0 ? cartCount - 1 : 0"
+                            class="w-7 h-7 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                            </svg>
+                        </button>
+                        {% endif %}
+                        
+                        <span class="w-8 text-center font-bold text-gray-800" x-text="quantity">{{ item.quantity }}</span>
+                        
+                        {% if item.status == 'pending' %}
+                        <button 
+                            hx-post="{% url 'qr_order:update_item' outlet_id table.id item.id %}"
+                            hx-vals='{"action": "increase"}'
+                            hx-target="#cart-panel"
+                            hx-swap="innerHTML"
+                            @htmx:after-request="cartCount++"
+                            class="w-7 h-7 flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                        </button>
+                        {% endif %}
+                    </div>
+                    <p class="text-sm font-bold text-gray-800 mt-1">Rp {{ item.total|floatformat:0|intcomma }}</p>
+                </div>
+                
+                <!-- Delete Button (only for pending items) -->
+                {% if item.status == 'pending' %}
+                <button 
+                    hx-post="{% url 'qr_order:remove_item' outlet_id table.id item.id %}"
+                    hx-target="#cart-panel"
+                    hx-swap="innerHTML"
+                    hx-confirm="Hapus item ini?"
+                    @htmx:after-request="cartCount = Math.max(0, cartCount - {{ item.quantity }})"
+                    class="text-red-500 hover:text-red-700 p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    
+    <!-- Cart Summary -->
+    <div class="border-t p-4 space-y-3">
+        <!-- Order Summary -->
+        <div class="space-y-2">
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-600">Subtotal ({{ bill.items.count }} item)</span>
+                <span class="font-medium">Rp {{ bill.subtotal|floatformat:0|intcomma }}</span>
+            </div>
+            
+            {% if bill.discount > 0 %}
+            <div class="flex justify-between text-sm text-green-600">
+                <span>Diskon</span>
+                <span>- Rp {{ bill.discount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.tax > 0 %}
+            <div class="flex justify-between text-sm text-gray-600">
+                <span>Pajak ({{ bill.get_tax_percentage }}%)</span>
+                <span>Rp {{ bill.tax|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.service_charge > 0 %}
+            <div class="flex justify-between text-sm text-gray-600">
+                <span>Biaya Layanan ({{ bill.get_service_percentage }}%)</span>
+                <span>Rp {{ bill.service_charge|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="border-t pt-2 flex justify-between items-center">
+            <span class="text-lg font-bold text-gray-800">Total</span>
+            <span class="text-2xl font-bold text-blue-600">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+        </div>
+        
+        <!-- Submit Button -->
+        {% with pending_items=bill.items.filter|status='pending' %}
+        {% if pending_items.exists %}
+        <button 
+            class="w-full py-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+            hx-post="{% url 'qr_order:submit' outlet_id table.id %}"
+            hx-target="#cart-panel"
+            hx-swap="innerHTML">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Kirim Pesanan
+        </button>
+        {% else %}
+        <button 
+            class="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+            hx-get="{% url 'qr_order:status' outlet_id table.id %}"
+            hx-target="#cart-panel"
+            hx-swap="innerHTML">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            Lihat Status Pesanan
+        </button>
+        {% endif %}
+        {% endwith %}
+        
+        <!-- Continue Shopping -->
+        <button 
+            @click="showCart = false"
+            class="w-full py-3 border-2 border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition">
+            Lanjut Belanja
+        </button>
+    </div>
+    
+    {% else %}
+    <!-- Empty Cart -->
+    <div class="p-8 text-center">
+        <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+        </div>
+        <h3 class="text-lg font-bold text-gray-800 mb-2">Keranjang Kosong</h3>
+        <p class="text-gray-500 mb-6">Tambahkan menu favorit Anda</p>
+        <button 
+            @click="showCart = false"
+            class="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition">
+            Mulai Pesan
+        </button>
+    </div>
+    {% endif %}
+</div>

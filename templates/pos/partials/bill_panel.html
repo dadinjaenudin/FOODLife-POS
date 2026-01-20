@@ -1,0 +1,169 @@
+{% load humanize %}
+
+{% if bill %}
+<aside class="w-96 bg-white border-l shadow-lg h-screen flex flex-col" id="bill-panel">
+    <!-- Order Summary Header - Reduced Height -->
+    <div class="px-6 py-3 border-b bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-lg font-bold text-gray-900">Order Summary</h2>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-sm font-mono text-gray-500">#{{ bill.bill_number }}</span>
+                    {% if bill.table %}
+                    <span class="text-xs text-gray-400">•</span>
+                    <span class="text-sm font-semibold text-blue-600">Table {{ bill.table.number }}</span>
+                    {% else %}
+                    <span class="text-xs text-red-500">[No Table]</span>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Icon-Only Actions -->
+            <div class="flex items-center gap-2">
+                <!-- Select Table Icon -->
+                <a href="{% url 'tables:floor_plan' %}" 
+                    class="p-2 {% if bill.table %}bg-green-100 hover:bg-green-200 text-green-700{% else %}bg-gray-100 hover:bg-gray-200 text-gray-700{% endif %} rounded-lg transition-colors group relative"
+                    title="{% if bill.table %}Change Table: {{ bill.table.number }}{% else %}Select Table{% endif %}">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    {% if bill.table %}
+                    <span class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 text-white text-xs rounded-full flex items-center justify-center font-bold">✓</span>
+                    {% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+
+<script>
+    console.log('=== BILL DEBUG ===');
+    console.log('Bill ID: {{ bill.id }}');
+    console.log('Bill Number: {{ bill.bill_number }}');
+    console.log('Bill Table: {{ bill.table }}');
+    console.log('Bill Table ID: {{ bill.table.id|default:"NULL" }}');
+    console.log('Bill Table Name: {{ bill.table.name|default:"NULL" }}');
+    console.log('Bill Table Number: {{ bill.table.number|default:"NULL" }}');
+    console.log('==================');
+</script>
+    
+    <!-- Bill Items (Scrollable Area) -->
+    <div id="bill-items" class="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+        {% include 'pos/partials/bill_items.html' %}
+    </div>
+    
+    <!-- Fixed Footer: Totals + Actions -->
+    <div class="flex-shrink-0 border-t bg-white">
+        <!-- Compact Bill Totals -->
+        <div class="px-4 py-3 space-y-2 bg-gray-50 border-b">
+            <div class="flex justify-between text-sm text-gray-700">
+                <span>Subtotal</span>
+                <span class="font-semibold text-right">Rp {{ bill.subtotal|floatformat:0|intcomma }}</span>
+            </div>
+            
+            {% if bill.tax_amount > 0 %}
+            <div class="flex justify-between text-xs text-gray-600">
+                <span>Taxes</span>
+                <span class="font-medium text-right">Rp {{ bill.tax_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.discount_amount > 0 %}
+            <div class="flex justify-between text-xs text-red-600">
+                <span>Discount ({{ bill.discount_percent }}%)</span>
+                <span class="font-medium text-right">-Rp {{ bill.discount_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            <div class="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t">
+                <span>Total</span>
+                <span class="text-right">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+            </div>
+        </div>
+        
+        <!-- Compact Action Buttons -->
+        <div class="p-3 space-y-2">
+        <!-- Send to Kitchen Button -->
+        {% with pending_count=bill.items.filter|default:0 %}
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg {% if not bill.items.all %}opacity-50 cursor-not-allowed{% endif %}"
+            hx-post="{% url 'pos:send_to_kitchen' bill.id %}"
+            hx-target="#bill-panel"
+            hx-swap="outerHTML"
+            {% if not bill.items.all %}disabled{% endif %}>
+            <span class="text-lg">🧑‍🍳</span>
+            <span class="text-sm">Send to Kitchen</span>
+            {% if bill.items.all %}
+            <span class="ml-1 px-2 py-0.5 bg-white/30 rounded-full text-xs font-bold">{{ bill.items.count }}</span>
+            {% endif %}
+        </button>
+        {% endwith %}
+        
+        <!-- Confirm Payment Button -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+            hx-get="{% url 'pos:payment_modal' bill.id %}"
+            hx-target="#modal-container">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+            </svg>
+            <span class="text-sm">Confirm Payment</span>
+        </button>
+        
+        <div class="grid grid-cols-2 gap-2">
+            <button 
+                class="py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:hold_modal' bill.id %}"
+                hx-target="#modal-container">
+                Hold
+            </button>
+            <button 
+                class="py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:confirm_void_modal' bill.id %}"
+                hx-target="#modal-container">
+                Void
+            </button>
+        </div>
+    </div>
+    <!-- End Fixed Footer -->
+
+{% else %}
+<!-- No Active Bill -->
+<aside class="w-96 bg-white border-l shadow-lg h-screen flex flex-col" id="bill-panel">
+    <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">No active bill</h3>
+        <p class="text-sm text-gray-500 mb-6">Select a table or start a new order</p>
+        
+        <div class="w-full max-w-sm space-y-2">
+            <a href="{% url 'tables:floor_plan' %}" 
+                class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors block text-center">
+                Choose Table
+            </a>
+            
+            <button 
+                class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors"
+                hx-post="{% url 'pos:open_bill' %}"
+                hx-vals='{"order_type": "takeaway"}'
+                hx-target="#bill-panel"
+                hx-swap="outerHTML">
+                Take Away Order
+            </button>
+            
+            <button 
+                id="held-bills-btn"
+                class="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                hx-get="{% url 'pos:held_bills' %}"
+                hx-target="#modal-container"
+                hx-swap="innerHTML">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                View Held Bills
+            </button>
+        </div>
+    </div>
+</aside>
+{% endif %}

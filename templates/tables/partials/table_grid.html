@@ -1,0 +1,39 @@
+<!-- Table Grid Partial -->
+{% for table in tables %}
+<div class="relative">
+    <button 
+        hx-post="{% url 'tables:open_table' table.id %}"
+        hx-swap="none"
+        hx-trigger="click"
+        class="w-full p-6 rounded-lg border-2 transition-all {% if table.status == 'available' %}border-green-500 bg-green-50 hover:bg-green-100{% elif table.status == 'occupied' %}border-red-500 bg-red-50{% elif table.status == 'reserved' %}border-yellow-500 bg-yellow-50{% elif table.status == 'dirty' %}border-gray-400 bg-gray-100{% else %}border-blue-500 bg-blue-50{% endif %}"
+    >
+        <div class="text-center">
+            <div class="text-2xl font-bold mb-1">{{ table.number }}</div>
+            <div class="text-sm text-gray-600">
+                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                </svg>
+                {{ table.capacity }}
+            </div>
+            <div class="mt-2">
+                <span class="inline-block px-2 py-1 text-xs rounded {% if table.status == 'available' %}bg-green-200 text-green-800{% elif table.status == 'occupied' %}bg-red-200 text-red-800{% elif table.status == 'reserved' %}bg-yellow-200 text-yellow-800{% elif table.status == 'dirty' %}bg-gray-300 text-gray-800{% else %}bg-blue-200 text-blue-800{% endif %}">
+                    {{ table.get_status_display }}
+                </span>
+            </div>
+        </div>
+    </button>
+    
+    {% if table.status == 'occupied' %}
+    <div class="absolute -top-2 -right-2">
+        <span class="flex h-6 w-6">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-6 w-6 bg-red-500"></span>
+        </span>
+    </div>
+    {% endif %}
+</div>
+{% empty %}
+<div class="col-span-full text-center py-8 text-gray-500">
+    No tables available
+</div>
+{% endfor %}

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}POS F&B{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/ws.js"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+        
+        /* HTMX Loading Indicators */
+        .htmx-indicator { 
+            opacity: 0; 
+            transition: opacity 200ms ease-in; 
+        }
+        .htmx-request .htmx-indicator { opacity: 1; }
+        .htmx-request.htmx-indicator { opacity: 1; }
+        
+        /* HTMX Swapping Animations */
+        .htmx-swapping {
+            opacity: 0;
+            transition: opacity 200ms ease-out;
+        }
+        .htmx-settling {
+            opacity: 1;
+            transition: opacity 200ms ease-in;
+        }
+        
+        /* Product Grid Animations */
+        #product-grid.htmx-swapping {
+            opacity: 0.3;
+            transform: scale(0.98);
+            transition: all 200ms ease-out;
+        }
+        #product-grid.htmx-settling {
+            opacity: 1;
+            transform: scale(1);
+            transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        /* Touch friendly */
+        .btn-touch {
+            min-height: 48px;
+            min-width: 48px;
+            padding: 12px 24px;
+            font-size: 16px;
+            touch-action: manipulation;
+        }
+        
+        .product-card {
+            min-height: 120px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .product-card:active {
+            transform: scale(0.98);
+        }
+        
+        .touch-scroll {
+            -webkit-overflow-scrolling: touch;
+            overflow-y: auto;
+        }
+        
+        /* Line Clamp for Product Names */
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        /* Loading Skeleton Animation */
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite;
+        }
+        
+        /* Smooth scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        input, select, textarea {
+            font-size: 16px;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-gray-100 min-h-screen" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% block content %}{% endblock %}
+    
+    <!-- Toast container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Modal container -->
+    <div id="modal-container"></div>
+    
+    <script>
+        // Terminal Detection & Auto-include in requests
+        (function() {
+            // Get terminal ID from localStorage
+            let terminalId = localStorage.getItem('terminal_id');
+            
+            // Fallback to IndexedDB if localStorage cleared
+            if (!terminalId && 'indexedDB' in window) {
+                const dbRequest = indexedDB.open('POSTerminal', 1);
+                dbRequest.onsuccess = function(e) {
+                    const db = e.target.result;
+                    if (db.objectStoreNames.contains('config')) {
+                        const tx = db.transaction('config', 'readonly');
+                        const store = tx.objectStore('config');
+                        const request = store.get('terminal');
+                        request.onsuccess = function() {
+                            if (request.result) {
+                                terminalId = request.result.id;
+                                localStorage.setItem('terminal_id', terminalId);
+                            }
+                        };
+                    }
+                };
+            }
+            
+            // Function to get CSRF token from cookie
+            function getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+            
+            // Auto-include terminal ID and CSRF token in all HTMX requests
+            document.addEventListener('htmx:configRequest', function(event) {
+                if (terminalId) {
+                    event.detail.headers['X-Terminal-ID'] = terminalId;
+                }
+                
+                // Add CSRF token from cookie for all requests
+                const csrfToken = getCookie('csrftoken');
+                console.log('CSRF Token dari cookie:', csrfToken);
+                console.log('All cookies:', document.cookie);
+                
+                if (csrfToken) {
+                    event.detail.headers['X-CSRFToken'] = csrfToken;
+                    console.log('CSRF Token ditambahkan ke header');
+                } else {
+                    console.warn('CSRF Token tidak ditemukan di cookie!');
+                }
+            });
+            
+            // Heartbeat every 2 minutes
+            if (terminalId) {
+                setInterval(function() {
+                    fetch('/api/terminal/heartbeat/', {
+                        method: 'GET',
+                        headers: {
+                            'X-Terminal-ID': terminalId
+                        }
+                    }).catch(err => console.error('Heartbeat failed:', err));
+                }, 120000); // 2 minutes
+            }
+        })();
+        
+        // Global HTMX event handlers
+        document.body.addEventListener('itemAdded', function(e) {
+            showToast('Item ditambahkan', 'success');
+        });
+        
+        document.body.addEventListener('orderReady', function(e) {
+            showToast('Order siap!', 'info');
+            playSound('ready');
+        });
+        
+        document.body.addEventListener('sentToKitchen', function(e) {
+            showToast('Order dikirim ke kitchen', 'success');
+        });
+        
+        document.body.addEventListener('paymentComplete', function(e) {
+            showToast('Pembayaran berhasil!', 'success');
+            // Reload bill panel to show empty state
+            setTimeout(() => {
+                const billPanel = document.getElementById('bill-panel');
+                if (billPanel) {
+                    billPanel.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-gray-500 p-4">
+                            <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <p class="mb-4 text-center">Bill closed</p>
+                        </div>
+                    `;
+                }
+            }, 500);
+        });
+        
+        function showToast(message, type = 'info') {
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                info: 'bg-blue-500',
+                warning: 'bg-yellow-500'
+            };
+            const toast = document.createElement('div');
+            toast.className = `${colors[type]} text-white px-4 py-2 rounded shadow-lg animate-pulse`;
+            toast.textContent = message;
+            document.getElementById('toast-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        
+        function playSound(type) {
+            try {
+                const audio = new Audio(`/static/sounds/${type}.mp3`);
+                audio.play();
+            } catch(e) {
+                console.log('Sound not available');
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

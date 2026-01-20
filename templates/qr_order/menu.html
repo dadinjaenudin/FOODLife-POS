@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order - Meja {{ table.number }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <style>
+        .category-scroll::-webkit-scrollbar { display: none; }
+        .category-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        .slide-up { animation: slideUp 0.3s ease-out; }
+        
+        .product-card:hover { transform: translateY(-2px); transition: transform 0.2s; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-32" 
+      x-data="{
+          selectedCategory: 'all',
+          searchQuery: '',
+          showCart: false,
+          cartCount: {{ bill.items.count|default:0 }},
+          products: {{ products_json|safe }},
+          
+          get filteredProducts() {
+              let filtered = this.products;
+              
+              // Filter by category
+              if (this.selectedCategory !== 'all') {
+                  filtered = filtered.filter(p => p.category_id == this.selectedCategory);
+              }
+              
+              // Filter by search
+              if (this.searchQuery) {
+                  const query = this.searchQuery.toLowerCase();
+                  filtered = filtered.filter(p => 
+                      p.name.toLowerCase().includes(query) || 
+                      (p.description && p.description.toLowerCase().includes(query))
+                  );
+              }
+              
+              return filtered;
+          }
+      }">
+    
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg sticky top-0 z-30">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-3">
+                <div>
+                    <h1 class="text-2xl font-bold">{{ table.area.outlet.name }}</h1>
+                    <p class="text-blue-100 text-sm flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                        </svg>
+                        Meja {{ table.number }} - {{ table.area.name }}
+                    </p>
+                </div>
+                <button 
+                    @click="showCart = !showCart"
+                    class="relative bg-white text-blue-600 p-3 rounded-full shadow-lg hover:shadow-xl transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    <span 
+                        x-show="cartCount > 0" 
+                        x-text="cartCount"
+                        class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                    </span>
+                </button>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="relative">
+                <input 
+                    type="text" 
+                    x-model="searchQuery"
+                    placeholder="Cari menu..." 
+                    class="w-full px-4 py-3 pl-11 rounded-lg text-gray-800 placeholder-gray-400 shadow focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <svg class="w-5 h-5 text-gray-400 absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </div>
+        </div>
+        
+        <!-- Categories -->
+        <div class="px-4 pb-4">
+            <div class="flex gap-2 overflow-x-auto category-scroll pb-2">
+                <button 
+                    @click="selectedCategory = 'all'"
+                    :class="selectedCategory === 'all' ? 'bg-white text-blue-600 shadow-md' : 'bg-blue-500 text-white'"
+                    class="px-5 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-all hover:shadow-lg">
+                    🍽️ Semua
+                </button>
+                {% for category in categories %}
+                <button 
+                    @click="selectedCategory = '{{ category.id }}'"
+                    :class="selectedCategory === '{{ category.id }}' ? 'bg-white text-blue-600 shadow-md' : 'bg-blue-500 text-white'"
+                    class="px-5 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-all hover:shadow-lg">
+                    {{ category.icon|default:"📦" }} {{ category.name }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Products Grid -->
+    <div class="p-4">
+        <!-- Popular Items Section -->
+        {% if popular_items %}
+        <div class="mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span class="text-2xl">🔥</span>
+                    <span>Paling Populer</span>
+                </h2>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                {% for product in popular_items %}
+                <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-all overflow-hidden product-card">
+                    <button 
+                        class="w-full text-left"
+                        hx-get="{% url 'qr_order:product_detail' outlet_id table.id product.id %}"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                        {% if product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}" class="w-full h-32 object-cover">
+                        {% else %}
+                        <div class="w-full h-32 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <span class="text-4xl">{{ product.category.icon|default:"🍽️" }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="p-3">
+                            <h3 class="font-semibold text-gray-800 text-sm line-clamp-1">{{ product.name }}</h3>
+                            <p class="text-blue-600 font-bold text-sm mt-1">Rp {{ product.price|floatformat:0 }}</p>
+                        </div>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Cart Recommendations -->
+        {% if cart_recommendations %}
+        <div class="mb-8 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <span class="text-2xl">💡</span>
+                    <span>Cocok dengan Pesanan Anda</span>
+                </h2>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                {% for product in cart_recommendations %}
+                <div class="bg-white rounded-lg shadow-sm hover:shadow-md transition-all overflow-hidden">
+                    <button 
+                        class="w-full text-left"
+                        hx-get="{% url 'qr_order:product_detail' outlet_id table.id product.id %}"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                        {% if product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}" class="w-full h-28 object-cover">
+                        {% else %}
+                        <div class="w-full h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <span class="text-3xl">{{ product.category.icon|default:"🍽️" }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="p-2">
+                            <h3 class="font-semibold text-gray-800 text-sm line-clamp-1">{{ product.name }}</h3>
+                            <p class="text-green-600 font-bold text-sm mt-1">Rp {{ product.price|floatformat:0 }}</p>
+                        </div>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Trending Items Section -->
+        {% if trending_items %}
+        <div class="mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span class="text-2xl">📈</span>
+                    <span>Lagi Trending</span>
+                </h2>
+            </div>
+            <div class="flex gap-3 overflow-x-auto pb-2 category-scroll">
+                {% for product in trending_items %}
+                <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-all overflow-hidden flex-shrink-0 w-40">
+                    <button 
+                        class="w-full text-left"
+                        hx-get="{% url 'qr_order:product_detail' outlet_id table.id product.id %}"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                        {% if product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}" class="w-full h-28 object-cover">
+                        {% else %}
+                        <div class="w-full h-28 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <span class="text-3xl">{{ product.category.icon|default:"🍽️" }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="p-2">
+                            <h3 class="font-semibold text-gray-800 text-xs line-clamp-2">{{ product.name }}</h3>
+                            <p class="text-blue-600 font-bold text-xs mt-1">Rp {{ product.price|floatformat:0 }}</p>
+                        </div>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- All Products Header -->
+        <div class="mb-4">
+            <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <span class="text-2xl">🍽️</span>
+                <span>Semua Menu</span>
+            </h2>
+        </div>
+        
+        <!-- Loading State -->
+        <div x-show="filteredProducts.length === 0 && !searchQuery" class="text-center py-12 fade-in">
+            <div class="text-6xl mb-4">🍽️</div>
+            <p class="text-gray-500 text-lg">Tidak ada menu di kategori ini</p>
+        </div>
+        
+        <!-- Search No Results -->
+        <div x-show="filteredProducts.length === 0 && searchQuery" class="text-center py-12 fade-in">
+            <div class="text-6xl mb-4">🔍</div>
+            <p class="text-gray-500 text-lg">Tidak ada hasil untuk "<span x-text="searchQuery"></span>"</p>
+        </div>
+        
+        <!-- Product Grid -->
+        <div class="grid grid-cols-1 gap-4">
+            {% for product in products %}
+            <div 
+                x-show="filteredProducts.some(p => p.id === {{ product.id }})"
+                x-transition
+                class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden product-card"
+                data-product-id="{{ product.id }}">
+                <div class="flex gap-4 p-4">
+                    <!-- Product Image -->
+                    <div class="flex-shrink-0">
+                        {% if product.image %}
+                        <img src="{{ product.image.url }}" class="w-24 h-24 object-cover rounded-lg" alt="{{ product.name }}">
+                        {% else %}
+                        <div class="w-24 h-24 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center text-4xl">
+                            {{ product.icon|default:"🍽️" }}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Stock Badge -->
+                        {% if product.stock_qty <= 0 %}
+                        <span class="inline-block mt-1 px-2 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded">Habis</span>
+                        {% elif product.stock_qty < 10 %}
+                        <span class="inline-block mt-1 px-2 py-0.5 bg-yellow-100 text-yellow-600 text-xs font-medium rounded">Terbatas</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Product Info -->
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-bold text-gray-800 text-lg mb-1">{{ product.name }}</h3>
+                        
+                        {% if product.description %}
+                        <p class="text-sm text-gray-500 mb-2 line-clamp-2">{{ product.description }}</p>
+                        {% endif %}
+                        
+                        <!-- Tags -->
+                        <div class="flex flex-wrap gap-1 mb-2">
+                            {% if product.is_spicy %}
+                            <span class="px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded-full">🌶️ Pedas</span>
+                            {% endif %}
+                            {% if product.is_vegetarian %}
+                            <span class="px-2 py-0.5 bg-green-50 text-green-600 text-xs rounded-full">🥗 Vegetarian</span>
+                            {% endif %}
+                            {% if product.is_recommended %}
+                            <span class="px-2 py-0.5 bg-yellow-50 text-yellow-600 text-xs rounded-full">⭐ Recommended</span>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Price and Add Buttons -->
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <span class="text-xl font-bold text-blue-600">Rp {{ product.price|floatformat:0 }}</span>
+                                {% if product.original_price and product.original_price > product.price %}
+                                <span class="text-sm text-gray-400 line-through ml-1">Rp {{ product.original_price|floatformat:0 }}</span>
+                                {% endif %}
+                            </div>
+                            
+                            {% if product.stock_qty > 0 or not product.track_stock %}
+                            <div class="flex gap-2">
+                                <!-- Customize Button -->
+                                <button 
+                                    class="px-4 py-2.5 bg-white border-2 border-blue-600 text-blue-600 rounded-lg font-medium shadow-sm hover:bg-blue-50 transition-all active:scale-95"
+                                    hx-get="{% url 'qr_order:product_detail' outlet_id table.id product.id %}"
+                                    hx-target="body"
+                                    hx-swap="beforeend">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                                    </svg>
+                                </button>
+                                <!-- Quick Add Button -->
+                                <button 
+                                    class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all active:scale-95"
+                                    hx-post="{% url 'qr_order:add_item' outlet_id table.id %}"
+                                    hx-vals='{"product_id": "{{ product.id }}"}'
+                                    hx-target="#cart-panel"
+                                    hx-swap="innerHTML"
+                                    @htmx:after-request="cartCount++; showCart = true">
+                                    <span class="flex items-center gap-1">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                                        </svg>
+                                        Tambah
+                                    </span>
+                                </button>
+                            </div>
+                            {% else %}
+                            <button 
+                                disabled
+                                class="px-5 py-2.5 bg-gray-200 text-gray-400 rounded-lg font-medium cursor-not-allowed">
+                                Habis
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Cart Drawer -->
+    <div 
+        x-show="showCart"
+        @click.away="showCart = false"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-black bg-opacity-50 z-40"
+        style="display: none;">
+    </div>
+    
+    <div 
+        id="cart-panel"
+        x-show="showCart"
+        @cart-updated.window="cartCount = $event.detail.count"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="transform translate-y-full"
+        x-transition:enter-end="transform translate-y-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="transform translate-y-0"
+        x-transition:leave-end="transform translate-y-full"
+        class="fixed bottom-0 left-0 right-0 bg-white shadow-2xl border-t-4 border-blue-600 z-50 rounded-t-3xl max-h-[80vh] overflow-y-auto"
+        style="display: none;">
+        {% include 'qr_order/partials/cart.html' %}
+    </div>
+    
+    <!-- Floating Cart Button (for mobile) -->
+    <button 
+        x-show="!showCart && cartCount > 0"
+        @click="showCart = true"
+        class="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all z-30 active:scale-95">
+        <div class="relative">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+            <span 
+                x-text="cartCount"
+                class="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold shadow">
+            </span>
+        </div>
+    </button>
+</body>
+</html>

@@ -1,0 +1,293 @@
+{% load humanize %}
+
+<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-4 fade-in"
+     @click.self="$el.remove()"
+     x-data="{ currentImageIndex: 0, images: {{ product_images|safe }} }">
+    <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto slide-up"
+         @click.stop>
+        <!-- Product Image Gallery -->
+        <div class="relative h-56 bg-gradient-to-br from-blue-100 to-blue-200">
+            {% if product_images %}
+            <!-- Main Image Display -->
+            <template x-for="(img, index) in images" :key="index">
+                <img 
+                    x-show="currentImageIndex === index"
+                    :src="img.url" 
+                    class="w-full h-full object-cover" 
+                    :alt="img.caption || '{{ product.name }}'">
+            </template>
+            
+            <!-- Image Navigation (if multiple images) -->
+            <template x-if="images.length > 1">
+                <div class="absolute inset-0 flex items-center justify-between px-4">
+                    <!-- Previous Button -->
+                    <button 
+                        @click="currentImageIndex = currentImageIndex > 0 ? currentImageIndex - 1 : images.length - 1"
+                        class="bg-white bg-opacity-80 backdrop-blur-sm p-2 rounded-full shadow-lg hover:bg-opacity-100 transition">
+                        <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                        </svg>
+                    </button>
+                    <!-- Next Button -->
+                    <button 
+                        @click="currentImageIndex = currentImageIndex < images.length - 1 ? currentImageIndex + 1 : 0"
+                        class="bg-white bg-opacity-80 backdrop-blur-sm p-2 rounded-full shadow-lg hover:bg-opacity-100 transition">
+                        <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
+            </template>
+            
+            <!-- Image Indicators -->
+            <template x-if="images.length > 1">
+                <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+                    <template x-for="(img, index) in images" :key="index">
+                        <button 
+                            @click="currentImageIndex = index"
+                            :class="currentImageIndex === index ? 'bg-white w-8' : 'bg-white bg-opacity-50 w-2'"
+                            class="h-2 rounded-full transition-all duration-300">
+                        </button>
+                    </template>
+                </div>
+            </template>
+            {% else %}
+            <!-- Fallback if no images -->
+            <div class="w-full h-full flex items-center justify-center text-7xl">
+                {{ product.icon|default:"🍽️" }}
+            </div>
+            {% endif %}
+            
+            <!-- Close Button -->
+            <button 
+                @click="$el.closest('.fixed').remove()"
+                class="absolute top-4 right-4 bg-white bg-opacity-90 backdrop-blur-sm p-2 rounded-full shadow-lg">
+                <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+            
+            <!-- Tags -->
+            <div class="absolute bottom-4 left-4 flex flex-wrap gap-2">
+                {% if product.is_recommended %}
+                <span class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-full shadow-lg">⭐ Recommended</span>
+                {% endif %}
+                {% if product.is_spicy %}
+                <span class="px-3 py-1 bg-red-500 text-white text-sm rounded-full shadow-lg">🌶️ Pedas</span>
+                {% endif %}
+                {% if product.is_vegetarian %}
+                <span class="px-3 py-1 bg-green-500 text-white text-sm rounded-full shadow-lg">🥗 Vegetarian</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Product Info -->
+        <div class="p-6">
+            <div class="mb-4">
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">{{ product.name }}</h2>
+                {% if product.description %}
+                <p class="text-gray-600">{{ product.description }}</p>
+                {% endif %}
+                <div class="flex items-baseline gap-2 mt-3">
+                    <span class="text-3xl font-bold text-blue-600">Rp {{ product.price|floatformat:0|intcomma }}</span>
+                    {% if product.original_price and product.original_price > product.price %}
+                    <span class="text-lg text-gray-400 line-through">Rp {{ product.original_price|floatformat:0|intcomma }}</span>
+                    <span class="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded">
+                        -{{ discount_percentage }}%
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <form 
+                hx-post="{% url 'qr_order:add_item_custom' outlet_id table_id %}"
+                hx-target="#cart-panel"
+                hx-swap="innerHTML"
+                @htmx:after-request="cartCount += parseInt($el.querySelector('[name=quantity]').value); showCart = true; $el.closest('.fixed').remove()"
+                x-data="{ quantity: 1, notes: '', spiceLevel: 'normal', selectedModifiers: [] }">
+                
+                <input type="hidden" name="product_id" value="{{ product.id }}">
+                
+                <!-- Quantity Selector -->
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Jumlah</label>
+                    <div class="flex items-center gap-4">
+                        <button 
+                            type="button"
+                            @click="quantity = Math.max(1, quantity - 1)"
+                            class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                            </svg>
+                        </button>
+                        <input 
+                            type="number" 
+                            name="quantity"
+                            x-model="quantity"
+                            min="1"
+                            class="w-20 text-center text-2xl font-bold text-gray-800 border-2 border-gray-200 rounded-lg py-2">
+                        <button 
+                            type="button"
+                            @click="quantity++"
+                            class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center hover:bg-blue-700 transition text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Spice Level (if product is spicy) -->
+                {% if product.is_spicy or product.category.name == 'Main Course' %}
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">🌶️ Level Pedas</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button 
+                            type="button"
+                            @click="spiceLevel = 'mild'"
+                            :class="spiceLevel === 'mild' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'"
+                            class="py-3 rounded-lg font-medium transition hover:shadow">
+                            Tidak Pedas
+                        </button>
+                        <button 
+                            type="button"
+                            @click="spiceLevel = 'normal'"
+                            :class="spiceLevel === 'normal' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700'"
+                            class="py-3 rounded-lg font-medium transition hover:shadow">
+                            Pedas
+                        </button>
+                        <button 
+                            type="button"
+                            @click="spiceLevel = 'hot'"
+                            :class="spiceLevel === 'hot' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700'"
+                            class="py-3 rounded-lg font-medium transition hover:shadow">
+                            Extra Pedas
+                        </button>
+                    </div>
+                    <input type="hidden" name="spice_level" :value="spiceLevel">
+                </div>
+                {% endif %}
+                
+                <!-- Modifiers (if available) -->
+                {% if modifiers %}
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Tambahan (Opsional)</label>
+                    <div class="space-y-2">
+                        {% for modifier in modifiers %}
+                        <label class="flex items-center justify-between p-3 border-2 border-gray-200 rounded-lg hover:border-blue-300 transition cursor-pointer">
+                            <div class="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    name="modifiers[]"
+                                    value="{{ modifier.id }}"
+                                    class="w-5 h-5 text-blue-600 rounded">
+                                <div>
+                                    <p class="font-medium text-gray-800">{{ modifier.name }}</p>
+                                    {% if modifier.price > 0 %}
+                                    <p class="text-sm text-gray-500">+Rp {{ modifier.price|floatformat:0|intcomma }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% if modifier.price > 0 %}
+                            <span class="font-bold text-blue-600">+{{ modifier.price|floatformat:0 }}</span>
+                            {% endif %}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- Special Notes -->
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">
+                        <svg class="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                        </svg>
+                        Catatan Khusus (Opsional)
+                    </label>
+                    <textarea 
+                        name="notes"
+                        x-model="notes"
+                        rows="3"
+                        placeholder="Contoh: Tanpa bawang, matang betul, dll..."
+                        class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-400 focus:outline-none resize-none"></textarea>
+                </div>
+                
+                <!-- Add to Cart Button -->
+                <button 
+                    type="submit"
+                    class="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    <span>
+                        Tambah ke Keranjang
+                        <span class="ml-2 text-sm" x-show="quantity > 1" x-text="'(' + quantity + 'x)'"></span>
+                    </span>
+                </button>
+            </form>
+            
+            <!-- Frequently Bought Together -->
+            {% if frequently_bought_together %}
+            <div class="mt-8 pt-6 border-t-2 border-gray-100">
+                <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <span class="text-xl">🛒</span>
+                    <span>Sering Dibeli Bersamaan</span>
+                </h3>
+                <div class="grid grid-cols-2 gap-3">
+                    {% for recommended in frequently_bought_together %}
+                    <button 
+                        class="bg-gray-50 rounded-xl overflow-hidden hover:shadow-md transition-all border-2 border-transparent hover:border-blue-300 text-left"
+                        hx-get="{% url 'qr_order:product_detail' outlet_id table.id recommended.id %}"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                        {% if recommended.image %}
+                        <img src="{{ recommended.image.url }}" alt="{{ recommended.name }}" class="w-full h-24 object-cover">
+                        {% else %}
+                        <div class="w-full h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <span class="text-3xl">{{ recommended.category.icon|default:"🍽️" }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="p-2">
+                            <h4 class="font-semibold text-gray-800 text-sm line-clamp-1">{{ recommended.name }}</h4>
+                            <p class="text-blue-600 font-bold text-sm mt-1">Rp {{ recommended.price|floatformat:0 }}</p>
+                        </div>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Category Recommendations (You May Also Like) -->
+            {% if category_recommendations %}
+            <div class="mt-6 pt-6 border-t-2 border-gray-100">
+                <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <span class="text-xl">💡</span>
+                    <span>Anda Mungkin Juga Suka</span>
+                </h3>
+                <div class="grid grid-cols-2 gap-3">
+                    {% for recommended in category_recommendations %}
+                    <button 
+                        class="bg-gray-50 rounded-xl overflow-hidden hover:shadow-md transition-all border-2 border-transparent hover:border-green-300 text-left"
+                        hx-get="{% url 'qr_order:product_detail' outlet_id table.id recommended.id %}"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                        {% if recommended.image %}
+                        <img src="{{ recommended.image.url }}" alt="{{ recommended.name }}" class="w-full h-24 object-cover">
+                        {% else %}
+                        <div class="w-full h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <span class="text-3xl">{{ recommended.category.icon|default:"🍽️" }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="p-2">
+                            <h4 class="font-semibold text-gray-800 text-sm line-clamp-1">{{ recommended.name }}</h4>
+                            <p class="text-green-600 font-bold text-sm mt-1">Rp {{ recommended.price|floatformat:0 }}</p>
+                        </div>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

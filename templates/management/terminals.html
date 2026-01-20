@@ -1,0 +1,201 @@
+{% extends 'management/base.html' %}
+
+{% block page_title %}Terminal Management{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">Terminal Management</h2>
+            <p class="text-gray-600 mt-1">Monitor and control all registered terminals</p>
+        </div>
+        <a href="{% url 'core:terminal_setup' %}" 
+           class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            Register New Terminal
+        </a>
+    </div>
+    
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow-md p-4">
+        <form method="get" class="flex flex-wrap gap-4 items-end">
+            <!-- Status Filter -->
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select name="status" 
+                        onchange="this.form.submit()"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Terminals</option>
+                    <option value="online" {% if status_filter == 'online' %}selected{% endif %}>Online Only</option>
+                    <option value="offline" {% if status_filter == 'offline' %}selected{% endif %}>Offline Only</option>
+                    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+                </select>
+            </div>
+            
+            <!-- Device Type Filter -->
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+                <select name="device_type" 
+                        onchange="this.form.submit()"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    <option value="">All Types</option>
+                    {% for value, label in device_types %}
+                    <option value="{{ value }}" {% if device_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Search -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <input type="text" 
+                       name="search" 
+                       value="{{ search }}"
+                       placeholder="Terminal code..."
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            </div>
+            
+            <button type="submit" 
+                    class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition">
+                Search
+            </button>
+            
+            {% if search or status_filter != 'all' or device_filter %}
+            <a href="{% url 'management:terminals' %}" 
+               class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                Clear
+            </a>
+            {% endif %}
+        </form>
+    </div>
+    
+    <!-- Terminals Table -->
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Terminal
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Device Type
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        IP Address
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Last Heartbeat
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Current Cashier
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for terminal in terminals %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if terminal.status == 'online' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            🟢 Online
+                        </span>
+                        {% elif terminal.status == 'warning' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            ⚠️ Warning
+                        </span>
+                        {% elif terminal.status == 'inactive' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            ⏸️ Inactive
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            ⚫ Offline
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="font-medium text-gray-900">{{ terminal.terminal_code }}</div>
+                        <div class="text-sm text-gray-500">{{ terminal.terminal_name|default:"—" }}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ terminal.get_device_type_display }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{ terminal.ip_address|default:"—" }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {% if terminal.last_heartbeat %}
+                        {{ terminal.last_heartbeat|timesince }} ago
+                        {% else %}
+                        Never
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if terminal.current_shift %}
+                        {{ terminal.current_shift.cashier.get_full_name }}
+                        {% else %}
+                        <span class="text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button hx-get="{% url 'management:terminal_detail' terminal.id %}"
+                                hx-target="#modal-content"
+                                onclick="document.getElementById('detail-modal').classList.remove('hidden')"
+                                class="text-indigo-600 hover:text-indigo-900">
+                            View
+                        </button>
+                        
+                        {% if terminal.is_active %}
+                        <button hx-post="{% url 'management:terminal_deactivate' terminal.id %}"
+                                hx-confirm="Deactivate terminal {{ terminal.terminal_code }}?"
+                                hx-target="closest tr"
+                                hx-swap="outerHTML"
+                                class="text-orange-600 hover:text-orange-900">
+                            Deactivate
+                        </button>
+                        {% else %}
+                        <button hx-post="{% url 'management:terminal_reactivate' terminal.id %}"
+                                hx-target="closest tr"
+                                hx-swap="outerHTML"
+                                class="text-green-600 hover:text-green-900">
+                            Reactivate
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                        No terminals found. <a href="{% url 'core:terminal_setup' %}" class="text-indigo-600 hover:underline">Register a terminal</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Terminal Detail Modal -->
+<div id="detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="p-6" id="modal-content">
+            <!-- Content loaded via HTMX -->
+        </div>
+        <div class="p-4 bg-gray-50 border-t flex justify-end">
+            <button onclick="document.getElementById('detail-modal').classList.add('hidden')"
+                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

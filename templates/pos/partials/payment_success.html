@@ -1,0 +1,51 @@
+{% load humanize %}
+
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg w-full max-w-md p-8 text-center">
+        <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+        </div>
+        
+        <h2 class="text-2xl font-bold text-green-600 mb-2">Payment Successful!</h2>
+        <p class="text-gray-500 mb-4">{{ bill.bill_number }}</p>
+        
+        {% if split_payment %}
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <div class="text-sm text-blue-700 font-semibold">
+                💳 Split Payment ({{ payment_count }} methods)
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="text-3xl font-bold mb-6">Rp {{ bill.total|floatformat:0|intcomma }}</div>
+        
+        {% if bill.queue_number %}
+        <div class="bg-blue-100 rounded-lg p-4 mb-6">
+            <div class="text-sm text-blue-600">Queue Number</div>
+            <div class="text-4xl font-bold text-blue-700">{{ bill.queue_number }}</div>
+        </div>
+        {% endif %}
+        
+        <div class="flex gap-3">
+            <button 
+                class="flex-1 py-3 rounded-lg border border-gray-300 font-medium hover:bg-gray-50"
+                hx-post="{% url 'pos:reprint_receipt' bill.id %}"
+                hx-swap="none">
+                Reprint
+            </button>
+            <button 
+                class="flex-1 py-3 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700"
+                onclick="document.getElementById('modal-container').innerHTML = ''; window.location.reload(true);">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function closeModal() {
+    document.getElementById('modal-container').innerHTML = '';
+}
+</script>

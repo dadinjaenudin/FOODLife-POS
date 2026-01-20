@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+
+{% block title %}Profile Settings - {{ user.get_full_name|default:user.username }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white border-b shadow-sm">
+        <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="{% url 'pos:main' %}" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                </a>
+                <h1 class="text-2xl font-bold text-gray-800">Profile Settings</h1>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="max-w-4xl mx-auto px-6 py-8">
+        <!-- Profile Photo Section -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Profile Photo</h2>
+            
+            <div class="flex items-center gap-6">
+                <!-- Current Photo -->
+                <div class="flex-shrink-0">
+                    <div id="photo-preview" class="relative">
+                        {% if user.profile_photo %}
+                        <img src="{{ user.profile_photo.url }}" 
+                             alt="{{ user.get_full_name|default:user.username }}"
+                             class="w-24 h-24 rounded-full object-cover border-4 border-gray-200">
+                        {% else %}
+                        <div class="w-24 h-24 rounded-full bg-emerald-500 flex items-center justify-center border-4 border-gray-200">
+                            <span class="text-white font-bold text-3xl">
+                                {{ user.get_full_name.0|default:user.username.0|upper }}
+                            </span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Upload Form -->
+                <div class="flex-1">
+                    <form id="photo-upload-form" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="file" 
+                               id="profile_photo" 
+                               name="profile_photo" 
+                               accept="image/*"
+                               class="hidden">
+                        
+                        <div class="flex gap-3">
+                            <button type="button" 
+                                    onclick="document.getElementById('profile_photo').click()"
+                                    class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors font-medium">
+                                Choose Photo
+                            </button>
+                            
+                            <button type="submit" 
+                                    id="upload-btn"
+                                    class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium hidden">
+                                Upload
+                            </button>
+                        </div>
+                        
+                        <p class="text-sm text-gray-500 mt-2">
+                            JPG, PNG atau GIF. Max 2MB.
+                        </p>
+                        
+                        <!-- File name display -->
+                        <p id="file-name" class="text-sm text-gray-700 mt-2 font-medium"></p>
+                    </form>
+                    
+                    <!-- Success/Error Messages -->
+                    <div id="message-container" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Info Section -->
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">User Information</h2>
+            
+            <div class="space-y-3">
+                <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-600">Full Name:</span>
+                    <span class="font-medium text-gray-800">{{ user.get_full_name|default:"-" }}</span>
+                </div>
+                
+                <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-600">Username:</span>
+                    <span class="font-medium text-gray-800">{{ user.username }}</span>
+                </div>
+                
+                <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-600">Role:</span>
+                    <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
+                        {{ user.get_role_display }}
+                    </span>
+                </div>
+                
+                <div class="flex justify-between py-2 border-b">
+                    <span class="text-gray-600">Outlet:</span>
+                    <span class="font-medium text-gray-800">{{ user.outlet.name|default:"-" }}</span>
+                </div>
+                
+                <div class="flex justify-between py-2">
+                    <span class="text-gray-600">Email:</span>
+                    <span class="font-medium text-gray-800">{{ user.email|default:"-" }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// File input change handler
+document.getElementById('profile_photo').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const uploadBtn = document.getElementById('upload-btn');
+    const fileName = document.getElementById('file-name');
+    
+    if (file) {
+        // Show file name
+        fileName.textContent = `Selected: ${file.name}`;
+        
+        // Show upload button
+        uploadBtn.classList.remove('hidden');
+        
+        // Preview image
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('photo-preview');
+            preview.innerHTML = `
+                <img src="${e.target.result}" 
+                     alt="Preview"
+                     class="w-24 h-24 rounded-full object-cover border-4 border-gray-200">
+            `;
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+// Form submit handler
+document.getElementById('photo-upload-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const uploadBtn = document.getElementById('upload-btn');
+    const messageContainer = document.getElementById('message-container');
+    
+    // Disable button during upload
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+    
+    try {
+        const response = await fetch("{% url 'core:update_profile_photo' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show success message
+            messageContainer.innerHTML = `
+                <div class="p-3 bg-green-100 text-green-700 rounded-lg border border-green-200">
+                    ✓ ${data.message}
+                </div>
+            `;
+            
+            // Hide upload button
+            uploadBtn.classList.add('hidden');
+            document.getElementById('file-name').textContent = '';
+            
+            // Reload page after 1 second to update header photo
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (error) {
+        // Show error message
+        messageContainer.innerHTML = `
+            <div class="p-3 bg-red-100 text-red-700 rounded-lg border border-red-200">
+                ✗ ${error.message}
+            </div>
+        `;
+        
+        // Re-enable button
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload';
+    }
+});
+</script>
+{% endblock %}

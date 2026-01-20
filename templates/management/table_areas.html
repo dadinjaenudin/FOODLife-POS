@@ -1,0 +1,117 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Table Areas - Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-3 py-3">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-3">
+        <div>
+            <h1 class="text-xl font-bold text-gray-800">Table Areas Management</h1>
+            <p class="text-xs text-gray-600 mt-0.5">Restaurant zones and seating areas</p>
+        </div>
+        <a href="{% url 'management:master_data' %}" class="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
+            ← Back to Master Data
+        </a>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-3 mb-3">
+        <form method="get" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">Search</label>
+                <input type="text" name="search" value="{{ search }}" placeholder="Search area name..." 
+                       class="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xs">
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors text-xs">
+                    Search
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+        <div class="bg-white rounded-lg shadow p-2.5">
+            <div class="text-xl font-bold text-blue-700">{{ total_count }}</div>
+            <div class="text-[10px] text-gray-600">Total Areas</div>
+        </div>
+        <div class="bg-green-50 rounded-lg shadow p-2.5">
+            <div class="text-xl font-bold text-green-700">
+                {% for area in areas %}{% if area.table_count %}{{ area.table_count }}{% endif %}{% endfor %}
+            </div>
+            <div class="text-[10px] text-gray-600">Total Tables in Areas</div>
+        </div>
+    </div>
+
+    <!-- Areas List -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                        Area Name
+                    </th>
+                    <th class="px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                        Sort Order
+                    </th>
+                    <th class="px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                        Number of Tables
+                    </th>
+                    <th class="px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                        Outlet
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for area in areas %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-3 py-2 whitespace-nowrap">
+                        <div class="text-xs font-medium text-gray-900">{{ area.name }}</div>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                        <div class="text-xs text-gray-500">{{ area.sort_order }}</div>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                        <span class="px-2 py-0.5 inline-flex text-[10px] leading-4 font-semibold rounded-full bg-blue-100 text-blue-800">
+                            {{ area.table_count }} table{{ area.table_count|pluralize }}
+                        </span>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                        <div class="text-xs text-gray-500">{{ area.outlet.name }}</div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" class="px-3 py-4 text-center text-gray-500">
+                        <svg class="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                        </svg>
+                        <p class="mt-1 text-xs">No table areas found</p>
+                        <p class="text-[10px]">Table areas will be synced from Head Office</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Info Note -->
+    <div class="mt-3 bg-blue-50 border-l-4 border-blue-400 p-2.5 rounded">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-4 w-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-2">
+                <p class="text-xs text-blue-700">
+                    <strong>Note:</strong> Table areas are managed centrally from the Head Office system. 
+                    Changes and new areas will be automatically synced to this store.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

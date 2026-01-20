@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Table QR Codes - POS F&B{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-100">
+    <!-- Header -->
+    <div class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Table QR Codes</h1>
+                    <p class="text-sm text-gray-500">QR codes for guest ordering</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button onclick="window.print()" class="btn-touch bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                        Print All
+                    </button>
+                    <a href="{% url 'tables:table_map' %}" class="btn-touch bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">
+                        Back to Tables
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {% for table in tables %}
+            <div class="bg-white rounded-lg shadow-sm p-6 text-center print:break-inside-avoid print:page-break-inside-avoid">
+                <h3 class="text-xl font-bold text-gray-900 mb-2">{{ table.area.name }}</h3>
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">Table {{ table.number }}</h2>
+                
+                {% if table.qr_code %}
+                <div class="flex justify-center mb-4">
+                    <img src="{{ table.qr_code.url }}" alt="QR Code for Table {{ table.number }}" class="w-48 h-48 border-2 border-gray-300">
+                </div>
+                {% else %}
+                <div class="flex justify-center mb-4">
+                    <div 
+                        hx-post="{% url 'tables:generate_qr' table.id %}"
+                        hx-target="this"
+                        hx-swap="outerHTML"
+                        class="w-48 h-48 border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-gray-400"
+                    >
+                        <span class="text-gray-400">Click to Generate</span>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <p class="text-sm text-gray-600 mb-2">Scan untuk Order</p>
+                <p class="text-xs text-gray-500">Kapasitas: {{ table.capacity }} orang</p>
+            </div>
+            {% empty %}
+            <div class="col-span-full bg-white rounded-lg shadow-sm p-12 text-center">
+                <p class="text-gray-500">No tables available</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    body {
+        background: white;
+    }
+    .bg-gray-100 {
+        background: white;
+    }
+    button, a {
+        display: none !important;
+    }
+    .shadow-sm {
+        box-shadow: none;
+    }
+}
+</style>
+{% endblock %}

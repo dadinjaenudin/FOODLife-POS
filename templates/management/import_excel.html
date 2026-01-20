@@ -1,0 +1,377 @@
+{% extends 'management/base.html' %}
+
+{% block page_title %}Import Data from Excel{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">Import Products from Excel</h2>
+            <p class="text-gray-600 mt-1">Upload Excel file to bulk import categories, products, and modifiers</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="{% url 'management:download_excel_template' %}" 
+               class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Download Template
+            </a>
+            <button type="button" onclick="resetData()" 
+                    class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                Reset Data
+            </button>
+            <a href="{% url 'management:master_data' %}" 
+               class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+                ← Back to Master Data
+            </a>
+        </div>
+    </div>
+
+    {% if messages %}
+    {% for message in messages %}
+    <div class="{% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-700{% elif message.tags == 'success' %}bg-green-50 border-green-200 text-green-700{% else %}bg-blue-50 border-blue-200 text-blue-700{% endif %} border px-3 py-2 rounded-lg text-sm">
+        {{ message }}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- TWO-FILE SYSTEM NOTICE (Compact) -->
+    <div class="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-300 rounded-lg p-3">
+        <div class="flex items-start gap-2">
+            <svg class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div class="flex-1">
+                <h3 class="text-base font-bold text-green-900 mb-2">🔄 TWO-FILE IMPORT SYSTEM</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div class="bg-white rounded p-2.5 border border-green-200">
+                        <p class="font-semibold text-green-900 text-xs mb-1">Step 1: Import Condiment Groups FIRST</p>
+                        <p class="text-xs text-green-700 mb-2">Define modifier groups once (Coffee Taste, Size, etc.)</p>
+                        <a href="{% url 'management:import_condiment_groups' %}" 
+                           class="inline-flex items-center px-2.5 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition">
+                            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            Import Groups
+                        </a>
+                    </div>
+                    <div class="bg-white rounded p-2.5 border border-green-200">
+                        <p class="font-semibold text-green-900 text-xs mb-1">Step 2: Import Products (This Page)</p>
+                        <p class="text-xs text-green-700">Reference groups: <code class="bg-green-100 px-1.5 py-0.5 rounded text-[10px]">Coffee Taste,Size</code></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions Card (Compact) -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div class="flex gap-2">
+            <svg class="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+            </svg>
+            <div class="flex-1">
+                <h3 class="text-sm font-semibold text-blue-900 mb-2">Excel Format Requirements</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-800">
+                    <div>
+                        <p class="font-medium mb-1">Required Columns:</p>
+                        <ul class="list-disc list-inside space-y-0.5 ml-2">
+                            <li><strong>Category</strong> - Main category</li>
+                            <li><strong>Menu Category</strong> - Sub-category</li>
+                            <li><strong>Nama Product</strong> - Product name</li>
+                            <li><strong>PLU Product</strong> - Product code</li>
+                            <li><strong>Price Product</strong> - Base price</li>
+                            <li><strong>Image Product</strong> - Image path</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="font-medium mb-1">Optional Columns:</p>
+                        <ul class="list-disc list-inside space-y-0.5 ml-2">
+                            <li><strong>Printer Kitchen</strong> - kitchen/bar/dessert/none</li>
+                            <li><strong>Condiment Groups</strong> - Comma-separated names</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="mt-2 p-2 bg-white rounded border border-blue-300">
+                    <p class="font-medium text-blue-900 text-xs mb-1">📁 Image Setup:</p>
+                    <p class="text-[11px] text-blue-700">Copy image files to: <code class="bg-blue-100 px-1 py-0.5 rounded">media/products/</code></p>
+                    <p class="text-[10px] text-blue-600 mt-0.5">Example: <code>products/product.jpg</code></p>
+                </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Form -->
+    <div class="bg-white rounded-lg shadow-md">
+        <div class="p-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+                Upload Excel File
+            </h3>
+        </div>
+        
+        <form method="POST" action="{% url 'management:import_excel_process' %}" enctype="multipart/form-data" class="p-6 space-y-6">
+            {% csrf_token %}
+            
+            <!-- File Upload -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-3">
+                    Excel File (.xlsx, .xls)
+                </label>
+                <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center bg-gray-50 hover:border-green-400 transition-colors cursor-pointer"
+                     onclick="document.getElementById('excel-file-input').click()">
+                    <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-base font-medium text-gray-700 mb-1">Click to upload or drag and drop</p>
+                    <p class="text-sm text-gray-500">Excel file (XLSX, XLS) - MAX 10MB</p>
+                </div>
+                
+                <input type="file" 
+                       id="excel-file-input"
+                       name="excel_file"
+                       accept=".xlsx,.xls"
+                       required
+                       class="hidden"
+                       onchange="showFilename(event)">
+                
+                <div id="filename-display" class="hidden mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center text-sm text-green-700">
+                            <svg class="w-5 h-5 mr-2 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                            </svg>
+                            <span id="filename-text" class="font-medium">No file selected</span>
+                        </div>
+                        <button type="button" 
+                                onclick="document.getElementById('excel-file-input').value=''; document.getElementById('filename-display').classList.add('hidden');"
+                                class="text-red-600 hover:text-red-700 text-sm font-medium">
+                            Remove
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Options -->
+            <div class="border-t pt-4">
+                <h4 class="text-sm font-semibold text-gray-900 mb-3">Import Options</h4>
+                <div class="space-y-3">
+                    <label class="flex items-start">
+                        <input type="checkbox" name="skip_duplicates" checked
+                               class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 mt-0.5">
+                        <span class="ml-2 text-sm text-gray-700">
+                            <strong>Skip duplicate products</strong><br>
+                            <span class="text-xs text-gray-500">Detection based on: <strong>Category + Menu Category + Product Name + PLU Code</strong>. If exact match exists, skip it and only add new modifiers</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start">
+                        <input type="checkbox" name="update_existing" 
+                               class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 mt-0.5">
+                        <span class="ml-2 text-sm text-gray-700">
+                            <strong>Update existing products if found</strong><br>
+                            <span class="text-xs text-gray-500">Update price, description, and image of existing products. Overrides "Skip duplicates" option</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start">
+                        <input type="checkbox" name="create_modifiers" checked
+                               class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 mt-0.5">
+                        <span class="ml-2 text-sm text-gray-700">
+                            <strong>Create modifiers from Condiment columns</strong><br>
+                            <span class="text-xs text-gray-500">Automatically create product options from Condiment data (Hot, Ice, Less Sugar, etc.)</span>
+                        </span>
+                    </label>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded p-3 mt-3">
+                        <p class="text-xs text-blue-800">
+                            <strong>ℹ️ Duplicate Detection:</strong> Products are considered duplicates if ALL these match: <strong>Category + Menu Category + Product Name + PLU Code</strong>. This allows different products with same name in different categories or menu categories.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <a href="{% url 'management:master_data' %}"
+                   class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center font-medium">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                    </svg>
+                    Import Data
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Reset Confirmation Modal -->
+<div id="resetModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-red-500 to-red-600 p-6 rounded-t-2xl">
+            <div class="flex items-center justify-center">
+                <div class="bg-white rounded-full p-3">
+                    <svg class="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+            </div>
+            <h3 class="text-2xl font-bold text-white text-center mt-4">⚠️ WARNING!</h3>
+        </div>
+        
+        <!-- Body -->
+        <div class="p-6">
+            <p class="text-center text-gray-700 text-lg font-semibold mb-4">
+                This will DELETE ALL:
+            </p>
+            <div class="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
+                <ul class="space-y-2">
+                    <li class="flex items-center text-red-700">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="font-semibold">Categories</span>
+                    </li>
+                    <li class="flex items-center text-red-700">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="font-semibold">Products</span>
+                    </li>
+                    <li class="flex items-center text-red-700">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="font-semibold">Modifiers</span>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
+                <p class="text-sm text-yellow-800 text-center font-medium">
+                    ⚡ This action cannot be undone!
+                </p>
+            </div>
+            
+            <p class="text-center text-gray-600 text-sm mb-6">
+                Are you sure you want to continue?
+            </p>
+            
+            <!-- Buttons -->
+            <div class="flex gap-3">
+                <button type="button" onclick="closeResetModal()" 
+                        class="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-colors">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmReset()" 
+                        class="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors shadow-lg">
+                    Yes, Delete All
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function resetData() {
+    document.getElementById('resetModal').classList.remove('hidden');
+}
+
+function closeResetModal() {
+    document.getElementById('resetModal').classList.add('hidden');
+}
+
+function confirmReset() {
+    // Close modal
+    closeResetModal();
+    
+    // Show loading
+    const loadingToast = document.createElement('div');
+    loadingToast.id = 'loadingToast';
+    loadingToast.className = 'fixed top-4 right-4 bg-blue-600 text-white px-6 py-4 rounded-lg shadow-lg z-50 flex items-center';
+    loadingToast.innerHTML = `
+        <svg class="animate-spin h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Deleting data...
+    `;
+    document.body.appendChild(loadingToast);
+    
+    // Make API call
+    fetch('{% url "management:import_excel_reset" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Remove loading
+        document.getElementById('loadingToast').remove();
+        
+        if (data.success) {
+            // Show success message
+            const successToast = document.createElement('div');
+            successToast.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg z-50 flex items-center';
+            successToast.innerHTML = `
+                <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <div>
+                    <div class="font-semibold">Success!</div>
+                    <div class="text-sm">${data.message}</div>
+                </div>
+            `;
+            document.body.appendChild(successToast);
+            
+            // Reload after 2 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        } else {
+            // Show error message
+            const errorToast = document.createElement('div');
+            errorToast.className = 'fixed top-4 right-4 bg-red-600 text-white px-6 py-4 rounded-lg shadow-lg z-50';
+            errorToast.innerHTML = `
+                <div class="font-semibold">Error!</div>
+                <div class="text-sm">${data.error}</div>
+            `;
+            document.body.appendChild(errorToast);
+            setTimeout(() => errorToast.remove(), 5000);
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingToast').remove();
+        const errorToast = document.createElement('div');
+        errorToast.className = 'fixed top-4 right-4 bg-red-600 text-white px-6 py-4 rounded-lg shadow-lg z-50';
+        errorToast.innerHTML = `
+            <div class="font-semibold">Error!</div>
+            <div class="text-sm">${error}</div>
+        `;
+        document.body.appendChild(errorToast);
+        setTimeout(() => errorToast.remove(), 5000);
+    });
+}
+
+function showFilename(event) {
+    const file = event.target.files[0];
+    if (file) {
+        document.getElementById('filename-text').textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(2) + ' MB)';
+        document.getElementById('filename-display').classList.remove('hidden');
+    }
+}
+</script>
+{% endblock %}

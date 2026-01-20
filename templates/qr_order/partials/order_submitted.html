@@ -1,0 +1,16 @@
+<div class="p-4 text-center">
+    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+    </div>
+    <h3 class="font-bold text-lg mb-2">Pesanan Terkirim!</h3>
+    <p class="text-gray-500 mb-4">Pesanan Anda sedang diproses</p>
+    <button 
+        class="px-6 py-2 bg-blue-600 text-white rounded-lg"
+        hx-get="{% url 'qr_order:status' outlet_id table_id %}"
+        hx-target="#cart-panel"
+        hx-swap="innerHTML">
+        Lihat Status
+    </button>
+</div>

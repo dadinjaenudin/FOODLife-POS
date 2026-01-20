@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Setup - {{ store.store_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="max-w-2xl w-full">
+            <!-- Store Info -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="text-center">
+                    <h1 class="text-2xl font-bold text-gray-800">{{ store.outlet.name }}</h1>
+                    <p class="text-gray-600">{{ store.store_name }} ({{ store.store_code }})</p>
+                    <p class="text-sm text-gray-500 mt-2">{{ store.outlet.company.name }}</p>
+                </div>
+            </div>
+
+            <!-- Registration Form -->
+            <div class="bg-white rounded-lg shadow-lg p-8">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-bold text-gray-800">📱 Terminal Registration</h2>
+                    <button onclick="resetTerminal()" 
+                            class="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition text-sm">
+                        🔄 Reset Terminal
+                    </button>
+                </div>
+                
+                <!-- Current Terminal Info (if exists) -->
+                <div id="current-terminal-info" class="mb-6 hidden">
+                    <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                        <p class="text-sm font-semibold text-blue-900 mb-2">✅ Current Terminal Configuration</p>
+                        <div class="space-y-1 text-sm text-blue-800">
+                            <p><span class="font-semibold">Terminal:</span> <span id="current-code"></span></p>
+                            <p><span class="font-semibold">Type:</span> <span id="current-type"></span></p>
+                            <p><span class="font-semibold">Store:</span> <span id="current-store"></span></p>
+                            <p><span class="font-semibold">Company:</span> <span id="current-company"></span></p>
+                            <p class="text-xs text-blue-600 mt-2">Setup on: <span id="setup-date"></span></p>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="mb-4 p-4 rounded-lg {% if message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                <form id="terminalForm" method="post" class="space-y-6">
+                    {% csrf_token %}
+                    
+                    <!-- Device Type -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Device Type *</label>
+                        <select name="device_type" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">-- Select Device Type --</option>
+                            <option value="pos">🖥️ POS / Kasir</option>
+                            <option value="tablet">📱 Tablet / Waiter</option>
+                            <option value="kiosk">🤖 Self-Service Kiosk</option>
+                            <option value="kitchen_display">🍳 Kitchen Display</option>
+                        </select>
+                    </div>
+
+                    <!-- Terminal Code -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Terminal Code *</label>
+                        <input type="text" name="terminal_code" required 
+                               placeholder="e.g., POS-001, TAB-001, KDS-001"
+                               pattern="[A-Z0-9\-]+" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                               maxlength="20">
+                        <p class="mt-1 text-sm text-gray-500">Format: POS-001, TAB-001, etc.</p>
+                    </div>
+
+                    <!-- Terminal Name -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Terminal Name *</label>
+                        <input type="text" name="terminal_name" required 
+                               placeholder="e.g., Kasir Depan, Tablet Lantai 2"
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               maxlength="100">
+                    </div>
+
+                    <!-- Network Info (Auto-detected) -->
+                    <div class="bg-gray-50 rounded-lg p-4 space-y-2">
+                        <h3 class="text-sm font-medium text-gray-700">Network Information</h3>
+                        <div class="text-sm text-gray-600 space-y-1">
+                            <p>🌐 IP Address: <span id="ipDisplay" class="font-mono">Detecting...</span></p>
+                            <p>🔌 MAC Address: <span id="macDisplay" class="font-mono">Detecting...</span></p>
+                            <p>💻 Browser: <span id="browserDisplay" class="font-mono">{{ request.META.HTTP_USER_AGENT|truncatewords:10 }}</span></p>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="mac_address" id="macAddressInput">
+
+                    <!-- Submit Button -->
+                    <button type="submit" 
+                            class="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Register Terminal
+                    </button>
+                </form>
+            </div>
+
+            <!-- Existing Terminals -->
+            {% if existing_terminals %}
+            <div class="bg-white rounded-lg shadow-lg p-6 mt-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">📋 Registered Terminals</h3>
+                <div class="space-y-2">
+                    {% for terminal in existing_terminals %}
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-2 h-2 rounded-full {% if terminal.is_online %}bg-green-500{% else %}bg-gray-400{% endif %}"></div>
+                                <div>
+                                    <p class="font-medium text-gray-800">{{ terminal.terminal_code }} - {{ terminal.terminal_name }}</p>
+                                    <p class="text-sm text-gray-500">{{ terminal.get_device_type_display }} • IP: {{ terminal.ip_address|default:"N/A" }}</p>
+                                </div>
+                            </div>
+                            <span class="text-xs text-gray-500">
+                                {% if terminal.is_online %}
+                                    🟢 Online
+                                {% else %}
+                                    ⚫ Offline
+                                {% endif %}
+                            </span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Detect IP address (shown from backend, but we can enhance with client-side)
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('ipDisplay').textContent = data.ip;
+            })
+            .catch(() => {
+                document.getElementById('ipDisplay').textContent = '{{ request.META.REMOTE_ADDR }}';
+            });
+
+        // Try to get MAC address (limited in browser for security)
+        // Most modern browsers block this, but we try via server detection
+        document.getElementById('macDisplay').textContent = 'Detected by server';
+
+        // Form submission with localStorage
+        document.getElementById('terminalForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Store terminal info in localStorage (permanent storage)
+                    localStorage.setItem('terminal_id', data.terminal.id);
+                    localStorage.setItem('terminal_code', data.terminal.code);
+                    localStorage.setItem('terminal_name', data.terminal.name);
+                    localStorage.setItem('terminal_type', data.terminal.type);
+                    localStorage.setItem('store_id', data.terminal.store_id);
+                    localStorage.setItem('store_code', data.terminal.store_code);
+                    localStorage.setItem('company_id', data.terminal.company_id);
+                    localStorage.setItem('company_name', data.terminal.company_name);
+                    localStorage.setItem('setup_completed', 'true');
+                    localStorage.setItem('setup_date', new Date().toISOString());
+                    
+                    // Backup to IndexedDB (more persistent)
+                    if ('indexedDB' in window) {
+                        const dbRequest = indexedDB.open('POSTerminal', 1);
+                        dbRequest.onupgradeneeded = function(e) {
+                            const db = e.target.result;
+                            if (!db.objectStoreNames.contains('config')) {
+                                db.createObjectStore('config');
+                            }
+                        };
+                        dbRequest.onsuccess = function(e) {
+                            const db = e.target.result;
+                            const tx = db.transaction('config', 'readwrite');
+                            const store = tx.objectStore('config');
+                            store.put(data.terminal, 'terminal');
+                        };
+                    }
+                    
+                    // Show success and redirect
+                    alert(`✅ ${data.message}\n\nTerminal ID: ${data.terminal.code}\nStore: ${data.terminal.store_code}\nCompany: ${data.terminal.company_name}`);
+                    window.location.href = data.redirect;
+                } else {
+                    alert('❌ Registration failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert('❌ Registration failed. Please try again.');
+            }
+        });
+
+        // Auto-uppercase terminal code
+        document.querySelector('input[name="terminal_code"]').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+        
+        // Check and display current terminal info
+        window.addEventListener('DOMContentLoaded', function() {
+            const terminalId = localStorage.getItem('terminal_id');
+            const terminalCode = localStorage.getItem('terminal_code');
+            const terminalType = localStorage.getItem('terminal_type');
+            const storeCode = localStorage.getItem('store_code');
+            const companyName = localStorage.getItem('company_name');
+            const setupDate = localStorage.getItem('setup_date');
+            
+            if (terminalId && terminalCode) {
+                // Show current terminal info
+                document.getElementById('current-terminal-info').classList.remove('hidden');
+                document.getElementById('current-code').textContent = terminalCode;
+                document.getElementById('current-type').textContent = terminalType || 'N/A';
+                document.getElementById('current-store').textContent = storeCode || 'N/A';
+                document.getElementById('current-company').textContent = companyName || 'N/A';
+                document.getElementById('setup-date').textContent = setupDate ? new Date(setupDate).toLocaleString('id-ID') : 'N/A';
+            }
+        });
+        
+        // Reset terminal function
+        function resetTerminal() {
+            if (confirm('⚠️ Reset Terminal Configuration?\n\nThis will clear all terminal data from this device. You will need to register again.\n\nContinue?')) {
+                // Clear localStorage
+                localStorage.removeItem('terminal_id');
+                localStorage.removeItem('terminal_code');
+                localStorage.removeItem('terminal_name');
+                localStorage.removeItem('terminal_type');
+                localStorage.removeItem('store_id');
+                localStorage.removeItem('store_code');
+                localStorage.removeItem('company_id');
+                localStorage.removeItem('company_name');
+                localStorage.removeItem('setup_completed');
+                localStorage.removeItem('setup_date');
+                
+                // Clear IndexedDB
+                if ('indexedDB' in window) {
+                    const dbRequest = indexedDB.deleteDatabase('POSTerminal');
+                    dbRequest.onsuccess = function() {
+                        console.log('✅ IndexedDB cleared');
+                    };
+                }
+                
+                alert('✅ Terminal configuration has been reset.\n\nPlease register this device again.');
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+{% extends 'management/base.html' %}
+{% load humanize %}
+
+{% block title %}Sales Report{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">💰 Sales Report</h1>
+            <p class="text-gray-600">Revenue analysis and trends</p>
+        </div>
+        <div class="flex gap-2">
+            <a href="{% url 'management:export_sales_excel' %}?period={{ period }}&start_date={{ date_from }}&end_date={{ date_to }}" 
+               class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Export Excel
+            </a>
+            <a href="{% url 'management:reports' %}" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                ← Back to Reports
+            </a>
+        </div>
+    </div>
+
+    <!-- Period Selector -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-medium text-gray-700 mr-2">Period:</span>
+            <a href="?period=today" class="px-4 py-2 rounded {% if period == 'today' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                Today
+            </a>
+            <a href="?period=yesterday" class="px-4 py-2 rounded {% if period == 'yesterday' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                Yesterday
+            </a>
+            <a href="?period=week" class="px-4 py-2 rounded {% if period == 'week' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                This Week
+            </a>
+            <a href="?period=last_week" class="px-4 py-2 rounded {% if period == 'last_week' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                Last Week
+            </a>
+            <a href="?period=month" class="px-4 py-2 rounded {% if period == 'month' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                This Month
+            </a>
+            <a href="?period=last_month" class="px-4 py-2 rounded {% if period == 'last_month' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                Last Month
+            </a>
+            
+            <!-- Custom Range -->
+            <form method="get" class="flex items-center gap-2 ml-4">
+                <input type="hidden" name="period" value="custom">
+                <input type="date" name="start_date" value="{{ date_from }}" class="px-3 py-2 border border-gray-300 rounded" required>
+                <span class="text-gray-500">to</span>
+                <input type="date" name="end_date" value="{{ date_to }}" class="px-3 py-2 border border-gray-300 rounded" required>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    Apply
+                </button>
+            </form>
+        </div>
+        
+        <div class="mt-3 text-sm text-gray-600">
+            Showing data from <strong>{{ date_from }}</strong> to <strong>{{ date_to }}</strong>
+        </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow p-6">
+            <p class="text-sm text-gray-600">Total Revenue</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">Rp {{ total_revenue|floatformat:0|intcomma }}</p>
+            {% if revenue_growth != 0 %}
+            <p class="text-sm mt-2 {% if revenue_growth > 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                {% if revenue_growth > 0 %}↑{% else %}↓{% endif %} {{ revenue_growth|floatformat:1 }}% vs previous period
+            </p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <p class="text-sm text-gray-600">Total Bills</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">{{ total_bills|intcomma }}</p>
+            <p class="text-sm text-gray-500 mt-2">Paid transactions</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <p class="text-sm text-gray-600">Average Bill</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">Rp {{ avg_bill|floatformat:0|intcomma }}</p>
+            <p class="text-sm text-gray-500 mt-2">Per transaction</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <p class="text-sm text-gray-600">Discount Given</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">Rp {{ discount_sum|floatformat:0|intcomma }}</p>
+            <p class="text-sm text-gray-500 mt-2">Total discounts</p>
+        </div>
+    </div>
+
+    <!-- Revenue Breakdown -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">Revenue Breakdown</h3>
+        <div class="grid grid-cols-4 gap-4">
+            <div class="text-center p-4 bg-blue-50 rounded-lg">
+                <p class="text-sm text-gray-600">Subtotal</p>
+                <p class="text-xl font-bold text-blue-600">Rp {{ subtotal_sum|floatformat:0|intcomma }}</p>
+            </div>
+            <div class="text-center p-4 bg-red-50 rounded-lg">
+                <p class="text-sm text-gray-600">Discount</p>
+                <p class="text-xl font-bold text-red-600">-Rp {{ discount_sum|floatformat:0|intcomma }}</p>
+            </div>
+            <div class="text-center p-4 bg-green-50 rounded-lg">
+                <p class="text-sm text-gray-600">Tax</p>
+                <p class="text-xl font-bold text-green-600">Rp {{ tax_sum|floatformat:0|intcomma }}</p>
+            </div>
+            <div class="text-center p-4 bg-purple-50 rounded-lg">
+                <p class="text-sm text-gray-600">Service</p>
+                <p class="text-xl font-bold text-purple-600">Rp {{ service_sum|floatformat:0|intcomma }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Sales Chart -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">Daily Sales Trend</h3>
+        <canvas id="dailySalesChart" height="80"></canvas>
+    </div>
+
+    <!-- Daily Sales Table -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800">Daily Breakdown</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Bills</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Bill</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for day in daily_sales %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ day.date }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ day.count }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">Rp {{ day.revenue|floatformat:0|intcomma }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                            Rp {% widthratio day.revenue day.count 1 %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500">No data available</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Daily Sales Chart
+const ctx = document.getElementById('dailySalesChart').getContext('2d');
+const dailyData = {{ daily_sales|safe }};
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: dailyData.map(d => d.date),
+        datasets: [{
+            label: 'Revenue',
+            data: dailyData.map(d => d.revenue),
+            borderColor: 'rgb(59, 130, 246)',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            tension: 0.3,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'Rp ' + context.parsed.y.toLocaleString('id-ID');
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return 'Rp ' + (value / 1000000).toFixed(1) + 'M';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

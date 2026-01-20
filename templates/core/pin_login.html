@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PIN Login - POS F&B</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pin-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #3b82f6;
+            transition: all 0.2s;
+        }
+        .pin-dot.filled {
+            background-color: #3b82f6;
+        }
+        .numpad-btn {
+            transition: all 0.1s;
+        }
+        .numpad-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">PIN Login</h1>
+            <p class="text-gray-600">Masukkan 6-digit PIN Anda</p>
+        </div>
+
+        <!-- Error Message -->
+        {% if error %}
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6 animate-shake">
+            <div class="flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="font-medium">{{ error }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- PIN Display -->
+        <div class="mb-8">
+            <div class="flex justify-center space-x-3 mb-4">
+                <div id="dot1" class="pin-dot"></div>
+                <div id="dot2" class="pin-dot"></div>
+                <div id="dot3" class="pin-dot"></div>
+                <div id="dot4" class="pin-dot"></div>
+                <div id="dot5" class="pin-dot"></div>
+                <div id="dot6" class="pin-dot"></div>
+            </div>
+            <input type="hidden" id="pinInput" name="pin" maxlength="6">
+        </div>
+
+        <!-- Numpad -->
+        <div class="grid grid-cols-3 gap-3 mb-6">
+            <!-- Numbers 1-9 -->
+            <button onclick="addDigit('1')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">1</button>
+            <button onclick="addDigit('2')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">2</button>
+            <button onclick="addDigit('3')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">3</button>
+            
+            <button onclick="addDigit('4')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">4</button>
+            <button onclick="addDigit('5')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">5</button>
+            <button onclick="addDigit('6')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">6</button>
+            
+            <button onclick="addDigit('7')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">7</button>
+            <button onclick="addDigit('8')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">8</button>
+            <button onclick="addDigit('9')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">9</button>
+            
+            <!-- Bottom row: Clear, 0, Backspace -->
+            <button onclick="clearPin()" class="numpad-btn bg-red-100 hover:bg-red-200 text-red-700 font-bold py-6 rounded-xl">
+                <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            <button onclick="addDigit('0')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">0</button>
+            <button onclick="backspace()" class="numpad-btn bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold py-6 rounded-xl">
+                <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Submit Form -->
+        <form id="pinForm" method="POST" class="mb-4">
+            {% csrf_token %}
+            <input type="hidden" name="pin" id="pinFormInput">
+            <button type="submit" id="submitBtn" disabled
+                    class="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-lg rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                <span id="submitText">Masukkan PIN (0/6)</span>
+            </button>
+        </form>
+
+        <!-- Alternative Login -->
+        <div class="text-center">
+            <a href="{% url 'core:login' %}" class="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center justify-center">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                Login dengan Username & Password
+            </a>
+        </div>
+    </div>
+
+    <script>
+        let pin = '';
+        
+        function updateDisplay() {
+            // Update dots
+            for (let i = 1; i <= 6; i++) {
+                const dot = document.getElementById(`dot${i}`);
+                if (i <= pin.length) {
+                    dot.classList.add('filled');
+                } else {
+                    dot.classList.remove('filled');
+                }
+            }
+            
+            // Update submit button
+            const submitBtn = document.getElementById('submitBtn');
+            const submitText = document.getElementById('submitText');
+            
+            if (pin.length === 6) {
+                submitBtn.disabled = false;
+                submitText.textContent = '✓ Login';
+                submitBtn.classList.add('shadow-lg');
+            } else {
+                submitBtn.disabled = true;
+                submitText.textContent = `Masukkan PIN (${pin.length}/6)`;
+                submitBtn.classList.remove('shadow-lg');
+            }
+        }
+        
+        function addDigit(digit) {
+            if (pin.length < 6) {
+                pin += digit;
+                updateDisplay();
+                
+                // Auto-submit when 6 digits entered
+                if (pin.length === 6) {
+                    setTimeout(() => {
+                        submitForm();
+                    }, 300);
+                }
+            }
+        }
+        
+        function backspace() {
+            if (pin.length > 0) {
+                pin = pin.slice(0, -1);
+                updateDisplay();
+            }
+        }
+        
+        function clearPin() {
+            pin = '';
+            updateDisplay();
+        }
+        
+        function submitForm() {
+            document.getElementById('pinFormInput').value = pin;
+            document.getElementById('pinForm').submit();
+        }
+        
+        // Keyboard support
+        document.addEventListener('keydown', function(event) {
+            if (event.key >= '0' && event.key <= '9') {
+                addDigit(event.key);
+            } else if (event.key === 'Backspace') {
+                event.preventDefault();
+                backspace();
+            } else if (event.key === 'Escape') {
+                clearPin();
+            } else if (event.key === 'Enter' && pin.length === 6) {
+                submitForm();
+            }
+        });
+        
+        // Initialize display
+        updateDisplay();
+        
+        // Auto-clear error after 3 seconds
+        {% if error %}
+        setTimeout(() => {
+            const errorDiv = document.querySelector('.bg-red-100');
+            if (errorDiv) {
+                errorDiv.style.transition = 'opacity 0.5s';
+                errorDiv.style.opacity = '0';
+                setTimeout(() => errorDiv.remove(), 500);
+            }
+        }, 3000);
+        {% endif %}
+        
+        // MANDATORY: Check terminal setup before allowing login
+        window.addEventListener('DOMContentLoaded', function() {
+            const terminalId = localStorage.getItem('terminal_id');
+            const setupCompleted = localStorage.getItem('setup_completed');
+            const storeId = localStorage.getItem('store_id');
+            const companyId = localStorage.getItem('company_id');
+            
+            // Log for debugging
+            console.log('Terminal Info:');
+            console.log('  Terminal ID:', terminalId);
+            console.log('  Terminal Code:', localStorage.getItem('terminal_code'));
+            console.log('  Store ID:', storeId);
+            console.log('  Company ID:', companyId);
+            
+            // Check all required fields
+            if (!terminalId || !setupCompleted || !storeId || !companyId) {
+                // INCOMPLETE SETUP - BLOCK LOGIN AND REDIRECT TO SETUP
+                console.warn('⚠️ Terminal setup incomplete. Missing data:', {
+                    terminal_id: !terminalId,
+                    setup_completed: !setupCompleted,
+                    store_id: !storeId,
+                    company_id: !companyId
+                });
+                
+                // Show blocking overlay
+                const overlay = document.createElement('div');
+                overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                overlay.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md mx-4 text-center">
+                        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-2">Terminal Setup Incomplete</h3>
+                        <p class="text-gray-600 mb-4">This device must be registered with complete store and company information.</p>
+                        <p class="text-sm text-gray-500 mb-6">Redirecting to setup page...</p>
+                        <div class="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mx-auto"></div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                
+                // Redirect after 2 seconds
+                setTimeout(function() {
+                    window.location.href = '/setup/terminal/';
+                }, 2000);
+            } else {
+                // Terminal info complete - allow login
+                console.log('✅ Terminal setup complete');
+                
+                // Inject terminal ID to form on submit
+                const pinForm = document.getElementById('pinForm');
+                if (pinForm) {
+                    pinForm.addEventListener('submit', function() {
+                        // Create hidden input to send terminal ID with form
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'terminal_id';
+                        input.value = terminalId;
+                        this.appendChild(input);
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>

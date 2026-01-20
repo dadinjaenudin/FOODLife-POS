@@ -1,0 +1,91 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Categories - Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-3 py-3">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-3">
+        <div>
+            <h1 class="text-xl font-bold text-gray-800">Categories Management</h1>
+            <p class="text-xs text-gray-600 mt-0.5">Product categories and hierarchy</p>
+        </div>
+        <a href="{% url 'management:master_data' %}" class="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
+            ← Back to Master Data
+        </a>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+        <div class="bg-white rounded-lg shadow p-2.5">
+            <div class="text-xl font-bold text-gray-800">{{ total_count }}</div>
+            <div class="text-[10px] text-gray-600">Total Categories</div>
+        </div>
+        <div class="bg-green-50 rounded-lg shadow p-2.5">
+            <div class="text-xl font-bold text-green-700">
+                {{ active_count }}
+            </div>
+            <div class="text-[10px] text-gray-600">Active</div>
+        </div>
+        <div class="bg-blue-50 rounded-lg shadow p-2.5">
+            <div class="text-xl font-bold text-blue-700">
+                {{ parent_count }}
+            </div>
+            <div class="text-[10px] text-gray-600">Parent Categories</div>
+        </div>
+    </div>
+
+    <!-- Categories Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        {% for category in categories %}
+        <div class="bg-white rounded-lg shadow border {% if not category.is_active %}border-gray-300 opacity-60{% else %}border-gray-200{% endif %} hover:shadow-md transition-shadow">
+            <div class="p-3">
+                <div class="flex items-start justify-between mb-2">
+                    <div class="flex items-center">
+                        {% if category.icon %}
+                        <span class="text-2xl mr-2">{{ category.icon }}</span>
+                        {% else %}
+                        <span class="text-2xl mr-2">📁</span>
+                        {% endif %}
+                        <div>
+                            <h3 class="text-sm font-bold text-gray-800">{{ category.name }}</h3>
+                            {% if category.parent %}
+                            <p class="text-[10px] text-gray-500">Parent: {{ category.parent.name }}</p>
+                            {% else %}
+                            <p class="text-[10px] text-blue-600 font-semibold">Parent Category</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if category.is_active %}
+                    <span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded">Active</span>
+                    {% else %}
+                    <span class="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-semibold rounded">Inactive</span>
+                    {% endif %}
+                </div>
+                
+                <div class="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <div>
+                        <div class="text-lg font-bold text-gray-800">{{ category.products.count }}</div>
+                        <div class="text-[10px] text-gray-500">Products</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-600">Sort: <span class="font-semibold">{{ category.sort_order }}</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-span-3 text-center py-6">
+            <div class="text-gray-400 text-sm">No categories found</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Note -->
+    <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+        <p class="text-xs text-blue-800">
+            <strong>ℹ️ Note:</strong> Category data is synced from HO/Cloud. Changes should be made in the Head Office system and will be automatically synchronized to this Edge Server.
+        </p>
+    </div>
+</div>
+{% endblock %}
