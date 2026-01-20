@@ -18,7 +18,7 @@
                     </div>
                     <div>
                         <h1 class="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Floor Plan</h1>
-                        <p class="text-sm text-gray-600">Tap table to create order • Drag to rearrange</p>
+                        <p class="text-sm text-gray-600" id="floor-plan-subtitle">Tap table to create order • Long press for multi-select</p>
                     </div>
                 </div>
                 <a href="{% url 'pos:main' %}" class="px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
@@ -63,14 +63,75 @@
                         <!-- Grid View -->
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                             {% for table in area.tables.all %}
-                            <div class="relative table-card group" data-table-id="{{ table.id }}" draggable="true">
-                                <form method="POST" action="{% url 'tables:open_table' table.id %}" class="h-full">
+                            <div class="relative table-card group" 
+                                 data-table-id="{{ table.id }}" 
+                                 data-table-number="{{ table.number }}"
+                                 data-table-status="{{ table.status }}"
+                                 data-is-joined="{{ table.table_group|yesno:'true,false' }}"
+                                 draggable="true">
+                                <!-- Joined Badge (Top Left) -->
+                                {% if table.table_group %}
+                                <div class="absolute -top-2 -left-2 z-20">
+                                    <div class="flex h-8 w-8 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full items-center justify-center shadow-lg border-2 border-white">
+                                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                
+                                <!-- Selection Checkbox (Top Right) -->
+                                <div class="absolute top-2 right-2 z-20 selection-checkbox hidden">
+                                    <input type="checkbox" 
+                                           class="table-select-checkbox w-6 h-6 text-blue-600 rounded-md border-2 border-white shadow-lg cursor-pointer"
+                                           data-table-id="{{ table.id }}"
+                                           onclick="event.stopPropagation(); handleTableSelection()">
+                                </div>
+                                
+                                {% if table.status == 'dirty' %}
+                                <!-- Clean Table Button (for dirty tables) -->
+                                <form method="POST" 
+                                      action="{% url 'tables:clean_table' table.id %}"
+                                      hx-post="{% url 'tables:clean_table' table.id %}"
+                                      hx-target="body"
+                                      hx-swap="outerHTML"
+                                      class="h-full">
                                     {% csrf_token %}
                                     <button 
                                         type="submit"
-                                        {% if table.status == 'reserved' or table.status == 'dirty' %}disabled{% endif %}
                                         class="w-full h-full p-6 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-2xl
-                                        {% if table.status == 'available' %}
+                                        border-gray-400 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100 cursor-pointer">
+                                        <div class="text-center relative">
+                                            <!-- Clean Icon -->
+                                            <div class="text-3xl mb-2">
+                                                <svg class="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                </svg>
+                                            </div>
+                                            
+                                            <!-- Table Number -->
+                                            <div class="text-2xl font-black mb-2 text-gray-600">
+                                                {{ table.number }}
+                                            </div>
+                                            
+                                            <!-- Clean Action Text -->
+                                            <span class="inline-block px-3 py-1 text-xs font-bold rounded-full bg-green-200 text-green-800">
+                                                Clean Table
+                                            </span>
+                                        </div>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <!-- Regular Table Button (for other statuses) -->
+                                <form method="POST" action="{% url 'tables:open_table' table.id %}" class="h-full table-form">
+                                    {% csrf_token %}
+                                    <button 
+                                        type="submit"
+                                        {% if table.status == 'reserved' %}disabled{% endif %}
+                                        class="w-full h-full p-6 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-2xl table-button
+                                        {% if table.table_group %}
+                                            border-purple-400 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 cursor-pointer
+                                        {% elif table.status == 'available' %}
                                             border-green-400 bg-gradient-to-br from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 cursor-pointer
                                         {% elif table.status == 'occupied' %}
                                             border-red-400 bg-gradient-to-br from-red-50 to-pink-50 hover:from-red-100 hover:to-pink-100 cursor-pointer
@@ -102,6 +163,11 @@
                                             </div>
                                             
                                             <!-- Status Badge -->
+                                            {% if table.table_group %}
+                                            <span class="inline-block px-3 py-1 text-xs font-bold rounded-full bg-purple-200 text-purple-800">
+                                                Joined
+                                            </span>
+                                            {% else %}
                                             <span class="inline-block px-3 py-1 text-xs font-bold rounded-full
                                                 {% if table.status == 'available' %}bg-green-200 text-green-800
                                                 {% elif table.status == 'occupied' %}bg-red-200 text-red-800
@@ -110,6 +176,7 @@
                                                 {% else %}bg-blue-200 text-blue-800{% endif %}">
                                                 {{ table.get_status_display }}
                                             </span>
+                                            {% endif %}
                                         </div>
                                     </button>
                                 </form>
@@ -126,6 +193,8 @@
                                         </span>
                                     </span>
                                 </div>
+                                {% endif %}
+                                
                                 {% endif %}
                                 
                                 <!-- Drag Handle - Always visible for better UX -->
@@ -162,6 +231,28 @@
             </div>
         {% endif %}
     </div>
+</div>
+
+<!-- Floating Join Tables Button (Hidden by default) -->
+<div id="join-tables-btn" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 hidden">
+    <button onclick="joinTables()" class="px-8 py-4 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold rounded-full shadow-2xl flex items-center gap-3 transition-all transform hover:scale-105 active:scale-95 animate-bounce">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+        </svg>
+        <div class="text-left">
+            <div class="text-sm font-semibold">Join Tables</div>
+            <div class="text-xs opacity-90" id="selected-count">0 selected</div>
+        </div>
+    </button>
+</div>
+
+<!-- Cancel Selection Button -->
+<div id="cancel-selection-btn" class="fixed bottom-24 right-6 z-50 hidden">
+    <button onclick="cancelSelection()" class="w-14 h-14 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full shadow-2xl flex items-center justify-center transition-all transform hover:scale-110 active:scale-95">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+    </button>
 </div>
 
 <!-- Floating Status Legend with Glassmorphism -->
@@ -242,6 +333,22 @@
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
 }
 
+/* Selection Mode Styles */
+.table-card.selected {
+    transform: scale(1.05);
+    border: 3px solid #8b5cf6 !important;
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3), 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
+    z-index: 10;
+}
+
+.table-card.selection-mode {
+    cursor: pointer !important;
+}
+
+.table-card.selection-mode .table-button {
+    pointer-events: none;
+}
+
 /* Smooth transitions */
 .table-card {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -260,29 +367,80 @@
 </style>
 
 <script>
+// Selection Mode State
+let selectionMode = false;
+let selectedTables = [];
+let longPressTimer = null;
+const LONG_PRESS_DURATION = 500; // 500ms
+
 // Drag & Drop Functionality
 document.addEventListener('DOMContentLoaded', function() {
     const tableCards = document.querySelectorAll('.table-card');
     let draggedElement = null;
     
+    // Add long press listeners for each table
     tableCards.forEach(card => {
+        const tableId = card.getAttribute('data-table-id');
+        const tableStatus = card.getAttribute('data-table-status');
+        
+        // Long press detection (for mobile and desktop)
+        card.addEventListener('mousedown', function(e) {
+            if (e.button !== 0) return; // Only left click
+            longPressTimer = setTimeout(() => {
+                if (tableStatus === 'occupied') {
+                    enterSelectionMode();
+                    toggleTableSelection(tableId, card);
+                }
+            }, LONG_PRESS_DURATION);
+        });
+        
+        card.addEventListener('mouseup', clearLongPress);
+        card.addEventListener('mouseleave', clearLongPress);
+        card.addEventListener('touchstart', function(e) {
+            longPressTimer = setTimeout(() => {
+                if (tableStatus === 'occupied') {
+                    enterSelectionMode();
+                    toggleTableSelection(tableId, card);
+                }
+            }, LONG_PRESS_DURATION);
+        });
+        card.addEventListener('touchend', clearLongPress);
+        card.addEventListener('touchcancel', clearLongPress);
+        
+        // Click in selection mode
+        card.addEventListener('click', function(e) {
+            if (selectionMode) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (tableStatus === 'occupied') {
+                    toggleTableSelection(tableId, card);
+                } else {
+                    showNotification('⚠️ Only occupied tables can be joined', 'warning');
+                }
+            }
+        });
+        
+        // Existing drag functionality
         card.addEventListener('dragstart', function(e) {
+            if (selectionMode) {
+                e.preventDefault();
+                return;
+            }
             draggedElement = this;
             this.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
-            
-            // Show instruction toast
             showNotification('💡 Drag ke posisi yang diinginkan', 'info');
         });
         
         card.addEventListener('dragend', function(e) {
             this.classList.remove('dragging');
-            // Remove drag-over from all cards
             document.querySelectorAll('.table-card').forEach(c => c.classList.remove('drag-over'));
             draggedElement = null;
         });
         
         card.addEventListener('dragover', function(e) {
+            if (selectionMode) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             if (draggedElement && draggedElement !== this) {
@@ -295,11 +453,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         card.addEventListener('drop', function(e) {
+            if (selectionMode) return;
             e.preventDefault();
             this.classList.remove('drag-over');
             
             if (draggedElement && draggedElement !== this) {
-                // Swap positions
                 const parent = this.parentNode;
                 const draggedIndex = Array.from(parent.children).indexOf(draggedElement);
                 const targetIndex = Array.from(parent.children).indexOf(this);
@@ -310,13 +468,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     parent.insertBefore(draggedElement, this);
                 }
                 
-                // Save new order to backend
                 saveTableOrder(parent);
-                
-                // Success feedback with animation
                 showNotification('✅ Posisi table berhasil diubah!', 'success');
                 
-                // Add a quick highlight effect
                 draggedElement.style.transition = 'all 0.3s ease';
                 draggedElement.style.transform = 'scale(1.1)';
                 setTimeout(() => {
@@ -326,6 +480,238 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+function clearLongPress() {
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+}
+
+function enterSelectionMode() {
+    if (selectionMode) return;
+    
+    selectionMode = true;
+    document.querySelectorAll('.table-card').forEach(card => {
+        card.classList.add('selection-mode');
+        card.setAttribute('draggable', 'false');
+        const checkbox = card.querySelector('.selection-checkbox');
+        if (card.getAttribute('data-table-status') === 'occupied' && checkbox) {
+            checkbox.classList.remove('hidden');
+        }
+    });
+    
+    document.getElementById('floor-plan-subtitle').textContent = 'Selection mode: Tap tables to join';
+    showNotification('📋 Selection mode activated', 'info');
+}
+
+function exitSelectionMode() {
+    selectionMode = false;
+    selectedTables = [];
+    
+    document.querySelectorAll('.table-card').forEach(card => {
+        card.classList.remove('selection-mode', 'selected');
+        card.setAttribute('draggable', 'true');
+        const checkbox = card.querySelector('.selection-checkbox');
+        if (checkbox) {
+            checkbox.classList.add('hidden');
+            const input = checkbox.querySelector('input');
+            if (input) input.checked = false;
+        }
+    });
+    
+    document.getElementById('join-tables-btn').classList.add('hidden');
+    document.getElementById('cancel-selection-btn').classList.add('hidden');
+    document.getElementById('floor-plan-subtitle').textContent = 'Tap table to create order • Long press for multi-select';
+}
+
+function toggleTableSelection(tableId, card) {
+    const checkbox = card.querySelector('.table-select-checkbox');
+    const isSelected = selectedTables.includes(tableId);
+    
+    if (isSelected) {
+        selectedTables = selectedTables.filter(id => id !== tableId);
+        card.classList.remove('selected');
+        if (checkbox) checkbox.checked = false;
+    } else {
+        selectedTables.push(tableId);
+        card.classList.add('selected');
+        if (checkbox) checkbox.checked = true;
+    }
+    
+    updateSelectionUI();
+}
+
+function handleTableSelection() {
+    // This is called when checkbox is clicked directly
+    const checkboxes = document.querySelectorAll('.table-select-checkbox:checked');
+    selectedTables = Array.from(checkboxes).map(cb => cb.getAttribute('data-table-id'));
+    
+    // Update visual selection
+    document.querySelectorAll('.table-card').forEach(card => {
+        const tableId = card.getAttribute('data-table-id');
+        if (selectedTables.includes(tableId)) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+    
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    const joinBtn = document.getElementById('join-tables-btn');
+    const cancelBtn = document.getElementById('cancel-selection-btn');
+    const countText = document.getElementById('selected-count');
+    
+    if (selectedTables.length >= 2) {
+        joinBtn.classList.remove('hidden');
+        cancelBtn.classList.remove('hidden');
+        countText.textContent = `${selectedTables.length} tables selected`;
+    } else if (selectedTables.length === 1) {
+        joinBtn.classList.add('hidden');
+        cancelBtn.classList.remove('hidden');
+        countText.textContent = `${selectedTables.length} table selected`;
+    } else {
+        joinBtn.classList.add('hidden');
+        cancelBtn.classList.add('hidden');
+    }
+}
+
+function cancelSelection() {
+    exitSelectionMode();
+    showNotification('❌ Selection cancelled', 'info');
+}
+
+function joinTables() {
+    if (selectedTables.length < 2) {
+        showNotification('⚠️ Select at least 2 tables', 'warning');
+        return;
+    }
+    
+    // Check if at least one table has an active bill
+    let hasBill = false;
+    for (const tableId of selectedTables) {
+        const card = document.querySelector(`.table-card[data-table-id="${tableId}"]`);
+        const status = card ? card.getAttribute('data-table-status') : '';
+        if (status === 'occupied') {
+            hasBill = true;
+            break;
+        }
+    }
+    
+    if (!hasBill) {
+        showNotification('⚠️ Please open at least one table and add items before joining', 'warning');
+        return;
+    }
+    
+    // Get table numbers for confirmation
+    const tableNumbers = selectedTables.map(id => {
+        const card = document.querySelector(`.table-card[data-table-id="${id}"]`);
+        return card ? card.getAttribute('data-table-number') : '';
+    }).filter(n => n);
+    
+    // Show confirmation modal
+    showJoinConfirmation(tableNumbers);
+}
+
+function showJoinConfirmation(tableNumbers) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all">
+            <div class="px-6 py-4 border-b bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-t-2xl">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold">Join Tables</h3>
+                        <p class="text-sm text-white/80">Merge bills and combine tables</p>
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-6">
+                <div class="text-center mb-6">
+                    <div class="flex justify-center items-center gap-2 mb-4">
+                        ${tableNumbers.map(num => `
+                            <span class="px-4 py-2 bg-purple-100 text-purple-700 font-bold rounded-lg text-lg">
+                                Table ${num}
+                            </span>
+                        `).join('<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>')}
+                    </div>
+                    <p class="text-gray-700 text-lg font-medium mb-2">Join these tables?</p>
+                    <p class="text-gray-500 text-sm mb-4">All bills will be merged into one</p>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                        <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                        Tables will remain joined until payment
+                    </div>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex gap-3">
+                <button onclick="this.closest('.fixed').remove()" class="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 transition font-semibold">
+                    Cancel
+                </button>
+                <button onclick="confirmJoinTables()" class="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl transition font-semibold shadow-lg">
+                    Join Tables
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+}
+
+function confirmJoinTables() {
+    // Close modal
+    document.querySelector('.fixed.inset-0').remove();
+    
+    // Show loading
+    const joinBtn = document.getElementById('join-tables-btn');
+    const originalHTML = joinBtn.innerHTML;
+    joinBtn.querySelector('button').innerHTML = '<svg class="animate-spin h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+    
+    // Send to backend
+    fetch('{% url "tables:join_tables" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ table_ids: selectedTables })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Join Tables Response:', data);
+        if (data.success) {
+            showNotification('✅ Tables joined successfully!', 'success');
+            exitSelectionMode();
+            // Redirect to POS with joined bill
+            console.log('Redirect URL:', data.redirect_url);
+            if (data.redirect_url) {
+                console.log('Redirecting to:', data.redirect_url);
+                setTimeout(() => {
+                    window.location.href = data.redirect_url;
+                }, 1000);
+            } else {
+                console.log('No redirect URL, reloading page');
+                setTimeout(() => window.location.reload(), 1500);
+            }
+        } else {
+            console.error('Join failed:', data.error);
+            showNotification('⚠️ ' + (data.error || 'Failed to join tables'), 'warning');
+            joinBtn.innerHTML = originalHTML;
+        }
+    })
+    .catch(error => {
+        console.error('Error joining tables:', error);
+        showNotification('❌ Error joining tables', 'warning');
+        joinBtn.innerHTML = originalHTML;
+    });
+}
 
 // Save table order to backend
 function saveTableOrder(container) {

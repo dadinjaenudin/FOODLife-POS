@@ -10,6 +10,7 @@ urlpatterns = [
     
     path('<int:table_id>/open/', views.open_table, name='open_table'),
     path('<int:table_id>/close/', views.close_table, name='close_table'),
+    path('<int:table_id>/clean/', views.clean_table, name='clean_table'),
     path('bill/<int:bill_id>/move/', views.move_table, name='move_table'),
     path('save-order/', views.save_table_order, name='save_table_order'),
     

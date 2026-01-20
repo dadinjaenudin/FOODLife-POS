@@ -32,7 +32,9 @@ def render_bill_panel(request, bill):
     }
     # Add active items count for conditional logic
     if bill:
-        context['active_items_count'] = bill.items.filter(is_void=False).count()
+        context['active_items_count'] = bill.items.filter(status='pending', is_void=False).count()
+        # Check if ANY item was ever sent to kitchen (including voided ones)
+        context['has_sent_items'] = bill.items.filter(status='sent').exists()
     return render(request, 'pos/partials/bill_panel.html', context)
 
 
@@ -60,10 +62,35 @@ def pos_main(request):
         'name'
     )
     
-    bill_id = request.session.get('active_bill_id')
+    # Check for bill_id from query parameter (e.g., after join tables) or session
+    bill_id = request.GET.get('bill_id') or request.session.get('active_bill_id')
     bill = None
+    active_items_count = 0
+    has_sent_items = False
+    
+    # Debug logging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"POS Main - bill_id from session: {request.session.get('active_bill_id')}")
+    logger.info(f"POS Main - bill_id from GET: {request.GET.get('bill_id')}")
+    logger.info(f"POS Main - final bill_id: {bill_id}")
+    
     if bill_id:
-        bill = Bill.objects.filter(id=bill_id, status='open').first()
+        bill = Bill.objects.filter(id=bill_id, status__in=['open', 'hold']).first()
+        logger.info(f"POS Main - bill found: {bill}")
+        if bill:
+            # Update session with new active bill
+            request.session['active_bill_id'] = bill.id
+            request.session.modified = True
+            # Calculate active items count (pending items only)
+            active_items_count = bill.items.filter(status='pending', is_void=False).count()
+            # Check if ANY item was ever sent to kitchen (including voided ones)
+            has_sent_items = bill.items.filter(status='sent').exists()
+        else:
+            # Bill not found or not open, clear session
+            logger.warning(f"POS Main - bill_id {bill_id} not found or not open, clearing session")
+            request.session.pop('active_bill_id', None)
+            request.session.modified = True
     
     held_count = Bill.objects.filter(outlet=outlet, status='hold').count()
     
@@ -72,6 +99,8 @@ def pos_main(request):
         'tables': tables,
         'products': products,
         'bill': bill,
+        'active_items_count': active_items_count,
+        'has_sent_items': has_sent_items,
         'held_count': held_count,
         'store_config': store_config,
     }
@@ -156,20 +185,38 @@ def add_item(request, bill_id):
         if active_bill_id:
             # Use active bill from session if available
             try:
-                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=active_bill_id, status='open')
+                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=active_bill_id, status__in=['open', 'hold'])
+                # If bill was on hold, resume it to open
+                if bill.status == 'hold':
+                    bill.status = 'open'
+                    bill.save()
             except Bill.DoesNotExist:
-                # Active bill from session no longer exists or not open, clear it
+                # Active bill from session no longer exists, clear it
                 request.session.pop('active_bill_id', None)
                 # Try bill_id from URL as fallback
                 try:
-                    bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
+                    bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status__in=['open', 'hold'])
+                    # If bill was on hold, resume it to open
+                    if bill.status == 'hold':
+                        bill.status = 'open'
+                        bill.save()
+                        # Set as active bill
+                        request.session['active_bill_id'] = bill.id
+                        request.session.modified = True
                 except Bill.DoesNotExist:
                     # No valid bill found - return empty bill panel
                     response = render_bill_panel(request, None)
                     return trigger_client_event(response, 'billNotFound', {'message': 'Bill not found or already closed. Please select a table to start new order.'})
         else:
             try:
-                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status='open')
+                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status__in=['open', 'hold'])
+                # If bill was on hold, resume it to open
+                if bill.status == 'hold':
+                    bill.status = 'open'
+                    bill.save()
+                    # Set as active bill
+                    request.session['active_bill_id'] = bill.id
+                    request.session.modified = True
             except Bill.DoesNotExist:
                 # No valid bill found - return empty bill panel
                 response = render_bill_panel(request, None)
@@ -375,7 +422,7 @@ def void_item(request, item_id):
     
     # Refresh bill with table relation
     bill = Bill.objects.select_related('table', 'table__area').get(id=item.bill.id)
-    return render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+    return render_bill_panel(request, bill)
 
 
 @login_required
@@ -402,7 +449,7 @@ def update_item_qty(request, item_id):
 @require_http_methods(["GET"])
 def hold_modal(request, bill_id):
     """Show hold bill confirmation modal - HTMX"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     return render(request, 'pos/partials/confirm_hold_modal.html', {'bill': bill})
 
 
@@ -410,7 +457,7 @@ def hold_modal(request, bill_id):
 @require_http_methods(["POST"])
 def cancel_empty_bill(request, bill_id):
     """Cancel empty bill and clear table if exists"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     
     # Check if bill is empty
     if bill.items.filter(is_void=False).exists():
@@ -446,7 +493,7 @@ def cancel_empty_bill(request, bill_id):
 @require_http_methods(["POST"])
 def hold_bill(request, bill_id):
     """Hold bill - HTMX"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     
     reason = request.POST.get('reason', '')
     other_reason = request.POST.get('other_reason', '')
@@ -454,16 +501,24 @@ def hold_bill(request, bill_id):
     # Use other_reason if "lainnya" selected
     hold_reason = other_reason if reason == 'lainnya' else reason
     
-    bill.status = 'hold'
-    if hold_reason:
-        bill.notes = f"Hold: {hold_reason}" if not bill.notes else f"{bill.notes}\nHold: {hold_reason}"
-    bill.save()
-    
-    if bill.table:
-        bill.table.status = 'occupied'
-        bill.table.save()
-    
-    request.session.pop('active_bill_id', None)
+    # If already on hold, update the reason; otherwise set to hold
+    if bill.status == 'hold':
+        # Update hold reason
+        if hold_reason:
+            bill.notes = f"Hold: {hold_reason}"
+        bill.save()
+    else:
+        # Set to hold
+        bill.status = 'hold'
+        if hold_reason:
+            bill.notes = f"Hold: {hold_reason}" if not bill.notes else f"{bill.notes}\nHold: {hold_reason}"
+        bill.save()
+        
+        if bill.table:
+            bill.table.status = 'occupied'
+            bill.table.save()
+        
+        request.session.pop('active_bill_id', None)
     
     BillLog.objects.create(
         bill=bill, 
@@ -491,8 +546,6 @@ def resume_bill(request, bill_id):
     return render_bill_panel(request, bill)
 
 
-@login_required
-@require_http_methods(["POST", "DELETE"])
 @login_required
 @require_http_methods(["DELETE", "POST"])
 def cancel_bill(request, bill_id):
@@ -530,7 +583,7 @@ def cancel_bill(request, bill_id):
         next_bill = Bill.objects.filter(
             outlet=request.user.outlet,
             status='hold'
-        ).order_by('-updated_at').first()
+        ).order_by('-created_at').first()
         
         if next_bill:
             # Resume next held bill
@@ -593,7 +646,7 @@ def cancel_bill(request, bill_id):
     next_bill = Bill.objects.filter(
         outlet=request.user.outlet,
         status='hold'
-    ).order_by('-updated_at').first()
+    ).order_by('-created_at').first()
     
     if next_bill:
         # Resume next held bill
@@ -646,7 +699,7 @@ def send_to_kitchen(request, bill_id):
     
     if not pending_items.exists():
         # Don't remove bill panel, just show alert and return same panel
-        response = render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+        response = render_bill_panel(request, bill)
         response['HX-Trigger'] = '{"showNotification": {"message": "Tidak ada item baru untuk dikirim", "type": "warning"}}'
         return response
     
@@ -682,7 +735,7 @@ def send_to_kitchen(request, bill_id):
             details={'items_count': len(pending_items)}
         )
         
-        response = render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+        response = render_bill_panel(request, bill)
         return trigger_client_event(response, 'sentToKitchen')
     except Exception as e:
         import traceback
@@ -775,16 +828,29 @@ def process_payment(request, bill_id):
         bill.closed_at = timezone.now()
         bill.save()
         
-        # Update table status
+        # Update table status and unjoin if part of group
         if bill.table:
-            bill.table.status = 'dirty'
-            bill.table.save()
+            # Get all tables in the same group
+            from apps.tables.models import TableGroup
+            table_group = bill.table.table_group
+            
+            if table_group:
+                # Get all tables in this group
+                joined_tables = Table.objects.filter(table_group=table_group)
+                # Clear group and set status to dirty
+                joined_tables.update(table_group=None, status='dirty')
+                # Delete the group
+                table_group.delete()
+            else:
+                # Single table, just update status
+                bill.table.status = 'dirty'
+                bill.table.save()
         
         # Check if this was a split bill and auto-resume original bill
         split_original_bill_id = request.session.pop('split_original_bill_id', None)
         if split_original_bill_id:
-            # Check if original bill still exists and is open
-            original_bill = Bill.objects.filter(id=split_original_bill_id, status='open').first()
+            # Check if original bill still exists and is open or hold
+            original_bill = Bill.objects.filter(id=split_original_bill_id, status__in=['open', 'hold']).first()
             if original_bill:
                 # Set original bill as active
                 request.session['active_bill_id'] = original_bill.id
@@ -827,7 +893,7 @@ def process_payment(request, bill_id):
 @login_required
 def split_bill_modal(request, bill_id):
     """Split bill modal - Enhanced UI"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     items = bill.items.filter(is_void=False)
     tables = Table.objects.filter(area__outlet=bill.outlet, status='available')
     
@@ -843,7 +909,7 @@ def split_bill_modal(request, bill_id):
 @require_http_methods(["POST"])
 def split_bill(request, bill_id):
     """Split bill into multiple bills - Enhanced with qty split support"""
-    original_bill = get_object_or_404(Bill, id=bill_id, status='open')
+    original_bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     split_items = request.POST.getlist('split_items[]')
     new_table_id = request.POST.get('new_table_id')
     guest_count = int(request.POST.get('guest_count', 1))
@@ -902,9 +968,9 @@ def split_bill(request, bill_id):
         new_bill.status = 'open'
         new_bill.save()
         
-        # Keep original bill as active in session
-        # After payment of new bill, user will return to original bill
-        request.session['active_bill_id'] = original_bill.id
+        # Set new bill as active in session for immediate payment
+        # After payment of new bill, user will return to original bill via split_original_bill_id
+        request.session['active_bill_id'] = new_bill.id
         request.session['split_original_bill_id'] = original_bill.id  # Store for after payment
         request.session.modified = True
         
@@ -982,7 +1048,7 @@ def merge_bills(request):
         return JsonResponse({'error': 'Please select target bill'}, status=400)
     
     with transaction.atomic():
-        target_bill = get_object_or_404(Bill, id=target_bill_id, status='open')
+        target_bill = get_object_or_404(Bill, id=target_bill_id, status__in=['open', 'hold'])
         source_bills = Bill.objects.filter(id__in=bill_ids, status='open').exclude(id=target_bill_id)
         
         merged_count = 0
@@ -1047,7 +1113,7 @@ def merge_bills(request):
 @login_required
 def move_table_modal(request, bill_id):
     """Move table modal"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     tables = Table.objects.filter(
         area__outlet=bill.outlet,
         status__in=['available', 'reserved']
@@ -1064,7 +1130,7 @@ def move_table_modal(request, bill_id):
 @require_http_methods(["POST"])
 def move_table(request, bill_id):
     """Move bill to different table"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     new_table_id = request.POST.get('new_table_id') or request.POST.get('table_id')
     
     if not new_table_id:
@@ -1110,7 +1176,7 @@ def move_table(request, bill_id):
 @login_required
 def transfer_bill_modal(request, bill_id):
     """Transfer bill to another cashier modal"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     cashiers = request.user.__class__.objects.filter(
         outlet=bill.outlet,
         role__in=['cashier', 'waiter', 'manager']
@@ -1127,7 +1193,7 @@ def transfer_bill_modal(request, bill_id):
 @require_http_methods(["POST"])
 def transfer_bill(request, bill_id):
     """Transfer bill to another cashier"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     new_cashier_id = request.POST.get('new_cashier_id')
     notes = request.POST.get('notes', '')
     

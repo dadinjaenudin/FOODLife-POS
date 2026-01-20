@@ -49,15 +49,29 @@ def table_grid(request):
 @require_http_methods(["POST"])
 def open_table(request, table_id):
     """Open table and create bill OR resume existing bill - Redirect to POS"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     table = get_object_or_404(Table, id=table_id)
+    logger.info(f"Open table {table.number} (ID: {table.id}, Status: {table.status})")
     
     # Check if table already has an active bill
     existing_bill = table.get_active_bill()
+    logger.info(f"Existing bill: {existing_bill}")
     
     if existing_bill:
         # Resume existing bill
         request.session['active_bill_id'] = existing_bill.id
+        request.session.modified = True
+        logger.info(f"Resumed existing bill {existing_bill.id}, session set")
     else:
+        # Check if table is marked occupied but has no active bill (orphaned state)
+        if table.status == 'occupied':
+            # Reset to available since there's no active bill
+            table.status = 'available'
+            table.save()
+            logger.warning(f"Table {table.number} was occupied but no active bill, reset to available")
+        
         # Create new bill
         guest_count = int(request.POST.get('guest_count', 1))
         
@@ -74,10 +88,28 @@ def open_table(request, table_id):
             table.save()
             
             request.session['active_bill_id'] = bill.id
+            request.session.modified = True
+            logger.info(f"Created new bill {bill.id} for table {table.number}, session set")
+    
+    logger.info(f"Session active_bill_id: {request.session.get('active_bill_id')}")
     
     # Redirect to POS after table selection
     from django.shortcuts import redirect
     return redirect('pos:main')
+
+
+@login_required
+@require_http_methods(["POST"])
+def clean_table(request, table_id):
+    """Clean table / mark as available - HTMX"""
+    table = get_object_or_404(Table, id=table_id)
+    table.status = 'available'
+    table.save()
+    
+    # Render full floor plan with all context
+    areas = TableArea.objects.filter(outlet=request.user.outlet).prefetch_related('tables')
+    response = render(request, 'tables/floor_plan.html', {'areas': areas})
+    return trigger_client_event(response, 'tableCleaned')
 
 
 @login_required
@@ -272,3 +304,86 @@ def save_table_order(request):
     
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def join_tables(request):
+    """Join multiple tables - merge bills and link tables"""
+    try:
+        data = json.loads(request.body)
+        table_ids = data.get('table_ids', [])
+        
+        if len(table_ids) < 2:
+            return JsonResponse({'success': False, 'error': 'Select at least 2 tables'}, status=400)
+        
+        with transaction.atomic():
+            # Get all tables
+            tables = Table.objects.filter(
+                id__in=table_ids,
+                status='occupied'
+            ).select_related('area')
+            
+            if tables.count() != len(table_ids):
+                return JsonResponse({'success': False, 'error': 'Some tables are not available'}, status=400)
+            
+            # Get all bills for these tables
+            bills = Bill.objects.filter(
+                table__in=tables,
+                status='open'
+            )
+            
+            if not bills.exists():
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Please open at least one table and add items before joining tables'
+                }, status=400)
+            
+            # Use first table with a bill as primary
+            primary_bill = bills.first()
+            primary_table = primary_bill.table
+            
+            # Create or update table group
+            table_group, created = TableGroup.objects.get_or_create(
+                main_table=primary_table,
+                defaults={
+                    'created_by': request.user,
+                    'outlet': request.user.outlet
+                }
+            )
+            
+            # Link all tables to this group
+            tables.update(table_group=table_group)
+            
+            # Merge all other bills into primary bill
+            other_bills = bills.exclude(id=primary_bill.id)
+            
+            for bill in other_bills:
+                # Move all items to primary bill
+                items = bill.items.filter(is_void=False)
+                items.update(bill=primary_bill)
+                
+                # Mark old bill as merged
+                bill.status = 'merged'
+                bill.notes = f"Merged into bill {primary_bill.bill_number}"
+                bill.save()
+            
+            # Recalculate primary bill totals
+            primary_bill.calculate_totals()
+            
+            # Update all tables status to occupied
+            tables.update(status='occupied')
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'{tables.count()} tables joined successfully',
+                'primary_bill_id': primary_bill.id,
+                'primary_table_id': primary_table.id,
+                'redirect_url': f'/pos/?bill_id={primary_bill.id}'
+            })
+    
+    except Exception as e:
+        import logging
+        logging.error(f"Error joining tables: {str(e)}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
