@@ -174,6 +174,23 @@ def open_bill(request):
 
 
 @login_required
+@require_http_methods(["GET"])
+def add_item_modal(request, bill_id, product_id):
+    """Show simple add item modal with quantity and notes"""
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
+    product = get_object_or_404(Product, id=product_id)
+    
+    # Get modifiers for this product
+    modifiers = product.modifiers.filter(outlet=request.user.outlet).prefetch_related('options')
+    
+    return render(request, 'pos/partials/add_item_modal.html', {
+        'bill': bill,
+        'product': product,
+        'modifiers': modifiers,
+    })
+
+
+@login_required
 @require_http_methods(["POST"])
 def add_item(request, bill_id):
     """Add item to bill - HTMX"""
@@ -258,6 +275,7 @@ def add_item(request, bill_id):
         modifiers = request.POST.getlist('modifiers')
         
         logger.info(f"Looking for Product with id={product_id}")
+        logger.info(f"Received modifiers: {modifiers}")
         
         try:
             product = Product.objects.get(id=product_id)
@@ -275,13 +293,25 @@ def add_item(request, bill_id):
         modifier_price = Decimal('0')
         modifier_data = []
         for mod_id in modifiers:
-            opt = ModifierOption.objects.get(id=mod_id)
-            modifier_price += opt.price_adjustment
-            modifier_data.append({
-                'id': opt.id,
-                'name': opt.name,
-                'price': float(opt.price_adjustment)
-            })
+            try:
+                # Convert modifier ID (remove thousand separators and convert to int)
+                mod_id_clean = str(mod_id).replace('.', '').replace(',', '')
+                mod_id_int = int(mod_id_clean)
+                logger.info(f"Converting modifier ID '{mod_id}' -> {mod_id_int}")
+                
+                opt = ModifierOption.objects.get(id=mod_id_int)
+                modifier_price += opt.price_adjustment
+                modifier_data.append({
+                    'id': opt.id,
+                    'name': opt.name,
+                    'price': float(opt.price_adjustment)
+                })
+            except (ValueError, TypeError) as e:
+                logger.error(f"Error converting modifier ID '{mod_id}': {e}")
+                continue
+            except ModifierOption.DoesNotExist:
+                logger.error(f"ModifierOption with id={mod_id_int} not found")
+                continue
         
         existing_item = BillItem.objects.filter(
             bill=bill,
@@ -443,6 +473,118 @@ def update_item_qty(request, item_id):
     # Refresh bill with table relation
     bill = Bill.objects.select_related('table', 'table__area').get(id=item.bill.id)
     return render_bill_panel(request, bill)
+
+
+@login_required
+@require_http_methods(["GET"])
+def edit_item_modal(request, item_id):
+    """Show edit item modal with current modifiers pre-selected"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        item = get_object_or_404(BillItem.objects.select_related('product', 'bill'), id=item_id, is_void=False)
+        
+        # Get modifiers for this product
+        modifiers = item.product.modifiers.filter(outlet=request.user.outlet).prefetch_related('options')
+        
+        # Get currently selected modifier option IDs
+        selected_modifier_ids = [mod['id'] for mod in item.modifiers] if item.modifiers else []
+        
+        logger.info(f"Edit item {item_id}: status={item.status}, selected_modifiers={selected_modifier_ids}")
+        
+        return render(request, 'pos/partials/edit_item_modal.html', {
+            'item': item,
+            'modifiers': modifiers,
+            'selected_modifier_ids': selected_modifier_ids,
+        })
+    except Exception as e:
+        logger.error(f"Error loading edit modal for item {item_id}: {str(e)}")
+        return HttpResponse(f"Error: {str(e)}", status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_item(request, item_id):
+    """Update item with new modifiers, quantity, and notes - HTMX"""
+    import logging
+    from decimal import Decimal
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Log all POST data first
+        logger.info(f"=== UPDATE ITEM {item_id} ===")
+        logger.info(f"POST data: {dict(request.POST)}")
+        
+        item = get_object_or_404(BillItem.objects.select_related('product', 'bill'), id=item_id, is_void=False)
+        
+        # Check if item can be edited
+        if item.status != 'pending':
+            logger.warning(f"Cannot edit item {item_id} with status {item.status}")
+            return HttpResponse(f"Cannot edit item with status: {item.status}. Only pending items can be edited.", status=400)
+        
+        # Get form data
+        quantity = int(request.POST.get('quantity', 1))
+        notes = request.POST.get('notes', '').strip()
+        modifiers = request.POST.getlist('modifiers')
+        
+        logger.info(f"Parsed: quantity={quantity}, notes={notes}, modifiers={modifiers}")
+        
+        # Update quantity and notes
+        item.quantity = max(1, quantity)
+        item.notes = notes  # Keep as empty string if blank, don't set to None
+        
+        # Process modifiers
+        modifier_data = []
+        modifier_total = Decimal('0')
+        
+        if modifiers:
+            from apps.core.models import ModifierOption
+            
+            for mod_id in modifiers:
+                try:
+                    # Clean modifier ID (remove separators)
+                    mod_id_clean = str(mod_id).replace('.', '').replace(',', '')
+                    mod_id_int = int(mod_id_clean)
+                    
+                    option = ModifierOption.objects.get(id=mod_id_int)
+                    modifier_total += option.price_adjustment
+                    modifier_data.append({
+                        'id': option.id,
+                        'name': option.name,
+                        'price': float(option.price_adjustment)
+                    })
+                    logger.info(f"Added modifier: {option.name} (${option.price_adjustment})")
+                except ModifierOption.DoesNotExist:
+                    logger.warning(f"Modifier option {mod_id} not found")
+                    continue
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Invalid modifier ID: {mod_id} - {str(e)}")
+                    continue
+        
+        # Calculate new price with modifiers
+        item.unit_price = item.product.price
+        item.modifier_price = modifier_total
+        item.modifiers = modifier_data
+        
+        logger.info(f"Final price: unit={item.unit_price}, modifiers={modifier_total}, total={item.unit_price + modifier_total}")
+        
+        item.save()
+        item.bill.calculate_totals()
+        
+        logger.info(f"Item {item_id} updated successfully")
+        
+        # Refresh bill with table relation
+        bill = Bill.objects.select_related('table', 'table__area').get(id=item.bill.id)
+        return render_bill_panel(request, bill)
+        
+    except Exception as e:
+        logger.error(f"Error updating item {item_id}: {str(e)}", exc_info=True)
+        return HttpResponse(f"Error updating item: {str(e)}", status=400)
+        
+    except Exception as e:
+        logger.error(f"Error updating item {item_id}: {str(e)}")
+        return HttpResponse(f"Error: {str(e)}", status=400)
 
 
 @login_required
@@ -1169,8 +1311,11 @@ def move_table(request, bill_id):
             }
         )
     
-    # Return updated bill panel for HTMX
-    return render(request, 'pos/partials/bill_panel.html', {'bill': bill})
+    # Return JSON response
+    return JsonResponse({
+        'success': True,
+        'message': f'Bill moved from Table {old_table_number} to Table {new_table.number}'
+    })
 
 
 @login_required

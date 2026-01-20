@@ -9,6 +9,7 @@ urlpatterns = [
     
     # Bill operations
     path('bill/open/', views.open_bill, name='open_bill'),
+    path('bill/<int:bill_id>/product/<int:product_id>/add-modal/', views.add_item_modal, name='add_item_modal'),
     path('bill/<int:bill_id>/add-item/', views.add_item, name='add_item'),
     path('bill/<int:bill_id>/hold/', views.hold_bill, name='hold_bill'),
     path('bill/<int:bill_id>/hold-modal/', views.hold_modal, name='hold_modal'),
@@ -22,6 +23,8 @@ urlpatterns = [
     path('item/<int:item_id>/confirm-remove/', views.confirm_remove_item, name='confirm_remove_item'),
     path('item/<int:item_id>/void/', views.void_item, name='void_item'),
     path('item/<int:item_id>/update-qty/', views.update_item_qty, name='update_item_qty'),
+    path('item/<int:item_id>/edit/', views.edit_item_modal, name='edit_item_modal'),
+    path('item/<int:item_id>/update/', views.update_item, name='update_item'),
     
     # Payment
     path('bill/<int:bill_id>/payment/', views.payment_modal, name='payment_modal'),

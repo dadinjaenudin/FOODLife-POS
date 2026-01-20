@@ -49,7 +49,7 @@
 </script>
     
     <!-- Bill Items (Scrollable Area) -->
-    <div id="bill-items" class="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+    <div id="bill-items" class="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
         {% include 'pos/partials/bill_items.html' %}
     </div>
     
@@ -139,7 +139,7 @@
             <span class="text-sm">Confirm Payment</span>
         </button>
         
-        <div class="grid grid-cols-3 gap-2">
+        <div class="grid grid-cols-4 gap-2">
             <button 
                 class="py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
                 hx-get="{% url 'pos:hold_modal' bill.id %}"
@@ -151,6 +151,13 @@
                 hx-get="{% url 'pos:confirm_void_modal' bill.id %}"
                 hx-target="#modal-container">
                 Void
+            </button>
+            <button 
+                class="py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:move_table_modal' bill.id %}"
+                hx-target="#modal-container"
+                title="Move to another table">
+                Move
             </button>
             <button 
                 class="py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"

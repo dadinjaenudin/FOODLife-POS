@@ -4,64 +4,74 @@
 {% block title %}Floor Plan - Table Management{% endblock %}
 
 {% block content %}
-<!-- Modern Glassmorphism Background -->
-<div class="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100">
-    <!-- Floating Header with Glassmorphism -->
-    <div class="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-white/20 shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center py-4">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"></path>
-                        </svg>
+<!-- Modern Compact Layout -->
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <!-- Compact Header -->
+    <div class="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-gray-200 shadow-sm">
+        <div class="max-w-full mx-auto px-3 py-2">
+            <div class="flex justify-between items-center">
+                <!-- Left: Title + Status Legend -->
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"></path>
+                            </svg>
+                        </div>
+                        <h1 class="text-lg font-bold text-gray-900">Floor Plan</h1>
                     </div>
-                    <div>
-                        <h1 class="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Floor Plan</h1>
-                        <p class="text-sm text-gray-600" id="floor-plan-subtitle">Tap table to create order • Long press for multi-select</p>
+                    
+                    <!-- Status Legend - Compact -->
+                    <div class="flex items-center gap-3 text-xs">
+                        <div class="flex items-center gap-1.5 px-2 py-1 bg-green-50 rounded-md border border-green-200">
+                            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span class="font-medium text-green-700">Available</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 bg-red-50 rounded-md border border-red-200">
+                            <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                            <span class="font-medium text-red-700">Occupied</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 bg-purple-50 rounded-md border border-purple-200">
+                            <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            <span class="font-medium text-purple-700">Joined</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-md border border-gray-200">
+                            <div class="w-2 h-2 bg-gray-500 rounded-full"></div>
+                            <span class="font-medium text-gray-700">Needs Cleaning</span>
+                        </div>
                     </div>
                 </div>
-                <a href="{% url 'pos:main' %}" class="px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                
+                <!-- Right: Back Button -->
+                <a href="{% url 'pos:main' %}" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold rounded-lg transition-all shadow hover:shadow-md flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                     </svg>
-                    Back to POS
+                    Back
                 </a>
             </div>
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Main Content - Compact -->
+    <div class="max-w-full px-3 py-3">
         {% if areas %}
             {% for area in areas %}
-            <!-- Area Card with Glassmorphism -->
-            <div class="mb-6 animate-fadeIn">
-                <div class="backdrop-blur-md bg-white/60 rounded-2xl shadow-xl border border-white/50 overflow-hidden">
-                    <!-- Area Header with Stats -->
-                    <div class="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 px-6 py-4 border-b border-white/30">
+            <!-- Area Card - Compact -->
+            <div class="mb-4">
+                <div class="bg-white/90 rounded-lg shadow border border-gray-200">
+                    <!-- Area Header - Compact -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
                         <div class="flex justify-between items-center">
-                            <div>
-                                <h2 class="text-xl font-bold text-gray-900">{{ area.name }}</h2>
-                                <p class="text-sm text-gray-600 mt-1">{{ area.tables.count }} tables total</p>
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <div class="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-lg">
-                                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                                    <span class="text-sm font-semibold text-green-700">{{ area.tables.filter.count|default:0 }} Available</span>
-                                </div>
-                                <div class="flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-lg">
-                                    <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                                    <span class="text-sm font-semibold text-red-700">{{ area.tables.exclude.count|default:0 }} Occupied</span>
-                                </div>
-                            </div>
+                            <h2 class="text-sm font-bold text-gray-900">{{ area.name }}</h2>
+                            <span class="text-xs text-gray-600">{{ area.tables.count }} tables</span>
                         </div>
                     </div>
                     
-                    <!-- Tables Container -->
-                    <div class="p-6">
-                        <!-- Grid View -->
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    <!-- Tables Container - Compact Grid -->
+                    <div class="p-3">
+                        <!-- Compact Grid - More columns, smaller cards -->
+                        <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2">
                             {% for table in area.tables.all %}
                             <div class="relative table-card group" 
                                  data-table-id="{{ table.id }}" 
@@ -69,27 +79,27 @@
                                  data-table-status="{{ table.status }}"
                                  data-is-joined="{{ table.table_group|yesno:'true,false' }}"
                                  draggable="true">
-                                <!-- Joined Badge (Top Left) -->
+                                <!-- Joined Badge (Top Left) - Compact -->
                                 {% if table.table_group %}
-                                <div class="absolute -top-2 -left-2 z-20">
-                                    <div class="flex h-8 w-8 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full items-center justify-center shadow-lg border-2 border-white">
-                                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <div class="absolute -top-1 -left-1 z-20">
+                                    <div class="flex h-5 w-5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full items-center justify-center shadow border border-white">
+                                        <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
                                             <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
                                         </svg>
                                     </div>
                                 </div>
                                 {% endif %}
                                 
-                                <!-- Selection Checkbox (Top Right) -->
-                                <div class="absolute top-2 right-2 z-20 selection-checkbox hidden">
+                                <!-- Selection Checkbox (Top Right) - Compact -->
+                                <div class="absolute top-1 right-1 z-20 selection-checkbox hidden">
                                     <input type="checkbox" 
-                                           class="table-select-checkbox w-6 h-6 text-blue-600 rounded-md border-2 border-white shadow-lg cursor-pointer"
+                                           class="table-select-checkbox w-4 h-4 text-blue-600 rounded border border-white shadow cursor-pointer"
                                            data-table-id="{{ table.id }}"
                                            onclick="event.stopPropagation(); handleTableSelection()">
                                 </div>
                                 
                                 {% if table.status == 'dirty' %}
-                                <!-- Clean Table Button (for dirty tables) -->
+                                <!-- Clean Table Button (for dirty tables) - COMPACT -->
                                 <form method="POST" 
                                       action="{% url 'tables:clean_table' table.id %}"
                                       hx-post="{% url 'tables:clean_table' table.id %}"
@@ -99,53 +109,56 @@
                                     {% csrf_token %}
                                     <button 
                                         type="submit"
-                                        class="w-full h-full p-6 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-2xl
-                                        border-gray-400 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100 cursor-pointer">
-                                        <div class="text-center relative">
-                                            <!-- Clean Icon -->
-                                            <div class="text-3xl mb-2">
-                                                <svg class="w-12 h-12 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        class="w-full h-full p-3 rounded-lg border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg
+                                        border-gray-300 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100 cursor-pointer">
+                                        <div class="text-center">
+                                            <!-- Clean Icon - Compact -->
+                                            <div class="mb-1">
+                                                <svg class="w-6 h-6 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                                 </svg>
                                             </div>
                                             
-                                            <!-- Table Number -->
-                                            <div class="text-2xl font-black mb-2 text-gray-600">
+                                            <!-- Table Number - Compact -->
+                                            <div class="text-lg font-black mb-1 text-gray-700">
                                                 {{ table.number }}
                                             </div>
                                             
-                                            <!-- Clean Action Text -->
-                                            <span class="inline-block px-3 py-1 text-xs font-bold rounded-full bg-green-200 text-green-800">
-                                                Clean Table
+                                            <!-- Capacity - Compact -->
+                                            <div class="text-xs text-gray-500 mb-1">
+                                                👥 {{ table.capacity }}
+                                            </div>
+                                            
+                                            <!-- Status Badge - Compact -->
+                                            <span class="inline-block px-2 py-0.5 text-xs font-bold rounded-full bg-green-100 text-green-700">
+                                                Needs Cleaning
                                             </span>
                                         </div>
                                     </button>
                                 </form>
                                 {% else %}
-                                <!-- Regular Table Button (for other statuses) -->
+                                <!-- Regular Table Button - COMPACT -->
                                 <form method="POST" action="{% url 'tables:open_table' table.id %}" class="h-full table-form">
                                     {% csrf_token %}
                                     <button 
                                         type="submit"
                                         {% if table.status == 'reserved' %}disabled{% endif %}
-                                        class="w-full h-full p-6 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-2xl table-button
+                                        class="w-full h-full p-3 rounded-lg border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg table-button
                                         {% if table.table_group %}
-                                            border-purple-400 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 cursor-pointer
+                                            border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 cursor-pointer
                                         {% elif table.status == 'available' %}
-                                            border-green-400 bg-gradient-to-br from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 cursor-pointer
+                                            border-green-300 bg-gradient-to-br from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 cursor-pointer
                                         {% elif table.status == 'occupied' %}
-                                            border-red-400 bg-gradient-to-br from-red-50 to-pink-50 hover:from-red-100 hover:to-pink-100 cursor-pointer
+                                            border-red-300 bg-gradient-to-br from-red-50 to-pink-50 hover:from-red-100 hover:to-pink-100 cursor-pointer
                                         {% elif table.status == 'reserved' %}
-                                            border-yellow-400 bg-gradient-to-br from-yellow-50 to-amber-50 cursor-not-allowed opacity-75
-                                        {% elif table.status == 'dirty' %}
-                                            border-gray-400 bg-gradient-to-br from-gray-50 to-slate-50 cursor-not-allowed opacity-75
+                                            border-yellow-300 bg-gradient-to-br from-yellow-50 to-amber-50 cursor-not-allowed opacity-75
                                         {% else %}
-                                            border-blue-400 bg-gradient-to-br from-blue-50 to-indigo-50
+                                            border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50
                                         {% endif %}"
                                     >
-                                        <div class="text-center relative">
-                                            <!-- Table Number -->
-                                            <div class="text-3xl font-black mb-2 
+                                        <div class="text-center">
+                                            <!-- Table Number - Compact -->
+                                            <div class="text-lg font-black mb-1 
                                                 {% if table.status == 'available' %}text-green-600
                                                 {% elif table.status == 'occupied' %}text-red-600
                                                 {% elif table.status == 'reserved' %}text-yellow-600
@@ -154,40 +167,40 @@
                                                 {{ table.number }}
                                             </div>
                                             
-                                            <!-- Capacity -->
-                                            <div class="flex items-center justify-center gap-1 text-gray-600 mb-2">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                                                </svg>
-                                                <span class="text-sm font-semibold">{{ table.capacity }}</span>
+                                            <!-- Capacity - Compact -->
+                                            <div class="text-xs text-gray-500 mb-1">
+                                                👥 {{ table.capacity }}
                                             </div>
                                             
-                                            <!-- Status Badge -->
+                                            <!-- Status Badge - Compact -->
                                             {% if table.table_group %}
-                                            <span class="inline-block px-3 py-1 text-xs font-bold rounded-full bg-purple-200 text-purple-800">
+                                            <span class="inline-block px-2 py-0.5 text-xs font-bold rounded-full bg-purple-100 text-purple-700">
                                                 Joined
                                             </span>
                                             {% else %}
-                                            <span class="inline-block px-3 py-1 text-xs font-bold rounded-full
-                                                {% if table.status == 'available' %}bg-green-200 text-green-800
-                                                {% elif table.status == 'occupied' %}bg-red-200 text-red-800
-                                                {% elif table.status == 'reserved' %}bg-yellow-200 text-yellow-800
-                                                {% elif table.status == 'dirty' %}bg-gray-300 text-gray-800
-                                                {% else %}bg-blue-200 text-blue-800{% endif %}">
-                                                {{ table.get_status_display }}
+                                            <span class="inline-block px-2 py-0.5 text-xs font-bold rounded-full
+                                                {% if table.status == 'available' %}bg-green-100 text-green-700
+                                                {% elif table.status == 'occupied' %}bg-red-100 text-red-700
+                                                {% elif table.status == 'reserved' %}bg-yellow-100 text-yellow-700
+                                                {% elif table.status == 'dirty' %}bg-gray-100 text-gray-700
+                                                {% else %}bg-blue-100 text-blue-700{% endif %}">
+                                                {% if table.status == 'available' %}Available
+                                                {% elif table.status == 'occupied' %}Occupied
+                                                {% else %}{{ table.get_status_display }}{% endif %}
                                             </span>
                                             {% endif %}
                                         </div>
                                     </button>
                                 </form>
+                                {% endif %}
                                 
-                                <!-- Occupied Indicator -->
+                                <!-- Occupied Indicator - Compact -->
                                 {% if table.status == 'occupied' %}
-                                <div class="absolute -top-2 -right-2 z-10">
-                                    <span class="flex h-8 w-8">
+                                <div class="absolute -top-1 -right-1 z-10">
+                                    <span class="flex h-5 w-5">
                                         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                        <span class="relative inline-flex rounded-full h-8 w-8 bg-gradient-to-br from-red-500 to-red-600 items-center justify-center shadow-lg">
-                                            <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <span class="relative inline-flex rounded-full h-5 w-5 bg-gradient-to-br from-red-500 to-red-600 items-center justify-center shadow">
+                                            <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"></path>
                                             </svg>
                                         </span>
@@ -195,12 +208,10 @@
                                 </div>
                                 {% endif %}
                                 
-                                {% endif %}
-                                
-                                <!-- Drag Handle - Always visible for better UX -->
-                                <div class="absolute top-2 left-2 cursor-move transition-all duration-200 group-hover:scale-125">
-                                    <div class="w-6 h-6 bg-white/80 backdrop-blur-sm rounded-md shadow-md flex items-center justify-center">
-                                        <svg class="w-3 h-3 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                                <!-- Drag Handle - Compact -->
+                                <div class="absolute top-1 left-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div class="w-4 h-4 bg-white/80 backdrop-blur-sm rounded shadow-sm flex items-center justify-center">
+                                        <svg class="w-2.5 h-2.5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
                                             <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
                                         </svg>
                                     </div>
@@ -233,60 +244,23 @@
     </div>
 </div>
 
-<!-- Floating Join Tables Button (Hidden by default) -->
-<div id="join-tables-btn" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 hidden">
-    <button onclick="joinTables()" class="px-8 py-4 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold rounded-full shadow-2xl flex items-center gap-3 transition-all transform hover:scale-105 active:scale-95 animate-bounce">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<!-- Floating Join Tables Button - Compact -->
+<div id="join-tables-btn" class="fixed bottom-16 left-1/2 transform -translate-x-1/2 z-50 hidden">
+    <button onclick="joinTables()" class="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white text-sm font-bold rounded-full shadow-xl flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
         </svg>
-        <div class="text-left">
-            <div class="text-sm font-semibold">Join Tables</div>
-            <div class="text-xs opacity-90" id="selected-count">0 selected</div>
-        </div>
+        <span>Join <span id="selected-count" class="font-black">0</span></span>
     </button>
 </div>
 
-<!-- Cancel Selection Button -->
-<div id="cancel-selection-btn" class="fixed bottom-24 right-6 z-50 hidden">
-    <button onclick="cancelSelection()" class="w-14 h-14 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full shadow-2xl flex items-center justify-center transition-all transform hover:scale-110 active:scale-95">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<!-- Cancel Selection Button - Compact -->
+<div id="cancel-selection-btn" class="fixed bottom-16 right-4 z-50 hidden">
+    <button onclick="cancelSelection()" class="w-10 h-10 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full shadow-xl flex items-center justify-center transition-all transform hover:scale-110 active:scale-95">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
         </svg>
     </button>
-</div>
-
-<!-- Floating Status Legend with Glassmorphism -->
-<div class="fixed bottom-6 right-6 backdrop-blur-md bg-white/80 rounded-2xl shadow-2xl p-5 border border-white/50 z-40 animate-slideUp">
-    <h3 class="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-        <div class="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-            <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
-            </svg>
-        </div>
-        Table Status
-    </h3>
-    <div class="space-y-2 text-sm">
-        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-50 transition-colors">
-            <div class="w-5 h-5 bg-gradient-to-br from-green-400 to-emerald-500 rounded-lg shadow-sm"></div>
-            <span class="font-semibold text-gray-700">Available</span>
-        </div>
-        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors">
-            <div class="w-5 h-5 bg-gradient-to-br from-red-400 to-pink-500 rounded-lg shadow-sm"></div>
-            <span class="font-semibold text-gray-700">Occupied</span>
-        </div>
-        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-yellow-50 transition-colors">
-            <div class="w-5 h-5 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-lg shadow-sm"></div>
-            <span class="font-semibold text-gray-700">Reserved</span>
-        </div>
-        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
-            <div class="w-5 h-5 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg shadow-sm"></div>
-            <span class="font-semibold text-gray-700">Billing</span>
-        </div>
-        <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-            <div class="w-5 h-5 bg-gradient-to-br from-gray-400 to-slate-500 rounded-lg shadow-sm"></div>
-            <span class="font-semibold text-gray-700">Dirty</span>
-        </div>
-    </div>
 </div>
 
 <style>
