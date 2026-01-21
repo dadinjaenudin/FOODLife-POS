@@ -330,11 +330,117 @@
     
 </div>
 
-<!-- Modal Container for HTMX Modals -->
-<div id="modal-container"></div>
-
 <!-- JavaScript: Category Button Active State Management -->
 <script>
+// Quick Order Alpine.js Component - Global Function
+function quickOrder() {
+    console.log('🔵 Alpine.js quickOrder() initialized:', new Date().toISOString());
+    return {
+        items: [],
+        customerName: '',
+        paymentMethod: 'cash',
+        paymentAmount: 0,
+        
+        get total() {
+            return this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        },
+        
+        get formattedPaymentAmount() {
+            return this.formatNumber(this.paymentAmount);
+        },
+        
+        set formattedPaymentAmount(value) {
+            // Remove all commas and parse as number
+            this.paymentAmount = parseInt(value.replace(/,/g, '')) || 0;
+        },
+        
+        addItem(productId, name, price) {
+            console.log('➕ Adding item:', productId, name, price);
+            const existingItem = this.items.find(item => item.product_id === productId);
+            if (existingItem) {
+                existingItem.quantity++;
+            } else {
+                this.items.push({
+                    product_id: productId,
+                    name: name,
+                    price: price,
+                    quantity: 1
+                });
+            }
+            // Auto set payment amount
+            this.paymentAmount = this.total;
+        },
+        
+        removeItem(index) {
+            this.items.splice(index, 1);
+            this.paymentAmount = this.total;
+        },
+        
+        increaseQty(index) {
+            this.items[index].quantity++;
+            this.paymentAmount = this.total;
+        },
+        
+        decreaseQty(index) {
+            if (this.items[index].quantity > 1) {
+                this.items[index].quantity--;
+                this.paymentAmount = this.total;
+            } else {
+                this.removeItem(index);
+            }
+        },
+        
+        parseIndonesianNumber(str) {
+            // Convert Indonesian format (10.000,00) to number (10000)
+            // Remove thousand separators (.) and replace decimal comma (,) with dot
+            return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+        },
+        
+        formatRupiah(amount) {
+            // Format dengan pemisah ribuan (koma)
+            const num = Math.round(amount).toString();
+            const formatted = num.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            console.log('formatRupiah:', amount, '=>', 'Rp ' + formatted);
+            return 'Rp ' + formatted;
+        },
+        
+        formatNumber(amount) {
+            // Format number dengan pemisah ribuan (koma) tanpa prefix Rp
+            const num = Math.round(amount).toString();
+            return num.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        },
+        
+        submitOrder() {
+            if (this.items.length === 0 || this.paymentAmount < this.total) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('items', JSON.stringify(this.items));
+            formData.append('payment_method', this.paymentMethod);
+            formData.append('payment_amount', this.paymentAmount);
+            formData.append('customer_name', this.customerName);
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            fetch('/pos/quick-order/create/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('modal-container').innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to create order');
+            });
+        }
+    }
+}
+
 // Ensure modal-container always exists on page load
 document.addEventListener('DOMContentLoaded', function() {
     let modalContainer = document.getElementById('modal-container');
