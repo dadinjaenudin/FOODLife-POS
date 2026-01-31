@@ -1,57 +1,260 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PIN Login - POS F&B</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .pin-dot {
-            width: 20px;
-            height: 20px;
+        /* Animated Mesh Gradient Background (same as main login) */
+        @keyframes gradient {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        .animated-gradient {
+            background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #4facfe, #00f2fe, #667eea);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+
+        /* Glassmorphism Card */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* Floating Particles */
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-20px) rotate(180deg);
+            }
+        }
+
+        .particle {
+            position: absolute;
             border-radius: 50%;
-            border: 2px solid #3b82f6;
-            transition: all 0.2s;
+            opacity: 0.1;
+            animation: float 6s ease-in-out infinite;
         }
+
+        .particle:nth-child(1) {
+            width: 80px;
+            height: 80px;
+            top: 10%;
+            left: 10%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            animation-delay: 0s;
+        }
+
+        .particle:nth-child(2) {
+            width: 120px;
+            height: 120px;
+            top: 60%;
+            left: 70%;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            animation-delay: 2s;
+        }
+
+        .particle:nth-child(3) {
+            width: 60px;
+            height: 60px;
+            top: 80%;
+            left: 20%;
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            animation-delay: 4s;
+        }
+
+        .particle:nth-child(4) {
+            width: 100px;
+            height: 100px;
+            top: 20%;
+            left: 80%;
+            background: linear-gradient(135deg, #43e97b, #38f9d7);
+            animation-delay: 1s;
+        }
+
+        /* Entrance Animation */
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px) scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .animate-slide-in {
+            animation: slideInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* PIN Dots with Enhanced Animation */
+        .pin-dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 3px solid #9333ea;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: white;
+        }
+
         .pin-dot.filled {
-            background-color: #3b82f6;
+            background: linear-gradient(135deg, #9333ea, #ec4899);
+            border-color: #9333ea;
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(147, 51, 234, 0.5);
         }
+
+        /* Numpad Button Enhanced */
         .numpad-btn {
-            transition: all 0.1s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
         }
+
+        .numpad-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
         .numpad-btn:active {
             transform: scale(0.95);
         }
+
+        /* Ripple Effect */
+        .numpad-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .numpad-btn:active::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        /* Pulse Animation for Logo */
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 20px rgba(147, 51, 234, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 40px rgba(147, 51, 234, 0.8);
+            }
+        }
+
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        /* Shake Animation for Error */
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            10%,
+            30%,
+            50%,
+            70%,
+            90% {
+                transform: translateX(-10px);
+            }
+
+            20%,
+            40%,
+            60%,
+            80% {
+                transform: translateX(10px);
+            }
+        }
+
+        .animate-shake {
+            animation: shake 0.5s;
+        }
     </style>
 </head>
-<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+
+<body class="min-h-screen flex items-center justify-center p-4 overflow-hidden relative animated-gradient">
+
+    <!-- Floating Particles Background -->
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+
+    <!-- Main Container with Glassmorphism -->
+    <div class="glass-card rounded-3xl shadow-2xl w-full max-w-md p-6 md:p-8 animate-slide-in relative z-10">
+
         <!-- Header -->
-        <div class="text-center mb-8">
-            <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+        <div class="text-center mb-5">
+            <!-- Logo with Pulse Glow -->
+            <div
+                class="w-20 h-20 bg-gradient-to-br from-purple-600 to-pink-600 rounded-3xl mx-auto mb-4 flex items-center justify-center pulse-glow">
+                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                    </path>
                 </svg>
             </div>
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">PIN Login</h1>
-            <p class="text-gray-600">Masukkan 6-digit PIN Anda</p>
+
+            <!-- Title with Gradient -->
+            <h1
+                class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+                PIN Login
+            </h1>
+            <p class="text-gray-600 text-sm">Masukkan 6-digit PIN Anda</p>
         </div>
 
         <!-- Error Message -->
         {% if error %}
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded mb-6 animate-shake">
+        <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-3 rounded-xl mb-4 animate-shake">
             <div class="flex items-center">
-                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clip-rule="evenodd"></path>
                 </svg>
-                <span class="font-medium">{{ error }}</span>
+                <span class="font-medium text-sm">{{ error }}</span>
             </div>
         </div>
         {% endif %}
 
-        <!-- PIN Display -->
-        <div class="mb-8">
-            <div class="flex justify-center space-x-3 mb-4">
+        <!-- PIN Display with Enhanced Dots -->
+        <div class="mb-4">
+            <div class="flex justify-center space-x-2 mb-3">
                 <div id="dot1" class="pin-dot"></div>
                 <div id="dot2" class="pin-dot"></div>
                 <div id="dot3" class="pin-dot"></div>
@@ -62,31 +265,46 @@
             <input type="hidden" id="pinInput" name="pin" maxlength="6">
         </div>
 
-        <!-- Numpad -->
-        <div class="grid grid-cols-3 gap-3 mb-6">
+        <!-- Enhanced Numpad -->
+        <div class="grid grid-cols-3 gap-2.5 mb-4">
             <!-- Numbers 1-9 -->
-            <button onclick="addDigit('1')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">1</button>
-            <button onclick="addDigit('2')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">2</button>
-            <button onclick="addDigit('3')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">3</button>
-            
-            <button onclick="addDigit('4')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">4</button>
-            <button onclick="addDigit('5')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">5</button>
-            <button onclick="addDigit('6')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">6</button>
-            
-            <button onclick="addDigit('7')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">7</button>
-            <button onclick="addDigit('8')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">8</button>
-            <button onclick="addDigit('9')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">9</button>
-            
+            <button onclick="addDigit('1')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">1</button>
+            <button onclick="addDigit('2')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">2</button>
+            <button onclick="addDigit('3')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">3</button>
+
+            <button onclick="addDigit('4')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">4</button>
+            <button onclick="addDigit('5')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">5</button>
+            <button onclick="addDigit('6')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">6</button>
+
+            <button onclick="addDigit('7')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">7</button>
+            <button onclick="addDigit('8')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">8</button>
+            <button onclick="addDigit('9')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">9</button>
+
             <!-- Bottom row: Clear, 0, Backspace -->
-            <button onclick="clearPin()" class="numpad-btn bg-red-100 hover:bg-red-200 text-red-700 font-bold py-6 rounded-xl">
+            <button onclick="clearPin()"
+                class="numpad-btn bg-gradient-to-br from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 border-2 border-red-200 hover:border-red-400 text-red-700 font-bold py-4 rounded-xl">
                 <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
                 </svg>
             </button>
-            <button onclick="addDigit('0')" class="numpad-btn bg-gray-100 hover:bg-gray-200 text-2xl font-bold py-6 rounded-xl">0</button>
-            <button onclick="backspace()" class="numpad-btn bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold py-6 rounded-xl">
+            <button onclick="addDigit('0')"
+                class="numpad-btn bg-gradient-to-br from-gray-50 to-gray-100 hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 text-2xl font-bold py-4 rounded-xl text-gray-800 hover:text-purple-700">0</button>
+            <button onclick="backspace()"
+                class="numpad-btn bg-gradient-to-br from-yellow-50 to-yellow-100 hover:from-yellow-100 hover:to-yellow-200 border-2 border-yellow-200 hover:border-yellow-400 text-yellow-700 font-bold py-4 rounded-xl">
                 <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z">
+                    </path>
                 </svg>
             </button>
         </div>
@@ -96,27 +314,37 @@
             {% csrf_token %}
             <input type="hidden" name="pin" id="pinFormInput">
             <button type="submit" id="submitBtn" disabled
-                    class="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-lg rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                <span id="submitText">Masukkan PIN (0/6)</span>
+                class="w-full py-3.5 bg-gradient-to-r from-purple-600 via-purple-700 to-pink-600 hover:from-purple-700 hover:via-purple-800 hover:to-pink-700 text-white font-bold text-lg rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-2xl transform hover:-translate-y-1 active:scale-95 relative overflow-hidden">
+                <span id="submitText" class="relative z-10">Masukkan PIN (0/6)</span>
+                <!-- Shine Effect -->
+                <div
+                    class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000">
+                </div>
             </button>
         </form>
 
         <!-- Alternative Login -->
         <div class="text-center">
-            <a href="{% url 'core:login' %}" class="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center justify-center">
+            <a href="{% url 'core:login' %}"
+                class="inline-flex items-center text-sm text-purple-600 hover:text-purple-700 font-semibold hover:underline transition-colors">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
                 </svg>
                 Login dengan Username & Password
             </a>
         </div>
+
+        <!-- Footer -->
+        <div class="mt-4 text-center text-xs text-gray-400">
+            <p>© 2026 POS F&B System</p>
+        </div>
     </div>
 
     <script>
         let pin = '';
-        
+
         function updateDisplay() {
-            // Update dots
+            // Update dots with animation
             for (let i = 1; i <= 6; i++) {
                 const dot = document.getElementById(`dot${i}`);
                 if (i <= pin.length) {
@@ -125,27 +353,32 @@
                     dot.classList.remove('filled');
                 }
             }
-            
+
             // Update submit button
             const submitBtn = document.getElementById('submitBtn');
             const submitText = document.getElementById('submitText');
-            
+
             if (pin.length === 6) {
                 submitBtn.disabled = false;
                 submitText.textContent = '✓ Login';
-                submitBtn.classList.add('shadow-lg');
+                submitBtn.classList.add('shadow-2xl');
             } else {
                 submitBtn.disabled = true;
                 submitText.textContent = `Masukkan PIN (${pin.length}/6)`;
-                submitBtn.classList.remove('shadow-lg');
+                submitBtn.classList.remove('shadow-2xl');
             }
         }
-        
+
         function addDigit(digit) {
             if (pin.length < 6) {
                 pin += digit;
                 updateDisplay();
-                
+
+                // Add haptic feedback (vibration on mobile)
+                if (navigator.vibrate) {
+                    navigator.vibrate(10);
+                }
+
                 // Auto-submit when 6 digits entered
                 if (pin.length === 6) {
                     setTimeout(() => {
@@ -154,26 +387,34 @@
                 }
             }
         }
-        
+
         function backspace() {
             if (pin.length > 0) {
                 pin = pin.slice(0, -1);
                 updateDisplay();
+
+                if (navigator.vibrate) {
+                    navigator.vibrate(10);
+                }
             }
         }
-        
+
         function clearPin() {
             pin = '';
             updateDisplay();
+
+            if (navigator.vibrate) {
+                navigator.vibrate([10, 50, 10]);
+            }
         }
-        
+
         function submitForm() {
             document.getElementById('pinFormInput').value = pin;
             document.getElementById('pinForm').submit();
         }
-        
+
         // Keyboard support
-        document.addEventListener('keydown', function(event) {
+        document.addEventListener('keydown', function (event) {
             if (event.key >= '0' && event.key <= '9') {
                 addDigit(event.key);
             } else if (event.key === 'Backspace') {
@@ -185,14 +426,14 @@
                 submitForm();
             }
         });
-        
+
         // Initialize display
         updateDisplay();
-        
+
         // Auto-clear error after 3 seconds
         {% if error %}
         setTimeout(() => {
-            const errorDiv = document.querySelector('.bg-red-100');
+            const errorDiv = document.querySelector('.bg-red-50');
             if (errorDiv) {
                 errorDiv.style.transition = 'opacity 0.5s';
                 errorDiv.style.opacity = '0';
@@ -200,21 +441,21 @@
             }
         }, 3000);
         {% endif %}
-        
+
         // MANDATORY: Check terminal setup before allowing login
-        window.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('DOMContentLoaded', function () {
             const terminalId = localStorage.getItem('terminal_id');
             const setupCompleted = localStorage.getItem('setup_completed');
             const storeId = localStorage.getItem('store_id');
             const companyId = localStorage.getItem('company_id');
-            
+
             // Log for debugging
             console.log('Terminal Info:');
             console.log('  Terminal ID:', terminalId);
             console.log('  Terminal Code:', localStorage.getItem('terminal_code'));
             console.log('  Store ID:', storeId);
             console.log('  Company ID:', companyId);
-            
+
             // Check all required fields
             if (!terminalId || !setupCompleted || !storeId || !companyId) {
                 // INCOMPLETE SETUP - BLOCK LOGIN AND REDIRECT TO SETUP
@@ -224,37 +465,39 @@
                     store_id: !storeId,
                     company_id: !companyId
                 });
-                
-                // Show blocking overlay
+
+                // Show blocking overlay with modern design
                 const overlay = document.createElement('div');
-                overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50';
                 overlay.innerHTML = `
-                    <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md mx-4 text-center">
-                        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg class="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center animate-slide-in">
+                        <div class="w-20 h-20 bg-gradient-to-br from-red-400 to-red-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                            <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                             </svg>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-900 mb-2">Terminal Setup Incomplete</h3>
-                        <p class="text-gray-600 mb-4">This device must be registered with complete store and company information.</p>
+                        <h3 class="text-2xl font-bold text-gray-900 mb-3">Terminal Setup Required</h3>
+                        <p class="text-gray-600 mb-2">This device must be registered before login.</p>
                         <p class="text-sm text-gray-500 mb-6">Redirecting to setup page...</p>
-                        <div class="animate-spin w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full mx-auto"></div>
+                        <div class="flex justify-center">
+                            <div class="animate-spin w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full"></div>
+                        </div>
                     </div>
                 `;
                 document.body.appendChild(overlay);
-                
+
                 // Redirect after 2 seconds
-                setTimeout(function() {
+                setTimeout(function () {
                     window.location.href = '/setup/terminal/';
                 }, 2000);
             } else {
                 // Terminal info complete - allow login
                 console.log('✅ Terminal setup complete');
-                
+
                 // Inject terminal ID to form on submit
                 const pinForm = document.getElementById('pinForm');
                 if (pinForm) {
-                    pinForm.addEventListener('submit', function() {
+                    pinForm.addEventListener('submit', function () {
                         // Create hidden input to send terminal ID with form
                         const input = document.createElement('input');
                         input.type = 'hidden';
@@ -267,4 +510,5 @@
         });
     </script>
 </body>
+
 </html>

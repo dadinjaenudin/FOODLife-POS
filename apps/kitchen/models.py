@@ -1,4 +1,4 @@
-from django.db import models
+﻿from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 
@@ -101,7 +101,7 @@ class KitchenOrder(models.Model):
 
 class KitchenStation(models.Model):
     """Kitchen station configuration"""
-    outlet = models.ForeignKey('core.Outlet', on_delete=models.CASCADE, related_name='kitchen_stations')
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE, related_name='kitchen_stations')
     name = models.CharField(max_length=50)
     code = models.CharField(max_length=20)  # e.g., 'kitchen', 'bar', 'grill', 'dessert'
     
@@ -118,7 +118,7 @@ class KitchenStation(models.Model):
     
     class Meta:
         ordering = ['display_order', 'name']
-        unique_together = [['outlet', 'code']]
+        unique_together = [['brand', 'code']]
     
     def __str__(self):
         return f"{self.name} ({self.code})"
@@ -126,7 +126,7 @@ class KitchenStation(models.Model):
 
 class KitchenPerformance(models.Model):
     """Daily kitchen performance metrics"""
-    outlet = models.ForeignKey('core.Outlet', on_delete=models.CASCADE, related_name='kitchen_performance')
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE, related_name='kitchen_performance')
     station = models.CharField(max_length=20)
     date = models.DateField()
     
@@ -143,7 +143,7 @@ class KitchenPerformance(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        unique_together = [['outlet', 'station', 'date']]
+        unique_together = [['brand', 'station', 'date']]
         ordering = ['-date', 'station']
     
     def __str__(self):
@@ -171,7 +171,7 @@ class PrinterConfig(models.Model):
     ]
     
     name = models.CharField(max_length=100)
-    outlet = models.ForeignKey('core.Outlet', on_delete=models.CASCADE, related_name='printers')
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE, related_name='printers')
     station = models.CharField(max_length=20)
     
     connection_type = models.CharField(max_length=20, choices=CONNECTION_TYPES)

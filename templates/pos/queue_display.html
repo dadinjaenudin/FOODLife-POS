@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Queue Display - {{ request.user.brand.name }}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+            min-height: 100vh;
+        }
+        
+        .container {
+            padding: 1rem;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .brand-name {
+            font-size: 2rem;
+            font-weight: 900;
+            margin-bottom: 0.3rem;
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+        
+        .timestamp {
+            font-size: 0.9rem;
+            color: #aaa;
+            font-weight: 300;
+        }
+        
+        .serving-section {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 900;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            display: inline-block;
+        }
+        
+        .section-title.serving {
+            color: #00ff00;
+            text-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+        
+        .section-title.preparing {
+            color: #ffaa00;
+            text-shadow: 0 0 20px rgba(255, 170, 0, 0.5);
+        }
+        
+        .queue-numbers {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+        
+        .queue-number {
+            background: linear-gradient(135deg, #00ff00 0%, #00cc00 100%);
+            color: #000;
+            font-size: 4rem;
+            font-weight: 900;
+            padding: 1rem 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 255, 0, 0.3);
+            animation: pulse 2s infinite;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .queue-number::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shine 3s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 10px 25px rgba(0, 255, 0, 0.3);
+            }
+            50% { 
+                transform: scale(1.05);
+                box-shadow: 0 15px 35px rgba(0, 255, 0, 0.5);
+            }
+        }
+        
+        @keyframes shine {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        
+        .preparing-section {
+            flex: 1;
+            text-align: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+        }
+        
+        .preparing-numbers {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .preparing-number {
+            background: linear-gradient(135deg, #333 0%, #222 100%);
+            color: #fff;
+            font-size: 2.5rem;
+            font-weight: bold;
+            padding: 1rem 1.5rem 2.5rem 1.5rem;
+            border-radius: 12px;
+            border: 3px solid #ffaa00;
+            box-shadow: 0 8px 15px rgba(255, 170, 0, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        
+        .preparing-number:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(255, 170, 0, 0.4);
+        }
+        
+        .mark-ready-btn {
+            position: absolute;
+            bottom: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #00ff00 0%, #00cc00 100%);
+            color: #000;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 0.4rem 1rem;
+            border-radius: 15px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 255, 0, 0.3);
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .mark-ready-btn:hover {
+            background: linear-gradient(135deg, #00ff00 0%, #00ff00 100%);
+            box-shadow: 0 6px 15px rgba(0, 255, 0, 0.5);
+            transform: translateX(-50%) scale(1.05);
+        }
+        
+        .mark-ready-btn:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+        
+        .footer {
+            position: fixed;
+            bottom: 0.5rem;
+            right: 1rem;
+            font-size: 0.9rem;
+            color: #888;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .empty-state {
+            font-size: 1.2rem;
+            color: #666;
+            padding: 2rem;
+            font-weight: 300;
+        }
+        
+        .customer-info {
+            font-size: 0.9rem;
+            color: #ddd;
+            margin-top: 0.3rem;
+            font-weight: 400;
+        }
+            color: #888;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .empty-state {
+            font-size: 2rem;
+            color: #666;
+            padding: 4rem;
+            font-weight: 300;
+        }
+        
+        .customer-info {
+            font-size: 1.2rem;
+            color: #ddd;
+            margin-top: 0.5rem;
+            font-weight: 400;
+        }
+    </style>
+</head>
+<body hx-get="{% url 'pos:queue_display' %}" 
+      hx-trigger="every 5s" 
+      hx-swap="outerHTML"
+      hx-target="body">
+    
+    <div class="container">
+        <div class="header">
+            <div class="brand-name">{{ request.user.brand.name }}</div>
+            <div class="timestamp" id="current-time"></div>
+        </div>
+        
+        <div class="serving-section">
+            <div class="section-title serving">
+                🎯 NOW SERVING
+            </div>
+            
+            {% if serving %}
+                <div class="queue-numbers">
+                    {% for bill in serving %}
+                        <div class="queue-number">
+                            #{{ bill.queue_number }}
+                            {% if bill.customer_name %}
+                                <div class="customer-info">{{ bill.customer_name }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">No orders ready yet</div>
+            {% endif %}
+        </div>
+        
+        <div class="preparing-section">
+            <div class="section-title preparing">
+                ⏳ PREPARING
+            </div>
+            
+            {% if preparing %}
+                <div class="preparing-numbers">
+                    {% for bill in preparing %}
+                        <div class="preparing-number">
+                            #{{ bill.queue_number }}
+                            <button class="mark-ready-btn"
+                                    hx-post="{% url 'pos:mark_queue_completed' bill.id %}"
+                                    hx-trigger="click"
+                                    hx-swap="none"
+                                    onclick="this.disabled=true; this.textContent='✓ Marked!'; setTimeout(() => location.reload(), 1000)">
+                                ✓ READY
+                            </button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">Queue is empty</div>
+            {% endif %}
+        </div>
+        
+        {% if avg_wait %}
+        <div class="footer">
+            📊 Avg wait: {{ avg_wait }} min
+        </div>
+        {% endif %}
+    </div>
+    
+    <script>
+        // Add CSRF token to HTMX requests
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            event.detail.headers['X-CSRFToken'] = csrfToken;
+        });
+        
+        // Update timestamp every second
+        function updateTime() {
+            const now = new Date();
+            const options = {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            };
+            const timeStr = now.toLocaleString('id-ID', options);
+            const elem = document.getElementById('current-time');
+            if (elem) {
+                elem.textContent = timeStr;
+            }
+        }
+        
+        // Clear existing interval before setting new one
+        if (window.timeInterval) {
+            clearInterval(window.timeInterval);
+        }
+        updateTime();
+        window.timeInterval = setInterval(updateTime, 1000);
+        
+        // Play notification sound when new order (optional)
+        // Use window scope to avoid re-declaration error on HTMX refresh
+        if (typeof window.lastServingCount === 'undefined') {
+            window.lastServingCount = {{ serving|length }};
+        }
+        
+        function checkNewOrder() {
+            const currentCount = document.querySelectorAll('.queue-number').length;
+            if (currentCount > window.lastServingCount) {
+                // New order ready - could play sound here
+                // new Audio('/static/sounds/notification.mp3').play();
+            }
+            window.lastServingCount = currentCount;
+        }
+        
+        // Check after HTMX swap (only add listener if not already added)
+        if (!window.queueListenerAdded) {
+            document.body.addEventListener('htmx:afterSwap', checkNewOrder);
+            window.queueListenerAdded = true;
+        }
+    </script>
+</body>
+</html>

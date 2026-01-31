@@ -104,30 +104,17 @@ function holdBill() {
         return response.text();
     })
     .then(html => {
-        // Update bill panel
-        const billPanel = document.getElementById('bill-panel');
-        if (billPanel) {
-            billPanel.innerHTML = html;
-            closeModal();
-            
-            // Re-process HTMX in bill panel to enable buttons
-            setTimeout(() => {
-                htmx.process(billPanel);
-                
-                // Specifically ensure View Held Bills button is ready
-                const heldBillsBtn = document.getElementById('held-bills-btn');
-                if (heldBillsBtn) {
-                    heldBillsBtn.disabled = false;
-                    htmx.process(heldBillsBtn);
-                }
-            }, 100);
-            
-            // Show success notification
-            showNotification('✅ Bill held successfully!');
-        } else {
-            console.error('bill-panel element not found');
-            alert('Error: Bill panel not found');
-        }
+        console.log('Hold bill successful!');
+        closeModal();
+        
+        // Show success notification
+        showNotification('✅ Bill held successfully!');
+        
+        // Reload page after short delay to refresh product grid
+        setTimeout(() => {
+            console.log('Reloading page to refresh product grid...');
+            window.location.reload(true);
+        }, 500);
     })
     .catch(error => {
         console.error('Error:', error);

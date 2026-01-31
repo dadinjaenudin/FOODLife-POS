@@ -1,0 +1,93 @@
+{% load humanize %}
+<!-- Confirm Remove Item Modal -->
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl transform animate-slideUp">
+        <!-- Header with Icon -->
+        <div class="bg-gradient-to-br from-red-500 to-red-600 p-6 text-center">
+            <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white">Remove Item?</h2>
+        </div>
+        
+        <!-- Content -->
+        <div class="p-6 text-center">
+            <p class="text-gray-600 text-lg mb-2">Are you sure you want to remove</p>
+            <p class="text-xl font-bold text-gray-900 mb-6">{{ item.product.name }}</p>
+            
+            <!-- Item Details -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6 text-left">
+                <div class="flex items-center gap-3">
+                    {% if item.product.image %}
+                    <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="w-16 h-16 object-cover rounded-lg">
+                    {% else %}
+                    <div class="w-16 h-16 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">🍽️</span>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="flex-1">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-semibold text-gray-900">{{ item.product.name }}</p>
+                                <p class="text-sm text-gray-500">Quantity: {{ item.quantity }}</p>
+                            </div>
+                            <p class="font-bold text-gray-900">Rp {{ item.total|floatformat:0|intcomma }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <p class="text-sm text-gray-500 mb-6">This action cannot be undone</p>
+        </div>
+        
+        <!-- Actions -->
+        <div class="flex gap-3 p-6 pt-0">
+            <button 
+                onclick="closeModal()"
+                class="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all duration-200">
+                Cancel
+            </button>
+            <button 
+                class="flex-1 py-3 px-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                hx-delete="{% url 'pos:void_item' item.id %}"
+                hx-target="#bill-panel"
+                hx-swap="outerHTML"
+                hx-on::after-request="closeModal(); setTimeout(function() { const bp = document.getElementById('bill-panel'); if(bp) htmx.process(bp); }, 200);">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+                Yes, Remove
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideUp {
+    animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+</style>

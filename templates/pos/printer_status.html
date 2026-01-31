@@ -1,0 +1,427 @@
+<!-- Printer Status Widget - Footer Right (Tidak Menutupi Footer Info) -->
+<div id="printer-status-widget" 
+     class="fixed bottom-0 right-96 z-40 bg-white border-t-2 border-l-2 border-gray-200 rounded-tl-xl shadow-lg"
+     x-data="printerStatusWidget()" 
+     x-init="init()"
+     @click.away="expanded = false"
+     style="max-width: 320px;">
+    
+    <!-- Collapsed View - Status Indicator -->
+    <div class="cursor-pointer" @click="expanded = !expanded">
+        <div class="flex items-center gap-2 px-3 py-2.5 h-12">
+            <!-- Printer Icon with Status Indicator -->
+            <div class="relative">
+                <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                </svg>
+                <!-- Status Dot -->
+                <span class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-white"
+                      :class="{
+                          'bg-green-500 animate-pulse': status.printer === 'online' && status.agent === 'running',
+                          'bg-yellow-500': status.printer === 'online' && status.agent === 'stopped',
+                          'bg-red-500': status.printer === 'offline',
+                          'bg-gray-400': status.printer === 'checking'
+                      }"></span>
+            </div>
+            
+            <!-- Status Text -->
+            <div class="flex-1 min-w-0">
+                <div class="text-xs font-semibold text-gray-900" x-text="statusText()"></div>
+            </div>
+            
+            <!-- Expand Icon -->
+            <svg class="w-4 h-4 text-gray-400 transition-transform" 
+                 :class="{'rotate-180': expanded}"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+            </svg>
+        </div>
+    </div>
+    
+    <!-- Expanded View - Details & Controls -->
+    <div x-show="expanded" 
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 transform -translate-y-2"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 transform translate-y-0"
+         x-transition:leave-end="opacity-0 transform -translate-y-2"
+         class="border-t border-gray-200 p-3 space-y-3 bg-gradient-to-br from-gray-50 to-white"
+         style="display: none;">
+        
+        <!-- Printer Info -->
+        <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-gray-600">Printer:</span>
+                <span class="font-medium" x-text="status.printerName || 'N/A'"></span>
+            </div>
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-gray-600">Agent:</span>
+                <span class="font-medium" 
+                      :class="{
+                          'text-green-600': status.agent === 'running',
+                          'text-red-600': status.agent === 'stopped',
+                          'text-gray-500': status.agent === 'checking'
+                      }"
+                      x-text="status.agent === 'running' ? 'Running' : status.agent === 'stopped' ? 'Stopped' : 'Checking...'"></span>
+            </div>
+            <div class="flex justify-between items-center text-xs" x-show="status.pid">
+                <span class="text-gray-600">PID:</span>
+                <span class="font-mono text-xs" x-text="status.pid"></span>
+            </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200">
+            <!-- Start Agent Button -->
+            <button @click="startAgent()" 
+                    x-show="status.agent === 'stopped'"
+                    :disabled="loading"
+                    class="col-span-2 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg text-xs font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span x-text="loading ? 'Starting...' : 'Start Agent'"></span>
+            </button>
+            
+            <!-- Stop Agent Button -->
+            <button @click="confirmStopAgent()" 
+                    x-show="status.agent === 'running'"
+                    :disabled="loading"
+                    class="col-span-2 flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg text-xs font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                </svg>
+                <span x-text="loading ? 'Stopping...' : 'Stop Agent'"></span>
+            </button>
+            
+            <!-- Test Print Button -->
+            <button @click="testPrint()" 
+                    :disabled="loading || status.printer === 'offline'"
+                    class="flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg text-xs font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>Test</span>
+            </button>
+            
+            <!-- Open Dashboard Button -->
+            <button @click="openDashboard()" 
+                    class="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+                <span>Dashboard</span>
+            </button>
+        </div>
+        
+        <!-- Last Updated -->
+        <div class="text-xs text-gray-400 text-center pt-1.5 border-t border-gray-200" x-show="lastUpdate">
+            <span x-text="formatTime(lastUpdate)"></span>
+        </div>
+    </div>
+    
+    <!-- Custom Confirmation Modal -->
+    <div x-show="confirmDialog.show"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         style="display: none;"
+         @click.self="confirmDialog.show = false">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 transform scale-95"
+             x-transition:enter-end="opacity-100 transform scale-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 transform scale-100"
+             x-transition:leave-end="opacity-0 transform scale-95">
+            <!-- Icon Header -->
+            <div class="bg-gradient-to-br from-red-50 to-orange-50 p-6 text-center">
+                <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900" x-text="confirmDialog.title"></h3>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6">
+                <p class="text-gray-600 text-center mb-6" x-text="confirmDialog.message"></p>
+                
+                <!-- Action Buttons -->
+                <div class="flex gap-3">
+                    <button @click="confirmDialog.show = false"
+                            class="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="confirmDialog.onConfirm(); confirmDialog.show = false"
+                            class="flex-1 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-xl shadow-lg transition-all transform hover:scale-105">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notifications -->
+    <div class="fixed bottom-16 right-4 z-50 space-y-2 pointer-events-none">
+        <template x-for="(toast, index) in toasts" :key="toast.id">
+            <div x-show="toast.show"
+                 x-transition:enter="transition ease-out duration-300 transform"
+                 x-transition:enter-start="opacity-0 translate-x-full"
+                 x-transition:enter-end="opacity-100 translate-x-0"
+                 x-transition:leave="transition ease-in duration-200 transform"
+                 x-transition:leave-start="opacity-100 translate-x-0"
+                 x-transition:leave-end="opacity-0 translate-x-full"
+                 class="pointer-events-auto bg-white rounded-xl shadow-2xl border-l-4 overflow-hidden max-w-sm"
+                 :class="{
+                     'border-green-500': toast.type === 'success',
+                     'border-red-500': toast.type === 'error',
+                     'border-blue-500': toast.type === 'info',
+                     'border-yellow-500': toast.type === 'warning'
+                 }">
+                <div class="p-4 flex items-start gap-3">
+                    <!-- Icon -->
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center"
+                             :class="{
+                                 'bg-green-100': toast.type === 'success',
+                                 'bg-red-100': toast.type === 'error',
+                                 'bg-blue-100': toast.type === 'info',
+                                 'bg-yellow-100': toast.type === 'warning'
+                             }">
+                            <!-- Success -->
+                            <svg x-show="toast.type === 'success'" class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <!-- Error -->
+                            <svg x-show="toast.type === 'error'" class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            <!-- Info -->
+                            <svg x-show="toast.type === 'info'" class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <!-- Warning -->
+                            <svg x-show="toast.type === 'warning'" class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <!-- Message -->
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-gray-900" x-text="toast.title"></p>
+                        <p class="text-sm text-gray-600 mt-1" x-text="toast.message"></p>
+                    </div>
+                    
+                    <!-- Close Button -->
+                    <button @click="removeToast(toast.id)" class="flex-shrink-0 text-gray-400 hover:text-gray-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+function printerStatusWidget() {
+    return {
+        expanded: false,
+        loading: false,
+        lastUpdate: null,
+        pollInterval: null,
+        toasts: [],
+        toastId: 0,
+        confirmDialog: {
+            show: false,
+            title: '',
+            message: '',
+            onConfirm: () => {}
+        },
+        status: {
+            printer: 'checking',
+            agent: 'checking',
+            printerName: 'N/A',
+            pid: null
+        },
+        
+        init() {
+            this.checkStatus();
+            // Poll every 5 seconds
+            this.pollInterval = setInterval(() => {
+                if (!this.loading) {
+                    this.checkStatus();
+                }
+            }, 5000);
+        },
+        
+        async checkStatus() {
+            try {
+                const response = await fetch('http://localhost:5050/api/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.status.printer = data.printer.status === 'OK' ? 'online' : 'offline';
+                    this.status.agent = data.agent.running ? 'running' : 'stopped';
+                    this.status.printerName = data.printer.name;
+                    this.status.pid = data.agent.pid;
+                    this.lastUpdate = new Date();
+                } else {
+                    this.status.printer = 'offline';
+                    this.status.agent = 'stopped';
+                }
+            } catch (error) {
+                // Dashboard not accessible
+                this.status.printer = 'offline';
+                this.status.agent = 'stopped';
+                this.lastUpdate = new Date();
+            }
+        },
+        
+        statusText() {
+            if (this.status.printer === 'online' && this.status.agent === 'running') {
+                return 'Printer Ready';
+            } else if (this.status.printer === 'online' && this.status.agent === 'stopped') {
+                return 'Agent Stopped';
+            } else if (this.status.printer === 'offline') {
+                return 'Printer Offline';
+            } else {
+                return 'Checking...';
+            }
+        },
+        
+        showToast(title, message, type = 'info') {
+            const id = ++this.toastId;
+            const toast = { id, title, message, type, show: true };
+            this.toasts.push(toast);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                this.removeToast(id);
+            }, 5000);
+        },
+        
+        removeToast(id) {
+            const index = this.toasts.findIndex(t => t.id === id);
+            if (index > -1) {
+                this.toasts[index].show = false;
+                setTimeout(() => {
+                    this.toasts.splice(index, 1);
+                }, 300);
+            }
+        },
+        
+        showConfirm(title, message, onConfirm) {
+            this.confirmDialog = {
+                show: true,
+                title,
+                message,
+                onConfirm
+            };
+        },
+        
+        async startAgent() {
+            this.loading = true;
+            try {
+                const response = await fetch('http://localhost:5050/api/start-agent', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.showToast('Success', 'Print agent started successfully! Waiting for agent to initialize...', 'success');
+                    // Check status after 3 seconds to give agent time to start
+                    setTimeout(() => this.checkStatus(), 3000);
+                } else {
+                    this.showToast('Error', data.message || 'Failed to start agent', 'error');
+                }
+            } catch (error) {
+                this.showToast('Dashboard Not Running', 
+                    'Cannot connect to Print Dashboard (port 5050). Please start PrintAgentDashboard.exe from print_agent/dist/ folder first.', 
+                    'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        confirmStopAgent() {
+            this.showConfirm(
+                'Stop Print Agent?',
+                'This will stop the print agent service. Print jobs will not be processed until you start it again.',
+                () => this.stopAgent()
+            );
+        },
+        
+        async stopAgent() {
+            this.loading = true;
+            try {
+                const response = await fetch('http://localhost:5050/api/stop-agent', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.showToast('Success', 'Print agent stopped successfully!', 'success');
+                    setTimeout(() => this.checkStatus(), 1000);
+                } else {
+                    this.showToast('Error', data.message, 'error');
+                }
+            } catch (error) {
+                this.showToast('Connection Error', 'Failed to connect to dashboard.', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async testPrint() {
+            this.loading = true;
+            try {
+                const response = await fetch('http://localhost:5050/api/test-print', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.showToast('Test Print', 'Test print sent to printer!', 'success');
+                } else {
+                    this.showToast('Print Failed', data.message, 'error');
+                }
+            } catch (error) {
+                this.showToast('Connection Error', 'Failed to send test print.', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        openDashboard() {
+            window.open('http://localhost:5050', '_blank', 'width=1200,height=800');
+        },
+        
+        formatTime(date) {
+            if (!date) return '';
+            const now = new Date();
+            const diff = Math.floor((now - date) / 1000);
+            if (diff < 10) return 'Just now';
+            if (diff < 60) return `${diff}s ago`;
+            return `${Math.floor(diff / 60)}m ago`;
+        },
+        
+        destroy() {
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
+            }
+        }
+    }
+}
+</script>

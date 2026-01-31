@@ -1,75 +1,79 @@
 {% load humanize %}
-<!-- Quick Order Success Modal -->
+<!-- Quick Order Success Modal - COMPACT VERSION -->
 <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" 
      onclick="if(event.target === this) this.remove()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md" onclick="event.stopPropagation()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
         
         <!-- Success Animation -->
-        <div class="p-8 text-center">
-            <!-- Checkmark Icon -->
-            <div class="w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full mx-auto mb-6 flex items-center justify-center animate-bounce">
-                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="p-4 text-center">
+            <!-- Checkmark Icon - SMALLER -->
+            <div class="w-16 h-16 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full mx-auto mb-3 flex items-center justify-center">
+                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
                 </svg>
             </div>
 
-            <h2 class="text-2xl font-bold text-gray-900 mb-2">Order Successful!</h2>
-            <p class="text-gray-600 mb-6">Your order has been placed</p>
+            <h2 class="text-xl font-bold text-gray-900 mb-1">Order Successful!</h2>
+            <p class="text-sm text-gray-600 mb-4">Your order has been placed</p>
 
-            <!-- Queue Number -->
-            <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 mb-6 border-2 border-purple-200">
-                <p class="text-sm text-purple-600 font-semibold mb-2">Your Queue Number</p>
-                <div class="text-6xl font-black text-purple-600 mb-2">{{ bill.queue_number }}</div>
-                <p class="text-xs text-gray-600">Please wait for your number to be called</p>
+            <!-- Queue Number - COMPACT LARGE DISPLAY -->
+            <div class="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl p-4 mb-4 shadow-2xl">
+                <p class="text-white text-sm font-bold mb-2 tracking-wide">🎫 ANTRIAN / QUEUE NUMBER</p>
+                <div class="bg-white bg-opacity-20 backdrop-blur-sm rounded-xl p-4 mb-3">
+                    <div class="text-7xl font-black text-white drop-shadow-2xl animate-pulse-slow">#{{ bill.queue_number }}</div>
+                </div>
+                <div class="space-y-1 text-white text-xs">
+                    <p class="font-semibold">⏳ Wait: 7-10 minutes</p>
+                    <p class="font-semibold">🔊 Listen for your number</p>
+                    <p class="opacity-90">Receipt printed ✓</p>
+                </div>
             </div>
 
-            <!-- Bill Details -->
-            <div class="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm text-gray-600">Bill Number</span>
-                    <span class="text-sm font-semibold text-gray-900">{{ bill.bill_number }}</span>
+            <!-- Bill Details - COMPACT -->
+            <div class="bg-gray-50 rounded-lg p-3 mb-3 text-left text-xs">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-gray-600">Bill Number</span>
+                    <span class="font-semibold text-gray-900">{{ bill.bill_number }}</span>
                 </div>
                 {% if bill.customer_name %}
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm text-gray-600">Customer</span>
-                    <span class="text-sm font-semibold text-gray-900">{{ bill.customer_name }}</span>
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-gray-600">Customer</span>
+                    <span class="font-semibold text-gray-900">{{ bill.customer_name }}</span>
                 </div>
                 {% endif %}
-                <div class="flex justify-between items-center mb-2 pt-2 border-t">
-                    <span class="text-sm text-gray-600">Total</span>
-                    <span class="text-lg font-bold text-purple-600">Rp {{ bill.total|floatformat:0|intcomma }}</span>
-                </div>
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm text-gray-600">Payment</span>
-                    <span class="text-sm font-semibold text-green-600">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                <div class="flex justify-between items-center mb-1 pt-1 border-t">
+                    <span class="text-gray-600">Total</span>
+                    <span class="text-base font-bold text-purple-600">Rp {{ bill.total|floatformat:0|intcomma }}</span>
                 </div>
                 {% if change > 0 %}
                 <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Change</span>
-                    <span class="text-sm font-semibold text-gray-900">Rp {{ change|floatformat:0|intcomma }}</span>
+                    <span class="text-gray-600">Change</span>
+                    <span class="font-semibold text-green-600">Rp {{ change|floatformat:0|intcomma }}</span>
                 </div>
                 {% endif %}
             </div>
 
-            <!-- Items -->
-            <div class="bg-white rounded-lg p-4 mb-6 text-left border">
-                <h3 class="text-sm font-bold text-gray-700 mb-3">Order Items</h3>
-                <div class="space-y-2">
+            <!-- Items - COMPACT -->
+            <div class="bg-white rounded-lg p-3 mb-4 text-left border text-xs">
+                <h3 class="text-xs font-bold text-gray-700 mb-2">Order Items ({{ bill.items.count }})</h3>
+                <div class="space-y-1 max-h-32 overflow-y-auto">
                     {% for item in bill.items.all %}
-                    <div class="flex justify-between items-center text-sm">
-                        <span class="text-gray-700">{{ item.quantity }}x {{ item.product.name }}</span>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-700">{{ item.quantity }}x {{ item.product.name|truncatewords:3 }}</span>
                         <span class="text-gray-900 font-semibold">Rp {{ item.total|floatformat:0|intcomma }}</span>
                     </div>
                     {% endfor %}
                 </div>
             </div>
 
-            <!-- Close Button -->
-            <button type="button"
-                    onclick="this.closest('.fixed').remove(); location.reload();"
-                    class="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold rounded-lg transition-all shadow-md hover:shadow-lg">
-                Done
-            </button>
+            <!-- Close Button - PROMINENT & FIXED -->
+            <div class="sticky bottom-0 bg-white pt-2 pb-4">
+                <button type="button"
+                        onclick="this.closest('.fixed').remove(); location.reload();"
+                        class="w-full py-4 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white text-lg font-bold rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95">
+                    ✓ DONE
+                </button>
+            </div>
         </div>
 
     </div>
@@ -87,5 +91,20 @@
 
 .animate-bounce {
     animation: bounce 1s ease-in-out 2;
+}
+
+@keyframes pulse-slow {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.9;
+        transform: scale(1.05);
+    }
+}
+
+.animate-pulse-slow {
+    animation: pulse-slow 2s ease-in-out infinite;
 }
 </style>

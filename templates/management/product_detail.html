@@ -163,27 +163,27 @@
             {% endif %}
 
             <!-- Modifiers / Condiments -->
-            {% if product.modifiers.all %}
+            {% if product.product_modifiers.all %}
             <div class="bg-white rounded-lg shadow p-2.5">
                 <h3 class="text-sm font-semibold text-gray-800 mb-2 border-b pb-1.5">🎛️ Condiments / Modifiers</h3>
                 <div class="space-y-2">
-                    {% for modifier in product.modifiers.all %}
+                    {% for product_modifier in product.product_modifiers.all %}
                     <div class="border border-gray-200 rounded-lg p-2 bg-purple-50">
                         <div class="flex items-center justify-between mb-1">
                             <h4 class="text-xs font-semibold text-gray-900">
-                                <span class="text-purple-600">Condiment:</span> {{ modifier.name }}
+                                <span class="text-purple-600">Condiment:</span> {{ product_modifier.modifier.name }}
                             </h4>
                             <div class="text-xs text-gray-500">
-                                {% if modifier.is_required %}
+                                {% if product_modifier.modifier.is_required %}
                                 <span class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded">Required</span>
                                 {% else %}
                                 <span class="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded">Optional</span>
                                 {% endif %}
-                                <span class="ml-1">Max: {{ modifier.max_selections }}</span>
+                                <span class="ml-1">Max: {{ product_modifier.modifier.max_selections }}</span>
                             </div>
                         </div>
                         <div class="space-y-1.5">
-                            {% for option in modifier.options.all %}
+                            {% for option in product_modifier.modifier.options.all %}
                             <div class="flex items-center justify-between bg-white p-1.5 rounded border border-gray-200">
                                 <div>
                                     <span class="text-xs text-gray-700 font-medium">{{ option.name }}</span>

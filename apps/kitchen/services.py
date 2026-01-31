@@ -1,4 +1,4 @@
-"""Kitchen services for printing and KDS operations"""
+﻿"""Kitchen services for printing and KDS operations"""
 from .models import KitchenOrder, PrinterConfig
 
 
@@ -19,7 +19,7 @@ def get_printer(config):
 def print_kitchen_order(bill, station, items):
     """Print order to kitchen printer"""
     config = PrinterConfig.objects.filter(
-        outlet=bill.outlet,
+        brand=bill.brand,
         station=station,
         is_active=True
     ).first()

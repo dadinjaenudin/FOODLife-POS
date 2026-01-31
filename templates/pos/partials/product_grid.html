@@ -2,17 +2,24 @@
 <!-- Product Grid - Ultra Compact Layout -->
 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
     {% for product in products %}
-    <div class="product-card bg-white rounded-lg overflow-hidden transition-all duration-200 hover:shadow-md border-2 border-gray-200 hover:border-emerald-400 cursor-pointer {% if not product.stock_quantity %}opacity-50{% endif %}"
+    <div class="product-card bg-white rounded-lg overflow-hidden transition-all duration-200 {% if bill and product.stock_quantity %}hover:shadow-md border-2 border-gray-400 hover:border-emerald-400 cursor-pointer{% else %}border-2 border-gray-400 cursor-not-allowed{% endif %} {% if not product.stock_quantity or not bill %}opacity-50 pointer-events-none{% endif %}"
          data-product-id="{{ product.id }}">
         <!-- Product Image -->
-        <div class="relative aspect-square bg-gray-50 overflow-hidden">
+        <div class="relative aspect-square bg-gray-100 overflow-hidden {% if bill and product.stock_quantity %}cursor-pointer{% else %}cursor-not-allowed{% endif %}"
+             {% if bill and product.stock_quantity %}
+             hx-get="{% url 'pos:add_item_modal' bill.id product.id %}"
+             hx-target="#modal-container"
+             {% endif %}>
             {% if product.image %}
             <img src="{{ product.image.url }}" 
                  alt="{{ product.name }}" 
-                 class="w-full h-full object-cover transition-transform duration-300 hover:scale-105">
+                 class="w-full h-full object-cover {% if bill and product.stock_quantity %}transition-transform duration-300 hover:scale-105{% endif %}">
             {% else %}
-            <div class="w-full h-full bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center">
-                <span class="text-3xl opacity-30">🍽️</span>
+            <div class="w-full h-full bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 flex items-center justify-center">
+                <div class="text-center">
+                    <span class="text-4xl opacity-30">🍽️</span>
+                    <p class="text-[8px] text-gray-400 mt-1">Gambar menu<br>belum tersedia</p>
+                </div>
             </div>
             {% endif %}
             
@@ -21,6 +28,15 @@
             <div class="absolute inset-0 bg-black/60 flex items-center justify-center">
                 <div class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg">
                     Out of Stock
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- No Active Bill Overlay -->
+            {% if not bill and product.stock_quantity %}
+            <div class="absolute inset-0 bg-gray-900/40 flex items-center justify-center backdrop-blur-[1px]">
+                <div class="bg-gray-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg">
+                    No Active Bill
                 </div>
             </div>
             {% endif %}
@@ -43,11 +59,8 @@
                 {% if bill %}
                 <button 
                     class="w-full py-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 shadow-sm hover:shadow-md active:scale-95 add-product-btn"
-                    hx-post="{% url 'pos:add_item' bill.id %}"
-                    hx-vals='{"product_id": "{{ product.id }}", "quantity": "1"}'
-                    hx-target="#bill-panel"
-                    hx-swap="outerHTML"
-                    onclick="markProductAsSelected(this)">
+                    hx-get="{% url 'pos:add_item_modal' bill.id product.id %}"
+                    hx-target="#modal-container">
                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
                     </svg>
@@ -55,12 +68,12 @@
                 </button>
                 {% else %}
                 <button 
-                    onclick="showToast('Please select a table first', 'warning')"
-                    class="w-full py-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 shadow-sm hover:shadow-md">
+                    disabled
+                    class="w-full py-1 bg-gray-300 text-gray-500 font-semibold rounded cursor-not-allowed opacity-60 flex items-center justify-center gap-1">
                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
                     </svg>
-                    <span class="text-[10px]">Table</span>
+                    <span class="text-[10px]">No Bill</span>
                 </button>
                 {% endif %}
             {% else %}

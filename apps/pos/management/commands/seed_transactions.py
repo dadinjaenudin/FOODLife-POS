@@ -1,4 +1,4 @@
-"""
+﻿"""
 Management command to seed sample transaction data for testing
 Usage: python manage.py seed_transactions
 """
@@ -9,7 +9,7 @@ from decimal import Decimal
 import random
 from datetime import timedelta
 
-from apps.core.models import User, Outlet, Product
+from apps.core.models import User, Brand, Product
 from apps.pos.models import Bill, BillItem, Payment
 from apps.tables.models import Table
 from apps.kitchen.services import create_kitchen_order
@@ -36,17 +36,17 @@ class Command(BaseCommand):
 
         try:
             # Get required data
-            outlet = Outlet.objects.first()
-            if not outlet:
-                self.stdout.write(self.style.ERROR('No outlet found. Run setup_demo first.'))
+            Brand = Brand.objects.first()
+            if not Brand:
+                self.stdout.write(self.style.ERROR('No Brand found. Run setup_demo first.'))
                 return
 
-            users = list(User.objects.filter(outlet=outlet))
+            users = list(User.objects.filter(Brand=Brand))
             if not users:
                 self.stdout.write(self.style.ERROR('No users found. Run setup_demo first.'))
                 return
 
-            tables = list(Table.objects.filter(area__outlet=outlet))
+            tables = list(Table.objects.filter(area__brand=Brand))
             products = list(Product.objects.filter(is_active=True))
 
             if not products:
@@ -66,7 +66,7 @@ class Command(BaseCommand):
 
                     # Create bill
                     bill = Bill.objects.create(
-                        outlet=outlet,
+                        Brand=Brand,
                         bill_number=f'SEED-{timezone.now().strftime("%Y%m%d")}-{i+1:04d}',
                         bill_type='dine_in' if scenario in ['dine_in', 'dine_in_paid', 'hold'] else 'takeaway',
                         status='paid' if scenario == 'dine_in_paid' else ('hold' if scenario == 'hold' else 'open'),

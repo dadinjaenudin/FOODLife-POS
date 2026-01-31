@@ -25,12 +25,14 @@
                     <div class="space-y-4">
                         <div>
                             <label class="text-sm text-gray-500 font-medium">Company</label>
-                            <p class="text-lg font-bold text-gray-800">{{ store.outlet.company.name }}</p>
+                            <p class="text-lg font-bold text-gray-800">{{ store.brand.company.name }}</p>
+                            <p class="text-sm text-gray-600">{{ store.brand.company.code }}</p>
                         </div>
                         
                         <div>
-                            <label class="text-sm text-gray-500 font-medium">Outlet / Brand</label>
-                            <p class="text-lg font-bold text-gray-800">{{ store.outlet.name }}</p>
+                            <label class="text-sm text-gray-500 font-medium">Brand / Outlet</label>
+                            <p class="text-lg font-bold text-gray-800">{{ store.brand.name }}</p>
+                            <p class="text-sm text-gray-600">{{ store.brand.code }}</p>
                         </div>
                         
                         <div>
@@ -104,41 +106,36 @@
             </div>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="max-w-4xl mx-auto grid md:grid-cols-3 gap-4">
-            <a href="{% url 'core:terminal_setup' %}" 
-               class="bg-blue-600 text-white text-center py-4 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-lg">
-                📱 Register New Terminal
-            </a>
-            
-            <a href="{% url 'pos:main' %}" 
-               class="bg-green-600 text-white text-center py-4 px-6 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-lg">
-                🍽️ Open POS
-            </a>
-            
-            <a href="/admin/" 
-               class="bg-gray-600 text-white text-center py-4 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors shadow-lg">
-                ⚙️ Admin Panel
-            </a>
-        </div>
-
         <!-- Reset Option (Admin Only) -->
         {% if user.is_superuser %}
         <div class="max-w-4xl mx-auto mt-8">
             <details class="bg-red-50 border-2 border-red-200 rounded-lg p-6">
-                <summary class="font-bold text-red-700 cursor-pointer">⚠️ Danger Zone - Reset Configuration</summary>
+                <summary class="font-bold text-red-700 cursor-pointer">⚠️ Danger Zone - Complete Reset</summary>
                 <div class="mt-4">
-                    <p class="text-sm text-red-600 mb-4">
-                        This will delete the store configuration and all registered terminals. 
-                        <strong>This action cannot be undone!</strong>
-                    </p>
-                    <form method="post" action="{% url 'core:setup_reset' %}" onsubmit="return confirm('Are you absolutely sure? Type RESET in the box.')">
+                    <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-4">
+                        <p class="font-bold text-red-800 mb-2">⚠️ WARNING: COMPLETE RESET!</p>
+                        <p class="text-sm text-red-700 mb-2">This will delete <strong>EVERYTHING</strong>:</p>
+                        <ul class="text-sm text-red-700 list-disc list-inside space-y-1">
+                            <li>❌ All Companies</li>
+                            <li>❌ All Brands/Outlets</li>
+                            <li>❌ All Stores</li>
+                            <li>❌ All Terminals</li>
+                            <li>❌ All Products</li>
+                            <li>❌ All Categories</li>
+                            <li>❌ All Modifiers</li>
+                        </ul>
+                        <p class="text-sm text-red-700 mt-2 font-bold">
+                            You will need to setup Company, Brand, and Store again from scratch!
+                        </p>
+                    </div>
+                    <form method="post" action="{% url 'core:setup_reset' %}" 
+                          onsubmit="return confirm('⚠️ FINAL WARNING: This will delete ALL Company, Brand, Store, Terminal, and Product data!\n\nType \'reset\' (lowercase) in the box to confirm.')">
                         {% csrf_token %}
                         <div class="flex items-center space-x-4">
-                            <input type="text" name="confirm" placeholder="Type RESET to confirm" 
-                                   class="flex-1 px-4 py-2 border-2 border-red-300 rounded-lg">
-                            <button type="submit" class="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700">
-                                Reset Configuration
+                            <input type="text" name="confirm" placeholder="Type 'reset' (lowercase)" 
+                                   class="flex-1 px-4 py-2 border-2 border-red-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                            <button type="submit" class="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700 transition-colors">
+                                🔥 Complete Reset
                             </button>
                         </div>
                     </form>

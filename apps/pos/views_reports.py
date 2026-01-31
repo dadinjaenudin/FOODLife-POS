@@ -1,4 +1,4 @@
-"""
+﻿"""
 Example views for cashier reporting
 """
 from django.shortcuts import render
@@ -70,9 +70,9 @@ def cashier_daily_report(request):
 
 
 @login_required
-def outlet_cashiers_report(request):
+def brand_cashiers_report(request):
     """
-    Compare all cashiers in outlet
+    Compare all cashiers in Brand
     """
     date_str = request.GET.get('date')
     
@@ -85,12 +85,12 @@ def outlet_cashiers_report(request):
     end_date = start_date + timedelta(days=1)
     
     summaries = get_all_cashiers_summary(
-        outlet=request.user.outlet,
+        Brand=request.user.Brand,
         start_date=start_date,
         end_date=end_date
     )
     
-    return render(request, 'pos/reports/outlet_cashiers.html', {
+    return render(request, 'pos/reports/brand_cashiers.html', {
         'summaries': summaries,
         'date': report_date,
     })

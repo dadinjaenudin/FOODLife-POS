@@ -1,0 +1,141 @@
+networks:
+  pos_network:
+    driver: bridge
+
+services:
+  # PostgreSQL Database untuk Edge Server
+  edge_db:
+    image: postgres:16-alpine
+    container_name: fnb_edge_db
+    environment:
+      POSTGRES_DB: fnb_edge_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - edge_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Port 5433 untuk Edge (avoid conflict dengan HO port 5432)
+    networks:
+      - pos_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Broker untuk Edge Server
+  edge_redis:
+    image: redis:7-alpine
+    container_name: fnb_edge_redis
+    ports:
+      - "6380:6379"  # Port 6380 untuk Edge (avoid conflict dengan HO port 6379)
+    networks:
+      - pos_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Django Application - Edge Server
+  edge_web:
+    build: .
+    container_name: fnb_edge_web
+    entrypoint: []
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        while ! nc -z edge_db 5432; do sleep 1; done &&
+        echo 'Database is ready!' &&
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    volumes:
+      - .:/app
+      - edge_static_volume:/app/staticfiles
+      - ./media:/app/media
+    ports:
+      - "8001:8000"  # Port 8001 untuk Edge Web (avoid conflict dengan HO port 8002)
+    env_file:
+      - .env.edge
+    depends_on:
+      edge_db:
+        condition: service_healthy
+      edge_redis:
+        condition: service_healthy
+    networks:
+      - pos_network
+    restart: unless-stopped
+    environment:
+      - DB_HOST=edge_db
+      - DB_PORT=5432
+      - DB_NAME=fnb_edge_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - REDIS_URL=redis://edge_redis:6379/0
+      - HO_API_URL=http://host.docker.internal:8002
+      - HO_API_USERNAME=admin
+      - HO_API_PASSWORD=admin123
+
+  # Celery Worker untuk Edge Server
+  edge_celery_worker:
+    build: .
+    container_name: fnb_edge_celery_worker
+    entrypoint: []
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        while ! nc -z edge_db 5432; do sleep 1; done &&
+        celery -A pos_fnb worker -l info
+      "
+    volumes:
+      - .:/app
+    env_file:
+      - .env.edge
+    depends_on:
+      - edge_db
+      - edge_redis
+      - edge_web
+    networks:
+      - pos_network
+    environment:
+      - DB_HOST=edge_db
+      - DB_PORT=5432
+      - DB_NAME=fnb_edge_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - REDIS_URL=redis://edge_redis:6379/0
+
+  # Celery Beat Scheduler untuk Edge Server
+  edge_celery_beat:
+    build: .
+    container_name: fnb_edge_celery_beat
+    entrypoint: []
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        while ! nc -z edge_db 5432; do sleep 1; done &&
+        celery -A pos_fnb beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      "
+    volumes:
+      - .:/app
+    env_file:
+      - .env.edge
+    depends_on:
+      - edge_db
+      - edge_redis
+      - edge_web
+    networks:
+      - pos_network
+    environment:
+      - DB_HOST=edge_db
+      - DB_PORT=5432
+      - DB_NAME=fnb_edge_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - REDIS_URL=redis://edge_redis:6379/0
+
+volumes:
+  edge_postgres_data:
+  edge_static_volume:
+  edge_media_volume:

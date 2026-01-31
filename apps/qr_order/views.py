@@ -1,4 +1,4 @@
-from django.shortcuts import render, get_object_or_404
+﻿from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_http_methods
 from django.http import HttpResponse, JsonResponse
 from collections import defaultdict
@@ -10,9 +10,9 @@ from apps.core.models import Product, Category, User, ModifierOption
 from apps.qr_order.recommendations import RecommendationEngine
 
 
-def guest_product_detail(request, outlet_id, table_id, product_id):
+def guest_product_detail(request, brand_id, table_id, product_id):
     """Show product detail with customization options - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     product = get_object_or_404(Product, id=product_id)
     
     # Get available modifiers (if any)
@@ -46,7 +46,7 @@ def guest_product_detail(request, outlet_id, table_id, product_id):
     product_images_json = json.dumps(product_images)
     
     # Get recommendations
-    engine = RecommendationEngine(outlet_id)
+    engine = RecommendationEngine(brand_id)
     frequently_bought_together = [p for p, score in engine.get_frequently_bought_together(product_id, limit=4)]
     category_recommendations = engine.get_category_recommendations(
         product.category_id, 
@@ -59,7 +59,7 @@ def guest_product_detail(request, outlet_id, table_id, product_id):
         'modifiers': modifiers,
         'discount_percentage': discount_percentage,
         'product_images': product_images_json,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
         'frequently_bought_together': frequently_bought_together,
@@ -68,9 +68,9 @@ def guest_product_detail(request, outlet_id, table_id, product_id):
 
 
 @require_http_methods(["POST"])
-def guest_add_item_custom(request, outlet_id, table_id):
+def guest_add_item_custom(request, brand_id, table_id):
     """Guest adds item with customization - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     product_id = request.POST.get('product_id')
     quantity = int(request.POST.get('quantity', 1))
     notes = request.POST.get('notes', '')
@@ -111,7 +111,7 @@ def guest_add_item_custom(request, outlet_id, table_id):
     bill = table.get_active_bill()
     if not bill:
         bill = Bill.objects.create(
-            outlet_id=outlet_id,
+            brand_id=brand_id,
             table=table,
             bill_type='dine_in',
             created_by=system_user,
@@ -143,17 +143,17 @@ def guest_add_item_custom(request, outlet_id, table_id):
     
     return render(request, 'qr_order/partials/cart.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })
 
 
-def guest_menu(request, outlet_id, table_id):
+def guest_menu(request, brand_id, table_id):
     """Guest ordering page via QR"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
-    categories = Category.objects.filter(outlet_id=outlet_id, is_active=True)
-    products = Product.objects.filter(category__outlet_id=outlet_id, is_active=True).select_related('category')
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
+    categories = Category.objects.filter(brand_id=brand_id, is_active=True)
+    products = Product.objects.filter(category__brand_id=brand_id, is_active=True).select_related('category')
     
     bill = table.get_active_bill()
     
@@ -167,7 +167,7 @@ def guest_menu(request, outlet_id, table_id):
     } for p in products])
     
     # Get recommendations
-    engine = RecommendationEngine(outlet_id)
+    engine = RecommendationEngine(brand_id)
     popular_items = engine.get_popular_items(limit=6)
     trending_items = engine.get_trending_items(limit=4)
     
@@ -183,30 +183,30 @@ def guest_menu(request, outlet_id, table_id):
         'products': products,
         'products_json': products_json,
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'popular_items': popular_items,
         'trending_items': trending_items,
         'cart_recommendations': cart_recommendations,
     })
 
 
-def guest_cart(request, outlet_id, table_id):
+def guest_cart(request, brand_id, table_id):
     """Guest cart partial - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     bill = table.get_active_bill()
     
     return render(request, 'qr_order/partials/cart.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })
 
 
 @require_http_methods(["POST"])
-def guest_add_item(request, outlet_id, table_id):
+def guest_add_item(request, brand_id, table_id):
     """Guest adds item to order - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     product_id = request.POST.get('product_id')
     quantity = int(request.POST.get('quantity', 1))
     notes = request.POST.get('notes', '')
@@ -225,7 +225,7 @@ def guest_add_item(request, outlet_id, table_id):
     bill = table.get_active_bill()
     if not bill:
         bill = Bill.objects.create(
-            outlet_id=outlet_id,
+            brand_id=brand_id,
             table=table,
             bill_type='dine_in',
             created_by=system_user,
@@ -261,16 +261,16 @@ def guest_add_item(request, outlet_id, table_id):
     
     return render(request, 'qr_order/partials/cart.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })
 
 
 @require_http_methods(["POST"])
-def guest_remove_item(request, outlet_id, table_id, item_id):
+def guest_remove_item(request, brand_id, table_id, item_id):
     """Guest removes item from order - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     item = get_object_or_404(BillItem, id=item_id, status='pending')
     
     bill = item.bill
@@ -279,16 +279,16 @@ def guest_remove_item(request, outlet_id, table_id, item_id):
     
     return render(request, 'qr_order/partials/cart.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })
 
 
 @require_http_methods(["POST"])
-def guest_update_item(request, outlet_id, table_id, item_id):
+def guest_update_item(request, brand_id, table_id, item_id):
     """Guest updates item quantity - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     item = get_object_or_404(BillItem, id=item_id, status='pending')
     action = request.POST.get('action')
     
@@ -308,16 +308,16 @@ def guest_update_item(request, outlet_id, table_id, item_id):
     
     return render(request, 'qr_order/partials/cart.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })
 
 
 @require_http_methods(["POST"])
-def guest_submit_order(request, outlet_id, table_id):
+def guest_submit_order(request, brand_id, table_id):
     """Guest submits order - sends to kitchen"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     bill = table.get_active_bill()
     
     if not bill:
@@ -344,20 +344,20 @@ def guest_submit_order(request, outlet_id, table_id):
     
     return render(request, 'qr_order/partials/order_submitted.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })
 
 
-def guest_order_status(request, outlet_id, table_id):
+def guest_order_status(request, brand_id, table_id):
     """Guest checks order status - HTMX"""
-    table = get_object_or_404(Table, id=table_id, area__outlet_id=outlet_id)
+    table = get_object_or_404(Table, id=table_id, area__brand_id=brand_id)
     bill = table.get_active_bill()
     
     return render(request, 'qr_order/partials/order_status.html', {
         'bill': bill,
-        'outlet_id': outlet_id,
+        'brand_id': brand_id,
         'table_id': table_id,
         'table': table,
     })

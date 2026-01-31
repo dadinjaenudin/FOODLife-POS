@@ -1,0 +1,14 @@
+{
+  "terminal_id": "95c972e4-b27b-42c4-ae3d-ca76facf3a0e",
+  "terminal_code": "POS-001",
+  "terminal_name": "POS 0001",
+  "terminal_type": "pos",
+  "store_id": "21b2e3c0-275c-4169-b5df-c80b1edb87b4",
+  "store_code": "AVRIL-001",
+  "company_id": "9a5775c5-b7aa-43f9-aae9-509eec584181",
+  "company_name": "AVRIL-PT",
+  "brand_id": "2f327d3e-694f-427b-af16-ee30705a4a88",
+  "brand_name": "AVRIL-RESTO",
+  "setup_completed": true,
+  "setup_date": "2026-01-31T11:02:05.553933+00:00"
+}

@@ -1,0 +1,368 @@
+{
+  "info": {
+    "name": "Edge Server Sync API",
+    "description": "API endpoints for Edge Server synchronization with Head Office",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_token_here",
+      "type": "string"
+    },
+    {
+      "key": "company_id",
+      "value": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "string"
+    },
+    {
+      "key": "brand_id",
+      "value": "550e8400-e29b-41d4-a716-446655440001",
+      "type": "string"
+    },
+    {
+      "key": "store_id",
+      "value": "550e8400-e29b-41d4-a716-446655440002",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Get Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/token/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "token", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sync Promotions",
+      "item": [
+        {
+          "name": "Sync All Promotions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/promotions/?store_id={{store_id}}&company_id={{company_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "promotions", ""],
+              "query": [
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                },
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Promotions with Brand Filter",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/promotions/?store_id={{store_id}}&company_id={{company_id}}&brand_id={{brand_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "promotions", ""],
+              "query": [
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                },
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                },
+                {
+                  "key": "brand_id",
+                  "value": "{{brand_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Incremental Sync (Updated Since)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/promotions/?store_id={{store_id}}&company_id={{company_id}}&updated_since=2026-01-27T00:00:00Z",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "promotions", ""],
+              "query": [
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                },
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                },
+                {
+                  "key": "updated_since",
+                  "value": "2026-01-27T00:00:00Z"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sync Categories",
+      "item": [
+        {
+          "name": "Get All Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/categories/?company_id={{company_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "categories", ""],
+              "query": [
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Categories by Brand",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/categories/?company_id={{company_id}}&brand_id={{brand_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "categories", ""],
+              "query": [
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                },
+                {
+                  "key": "brand_id",
+                  "value": "{{brand_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sync Products",
+      "item": [
+        {
+          "name": "Get All Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/products/?company_id={{company_id}}&brand_id={{brand_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "products", ""],
+              "query": [
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                },
+                {
+                  "key": "brand_id",
+                  "value": "{{brand_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Products by Store",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/products/?company_id={{company_id}}&brand_id={{brand_id}}&store_id={{store_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "products", ""],
+              "query": [
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                },
+                {
+                  "key": "brand_id",
+                  "value": "{{brand_id}}"
+                },
+                {
+                  "key": "store_id",
+                  "value": "{{store_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sync Version",
+      "item": [
+        {
+          "name": "Check Version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sync/version/?company_id={{company_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "version", ""],
+              "query": [
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Upload Usage",
+      "item": [
+        {
+          "name": "Upload Single Usage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usages\": [\n    {\n      \"promotion_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"bill_id\": \"B20260127-001\",\n      \"discount_amount\": 15000.0,\n      \"used_at\": \"2026-01-27T10:30:00Z\",\n      \"store_id\": \"{{store_id}}\",\n      \"customer_id\": null\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sync/usage/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "usage", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Batch Usage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usages\": [\n    {\n      \"promotion_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"bill_id\": \"B20260127-001\",\n      \"discount_amount\": 15000.0,\n      \"used_at\": \"2026-01-27T10:30:00Z\",\n      \"store_id\": \"{{store_id}}\",\n      \"customer_id\": \"550e8400-e29b-41d4-a716-446655440010\"\n    },\n    {\n      \"promotion_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"bill_id\": \"B20260127-002\",\n      \"discount_amount\": 20000.0,\n      \"used_at\": \"2026-01-27T10:35:00Z\",\n      \"store_id\": \"{{store_id}}\",\n      \"customer_id\": null\n    },\n    {\n      \"promotion_id\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"bill_id\": \"B20260127-003\",\n      \"discount_amount\": 5000.0,\n      \"used_at\": \"2026-01-27T10:40:00Z\",\n      \"store_id\": \"{{store_id}}\",\n      \"customer_id\": \"550e8400-e29b-41d4-a716-446655440010\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sync/usage/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sync", "usage", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

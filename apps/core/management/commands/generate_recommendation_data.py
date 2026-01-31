@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test data generator for Recommendation Engine
 Creates sample orders to demonstrate recommendation algorithms
 """
@@ -18,13 +18,13 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write('Generating recommendation test data...')
         
-        # Get first outlet's data
+        # Get first Brand's data
         table = Table.objects.first()
         if not table:
             self.stdout.write(self.style.ERROR('No tables found. Run setup_demo first.'))
             return
         
-        outlet = table.area.outlet
+        Brand = table.area.Brand
         creator = User.objects.filter(role__in=['admin', 'manager', 'cashier']).first()
         
         if not creator:
@@ -32,7 +32,7 @@ class Command(BaseCommand):
             return
         
         # Get products
-        products = list(Product.objects.filter(category__outlet=outlet, is_active=True))
+        products = list(Product.objects.filter(category__brand=Brand, is_active=True))
         
         if len(products) < 5:
             self.stdout.write(self.style.ERROR('Need at least 5 products. Run setup_demo first.'))
@@ -69,7 +69,7 @@ class Command(BaseCommand):
                 
                 # Create bill
                 bill = Bill.objects.create(
-                    outlet=outlet,
+                    Brand=Brand,
                     table=table,
                     created_by=creator,
                     status='paid',
@@ -112,7 +112,7 @@ class Command(BaseCommand):
                 bill_date = now - timedelta(days=day, hours=random.randint(0, 23))
                 
                 bill = Bill.objects.create(
-                    outlet=outlet,
+                    Brand=Brand,
                     table=table,
                     created_by=creator,
                     status='paid',

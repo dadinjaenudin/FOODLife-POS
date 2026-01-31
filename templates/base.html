@@ -122,11 +122,14 @@
 <body class="bg-gray-100 min-h-screen" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     {% block content %}{% endblock %}
     
+    <!-- Printer Status Widget -->
+    {% include 'pos/printer_status.html' %}
+    
     <!-- Toast container -->
     <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
     
     <!-- Modal container -->
-    <div id="modal-container"></div>
+    <div id="modal-container" class="relative z-50"></div>
     
     <script>
         // Terminal Detection & Auto-include in requests

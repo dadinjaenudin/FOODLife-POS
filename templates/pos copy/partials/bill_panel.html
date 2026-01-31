@@ -1,0 +1,414 @@
+{% load humanize %}
+{% load static %}
+
+{% if bill %}
+<aside class="w-96 bg-white border-l shadow-lg h-screen flex flex-col" id="bill-panel">
+    <!-- Order Summary Header - Reduced Height with highlight animation -->
+    <div class="px-6 py-3 border-b bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 bill-header-active">
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-lg font-bold text-gray-900">Order Summary</h2>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-sm font-mono text-gray-500">#{{ bill.bill_number }}</span>
+                    {% if bill.table %}
+                    <span class="text-xs text-gray-400">•</span>
+                    <span class="text-sm font-semibold text-blue-600">Table {{ bill.table.number }}</span>
+                    {% else %}
+                    <span class="text-xs text-red-500">[No Table]</span>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Icon-Only Actions -->
+            <div class="flex items-center gap-2">
+                <!-- Select Table Icon -->
+                <a href="{% url 'tables:floor_plan' %}" 
+                    class="p-2 {% if bill.table %}bg-green-100 hover:bg-green-200 text-green-700{% else %}bg-gray-100 hover:bg-gray-200 text-gray-700{% endif %} rounded-lg transition-colors group relative"
+                    title="{% if bill.table %}Change Table: {{ bill.table.number }}{% else %}Select Table{% endif %}">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    {% if bill.table %}
+                    <span class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 text-white text-xs rounded-full flex items-center justify-center font-bold">✓</span>
+                    {% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+
+<script>
+    console.log('=== BILL DEBUG ===');
+    console.log('Bill ID: {{ bill.id }}');
+    console.log('Bill Number: {{ bill.bill_number }}');
+    console.log('Bill Table: {{ bill.table }}');
+    console.log('Bill Table ID: {{ bill.table.id|default:"NULL" }}');
+    console.log('Bill Table Name: {{ bill.table.name|default:"NULL" }}');
+    console.log('Bill Table Number: {{ bill.table.number|default:"NULL" }}');
+    console.log('Active Items Count: {{ active_items_count }}');
+    console.log('Has Sent Items: {{ has_sent_items }}');
+    console.log('==================');
+    
+    // Add highlight animation on page load (e.g., after merge)
+    setTimeout(() => {
+        const header = document.querySelector('.bill-header-active');
+        if (header) {
+            header.style.animation = 'highlightPulse 2s ease-in-out';
+        }
+    }, 100);
+</script>
+
+<style>
+    @keyframes highlightPulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        50% { box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.5); }
+    }
+</style>
+    
+    <!-- Bill Items (Scrollable Area) -->
+    <div id="bill-items" class="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+        {% include 'pos/partials/bill_items.html' %}
+    </div>
+    
+    <!-- Fixed Footer: Totals + Actions -->
+    <div class="flex-shrink-0 border-t bg-white">
+        <!-- Compact Bill Totals -->
+        <div class="px-4 py-3 space-y-2 bg-gray-50 border-b">
+            <div class="flex justify-between text-sm text-gray-700">
+                <span>Subtotal</span>
+                <span class="font-semibold text-right">Rp {{ bill.subtotal|floatformat:0|intcomma }}</span>
+            </div>
+            
+            {% if bill.discount_amount > 0 %}
+            <div class="flex justify-between text-xs text-red-600">
+                <span>Discount ({{ bill.discount_percent }}%)</span>
+                <span class="font-medium text-right">-Rp {{ bill.discount_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.tax_amount > 0 %}
+            <div class="flex justify-between text-xs text-gray-600">
+                <span>Tax ({{ bill.outlet.tax_rate }}%)</span>
+                <span class="font-medium text-right">Rp {{ bill.tax_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            {% if bill.service_charge > 0 %}
+            <div class="flex justify-between text-xs text-gray-600">
+                <span>Service ({{ bill.outlet.service_charge }}%)</span>
+                <span class="font-medium text-right">Rp {{ bill.service_charge|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            
+            <div class="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t">
+                <span>Total</span>
+                <span class="text-right">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+            </div>
+        </div>
+        
+        <!-- Compact Action Buttons -->
+        <div class="p-3 space-y-2">
+        {% if active_items_count > 0 %}
+        <!-- Send to Kitchen Button -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+            hx-post="{% url 'pos:send_to_kitchen' bill.id %}"
+            hx-target="#bill-panel"
+            hx-swap="outerHTML">
+            <span class="text-lg">🧑‍🍳</span>
+            <span class="text-sm">Send to Kitchen</span>
+            <span class="ml-1 px-2 py-0.5 bg-white/30 rounded-full text-xs font-bold">{{ active_items_count }}</span>
+        </button>
+        {% elif not has_sent_items %}
+        <!-- Cancel Bill Button (Only if NO sent items) -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+            onclick="showCancelBillModal({{ bill.id }})">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+            <span class="text-sm">Cancel Bill</span>
+        </button>
+        {% endif %}
+        
+        <!-- Split Bill Button -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg {% if bill.items.count < 2 %}opacity-50 cursor-not-allowed{% endif %}"
+            hx-get="{% url 'pos:split_bill_modal' bill.id %}"
+            hx-target="#modal-container"
+            hx-swap="innerHTML"
+            {% if bill.items.count < 2 %}disabled{% endif %}
+            title="{% if bill.items.count < 2 %}Need at least 2 items to split{% else %}Split bill into multiple bills{% endif %}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+            </svg>
+            <span class="text-sm">Split Bill</span>
+        </button>
+        
+        <!-- Confirm Payment Button -->
+        <button 
+            class="w-full py-2.5 bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+            hx-get="{% url 'pos:payment_modal' bill.id %}"
+            hx-target="#modal-container">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+            </svg>
+            <span class="text-sm">Confirm Payment</span>
+        </button>
+        
+        <div class="grid grid-cols-4 gap-2">
+            <button 
+                class="py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:hold_modal' bill.id %}"
+                hx-target="#modal-container">
+                Hold
+            </button>
+            <button 
+                class="py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:confirm_void_modal' bill.id %}"
+                hx-target="#modal-container">
+                Void
+            </button>
+            <button 
+                class="py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:move_table_modal' bill.id %}"
+                hx-target="#modal-container"
+                title="Move to another table">
+                Move
+            </button>
+            <button 
+                class="py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold rounded-lg transition-all text-sm shadow-sm hover:shadow-md"
+                hx-get="{% url 'pos:merge_bills_modal' bill.id %}"
+                hx-target="#modal-container"
+                hx-swap="innerHTML"
+                title="Merge with another bill">
+                Merge
+            </button>
+        </div>
+    </div>
+    <!-- End Fixed Footer -->
+
+{% else %}
+<!-- No Active Bill -->
+<aside class="w-96 bg-white border-l shadow-lg h-screen flex flex-col" id="bill-panel">
+    <div class="flex-1 flex flex-col items-center justify-center p-8">
+        <!-- Login Image Illustration -->
+        <div class="mb-6">
+            {% if store_config.login_image %}
+            <img src="{{ store_config.login_image.url }}" 
+                 alt="Start Order" 
+                 class="w-48 h-48 object-cover rounded-2xl shadow-lg"
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            {% endif %}
+            <!-- Fallback icon if image not found or not set -->
+            <div class="w-48 h-48 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl flex items-center justify-center shadow-lg" {% if store_config.login_image %}style="display:none;"{% endif %}>
+                <svg class="w-24 h-24 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+            </div>
+        </div>
+        
+        <!-- Text -->
+        <h3 class="text-xl font-bold text-gray-900 mb-2">No active bill</h3>
+        <p class="text-sm text-gray-500 mb-8">Select a table or start a new order</p>
+        
+        <!-- Action Buttons - Modern Style -->
+        <div class="w-full max-w-xs space-y-3">
+            <!-- Choose Table Button -->
+            <a href="{% url 'tables:floor_plan' %}" 
+               class="group flex items-center gap-3 w-full px-4 py-3 bg-white hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-500 rounded-xl transition-all duration-200 hover:shadow-lg">
+                <div class="w-10 h-10 bg-blue-100 group-hover:bg-blue-500 rounded-lg flex items-center justify-center transition-colors">
+                    <svg class="w-5 h-5 text-blue-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                    </svg>
+                </div>
+                <div class="flex-1 text-left">
+                    <p class="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Choose Table</p>
+                    <p class="text-xs text-gray-500">Dine-in order</p>
+                </div>
+                <svg class="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </a>
+            
+            <!-- Take Away Button -->
+            <button 
+                class="group flex items-center gap-3 w-full px-4 py-3 bg-white hover:bg-green-50 border-2 border-gray-200 hover:border-green-500 rounded-xl transition-all duration-200 hover:shadow-lg"
+                hx-post="{% url 'pos:open_bill' %}"
+                hx-vals='{"order_type": "takeaway"}'
+                hx-target="#bill-panel"
+                hx-swap="outerHTML">
+                <div class="w-10 h-10 bg-green-100 group-hover:bg-green-500 rounded-lg flex items-center justify-center transition-colors">
+                    <svg class="w-5 h-5 text-green-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                    </svg>
+                </div>
+                <div class="flex-1 text-left">
+                    <p class="font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Take Away Order</p>
+                    <p class="text-xs text-gray-500">Regular takeaway order</p>
+                </div>
+                <svg class="w-5 h-5 text-gray-400 group-hover:text-green-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+            
+            <!-- Quick Order Button -->
+            <button 
+                onclick="console.log('Quick Order button clicked');"
+                class="group flex items-center gap-3 w-full px-4 py-3 bg-white hover:bg-purple-50 border-2 border-gray-200 hover:border-purple-500 rounded-xl transition-all duration-200 hover:shadow-lg"
+                hx-get="{% url 'pos:quick_order' %}"
+                hx-target="#modal-container"
+                hx-swap="innerHTML">
+                <div class="w-10 h-10 bg-purple-100 group-hover:bg-purple-500 rounded-lg flex items-center justify-center transition-colors">
+                    <svg class="w-5 h-5 text-purple-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <div class="flex-1 text-left">
+                    <p class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">Quick Order</p>
+                    <p class="text-xs text-gray-500">Fast order & payment</p>
+                </div>
+                <svg class="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+            
+            <!-- Resume Bill Button -->
+            <button 
+                id="held-bills-btn"
+                class="group flex items-center gap-3 w-full px-4 py-3 bg-white hover:bg-amber-50 border-2 border-gray-200 hover:border-amber-500 rounded-xl transition-all duration-200 hover:shadow-lg"
+                hx-get="{% url 'pos:held_bills' %}"
+                hx-target="#modal-container"
+                hx-swap="innerHTML">
+                <div class="w-10 h-10 bg-amber-100 group-hover:bg-amber-500 rounded-lg flex items-center justify-center transition-colors">
+                    <svg class="w-5 h-5 text-amber-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <div class="flex-1 text-left">
+                    <p class="font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">Resume Bill</p>
+                    <p class="text-xs text-gray-500">Continue held order</p>
+                </div>
+                <svg class="w-5 h-5 text-gray-400 group-hover:text-amber-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+</aside>
+
+<script>
+function showShiftRequiredMessage() {
+    // Show prominent error toast
+    const toast = document.createElement('div');
+    toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white px-8 py-6 rounded-2xl shadow-2xl z-[100] max-w-md';
+    toast.innerHTML = `
+        <div class="flex items-start gap-4">
+            <svg class="w-12 h-12 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <div>
+                <p class="font-bold text-xl mb-2">Shift Belum Dibuka!</p>
+                <p class="text-base mb-4">Anda harus membuka shift terlebih dahulu sebelum melakukan transaksi.</p>
+                <button onclick="this.parentElement.parentElement.parentElement.remove(); document.querySelector('[hx-get*=shift_open_form]').click();" 
+                        class="bg-white text-red-600 px-6 py-2 rounded-lg font-semibold hover:bg-red-50 transition">
+                    Buka Shift Sekarang
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    // Auto dismiss after 10 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 10000);
+}
+</script>
+
+{% endif %}
+
+<!-- Cancel Bill Confirmation Modal -->
+<div id="cancel-bill-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="if(event.target === this) closeCancelBillModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b bg-gradient-to-r from-red-500 to-red-600 text-white rounded-t-2xl">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold">Cancel Bill</h3>
+                    <p class="text-sm text-white/80">This action cannot be undone</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="px-6 py-6">
+            <div class="text-center mb-6">
+                <div class="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </div>
+                <p class="text-gray-700 text-lg font-medium mb-2">Cancel this empty bill?</p>
+                <p class="text-gray-500 text-sm">The bill will be removed and you'll return to the start screen.</p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex gap-3">
+            <button 
+                onclick="closeCancelBillModal()"
+                class="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 transition font-semibold">
+                Keep Bill
+            </button>
+            <button 
+                id="confirm-cancel-btn"
+                onclick="confirmCancelBill()"
+                class="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl transition font-semibold shadow-lg">
+                Yes, Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Use window object to avoid re-declaration errors on HTMX swaps
+if (typeof window.cancelBillId === 'undefined') {
+    window.cancelBillId = null;
+}
+
+function showCancelBillModal(billId) {
+    window.cancelBillId = billId;
+    document.getElementById('cancel-bill-modal').classList.remove('hidden');
+}
+
+function closeCancelBillModal() {
+    document.getElementById('cancel-bill-modal').classList.add('hidden');
+    window.cancelBillId = null;
+}
+
+function confirmCancelBill() {
+    if (!window.cancelBillId) return;
+    
+    const btn = document.getElementById('confirm-cancel-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+    
+    htmx.ajax('POST', `/pos/bill/${window.cancelBillId}/cancel-empty/`, {
+        target: '#bill-panel',
+        swap: 'outerHTML'
+    }).then(() => {
+        closeCancelBillModal();
+    }).catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = 'Yes, Cancel';
+        alert('Failed to cancel bill');
+    });
+}
+</script>
+

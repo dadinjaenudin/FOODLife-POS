@@ -9,7 +9,7 @@ from decimal import Decimal
 import json
 
 from .models import Bill, BillItem, Payment, BillLog
-from apps.core.models import Product, Category, ModifierOption, StoreConfig
+from apps.core.models import Product, Category, ModifierOption, Store, Modifier
 from apps.core.models_session import StoreSession, CashierShift, ShiftPaymentSummary
 from apps.tables.models import Table
 
@@ -25,16 +25,25 @@ def trigger_client_event(response, event_name, data=None):
 
 def render_bill_panel(request, bill):
     """Helper to render bill panel with store_config context"""
-    store_config = StoreConfig.get_current()
-    context = {
-        'bill': bill,
-        'store_config': store_config
-    }
+    store_config = Store.get_current()
+    
     # Add active items count for conditional logic
     if bill:
-        context['active_items_count'] = bill.items.filter(status='pending', is_void=False).count()
+        # Force fresh query to avoid cached items
+        bill.refresh_from_db()
+        active_items_count = bill.items.filter(status='pending', is_void=False).count()
         # Check if ANY item was ever sent to kitchen (including voided ones)
-        context['has_sent_items'] = bill.items.filter(status='sent').exists()
+        has_sent_items = bill.items.filter(status='sent').exists()
+    else:
+        active_items_count = 0
+        has_sent_items = False
+    
+    context = {
+        'bill': bill,
+        'store_config': store_config,
+        'active_items_count': active_items_count,
+        'has_sent_items': has_sent_items
+    }
     return render(request, 'pos/partials/bill_panel.html', context)
 
 
@@ -42,21 +51,21 @@ def render_bill_panel(request, bill):
 @ensure_csrf_cookie
 def pos_main(request):
     """Main POS interface"""
-    outlet = request.user.outlet
-    if not outlet:
-        return render(request, 'pos/no_outlet.html')
+    brand = request.user.brand
+    if not brand:
+        return render(request, 'pos/no_brand.html')
     
-    from apps.core.models import StoreConfig
-    store_config = StoreConfig.get_current()
+    from apps.core.models import Store
+    store_config = Store.get_current()
     
-    categories = Category.objects.filter(outlet=outlet, is_active=True)
-    tables = Table.objects.filter(area__outlet=outlet)
+    categories = Category.objects.filter(brand=brand, is_active=True)
+    tables = Table.objects.filter(area__brand = brand)
     
     # Order products by category for better display
     products = Product.objects.filter(
-        category__outlet=outlet, 
+        category__brand = brand, 
         is_active=True
-    ).select_related('category', 'category__parent').prefetch_related('modifiers').order_by(
+    ).select_related('category', 'category__parent').prefetch_related('product_modifiers__modifier').order_by(
         'category__sort_order',
         'category__name',
         'name'
@@ -76,7 +85,12 @@ def pos_main(request):
     logger.info(f"POS Main - final bill_id: {bill_id}")
     
     if bill_id:
-        bill = Bill.objects.filter(id=bill_id, status__in=['open', 'hold']).first()
+        # Query bill with prefetch_related to load items efficiently
+        bill = Bill.objects.filter(
+            id=bill_id, 
+            status__in=['open', 'hold']
+        ).prefetch_related('items').first()
+        
         logger.info(f"POS Main - bill found: {bill}")
         if bill:
             # Update session with new active bill
@@ -86,13 +100,14 @@ def pos_main(request):
             active_items_count = bill.items.filter(status='pending', is_void=False).count()
             # Check if ANY item was ever sent to kitchen (including voided ones)
             has_sent_items = bill.items.filter(status='sent').exists()
+            logger.info(f"POS Main - bill {bill.bill_number} has {bill.items.count()} total items")
         else:
             # Bill not found or not open, clear session
             logger.warning(f"POS Main - bill_id {bill_id} not found or not open, clearing session")
             request.session.pop('active_bill_id', None)
             request.session.modified = True
     
-    held_count = Bill.objects.filter(outlet=outlet, status='hold').count()
+    held_count = Bill.objects.filter(brand=brand, status='hold').count()
     
     context = {
         'categories': categories,
@@ -110,15 +125,15 @@ def pos_main(request):
 @login_required
 def product_list(request):
     """Product list partial - HTMX"""
-    outlet = request.user.outlet
+    brand = request.user.brand
     category_id = request.GET.get('category')
     search_query = request.GET.get('search', '').strip()
     
     # Order products by category sort_order and name for better grouping
     products = Product.objects.filter(
-        category__outlet=outlet, 
+        category__brand = brand, 
         is_active=True
-    ).select_related('category', 'category__parent').prefetch_related('modifiers').order_by(
+    ).select_related('category', 'category__parent').prefetch_related('product_modifiers__modifier').order_by(
         'category__sort_order', 
         'category__name', 
         'name'
@@ -153,7 +168,7 @@ def open_bill(request):
     
     with transaction.atomic():
         bill = Bill.objects.create(
-            outlet=request.user.outlet,
+            brand = request.user.brand,
             table_id=table_id if table_id else None,
             bill_type=bill_type,
             guest_count=guest_count,
@@ -181,7 +196,10 @@ def add_item_modal(request, bill_id, product_id):
     product = get_object_or_404(Product, id=product_id)
     
     # Get modifiers for this product
-    modifiers = product.modifiers.filter(outlet=request.user.outlet).prefetch_related('options')
+    modifiers = Modifier.objects.filter(
+        product_modifiers__product=product,
+        brand=request.user.brand
+    ).prefetch_related('options')
     
     return render(request, 'pos/partials/add_item_modal.html', {
         'bill': bill,
@@ -202,7 +220,7 @@ def add_item(request, bill_id):
         if active_bill_id:
             # Use active bill from session if available
             try:
-                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=active_bill_id, status__in=['open', 'hold'])
+                bill = Bill.objects.select_related('table', 'table__area', 'brand').get(id=active_bill_id, status__in=['open', 'hold'])
                 # If bill was on hold, resume it to open
                 if bill.status == 'hold':
                     bill.status = 'open'
@@ -212,7 +230,7 @@ def add_item(request, bill_id):
                 request.session.pop('active_bill_id', None)
                 # Try bill_id from URL as fallback
                 try:
-                    bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status__in=['open', 'hold'])
+                    bill = Bill.objects.select_related('table', 'table__area', 'brand').get(id=bill_id, status__in=['open', 'hold'])
                     # If bill was on hold, resume it to open
                     if bill.status == 'hold':
                         bill.status = 'open'
@@ -226,7 +244,7 @@ def add_item(request, bill_id):
                     return trigger_client_event(response, 'billNotFound', {'message': 'Bill not found or already closed. Please select a table to start new order.'})
         else:
             try:
-                bill = Bill.objects.select_related('table', 'table__area', 'outlet').get(id=bill_id, status__in=['open', 'hold'])
+                bill = Bill.objects.select_related('table', 'table__area', 'brand').get(id=bill_id, status__in=['open', 'hold'])
                 # If bill was on hold, resume it to open
                 if bill.status == 'hold':
                     bill.status = 'open'
@@ -486,7 +504,10 @@ def edit_item_modal(request, item_id):
         item = get_object_or_404(BillItem.objects.select_related('product', 'bill'), id=item_id, is_void=False)
         
         # Get modifiers for this product
-        modifiers = item.product.modifiers.filter(outlet=request.user.outlet).prefetch_related('options')
+        modifiers = Modifier.objects.filter(
+            product_modifiers__product=item.product,
+            brand=request.user.brand
+        ).prefetch_related('options')
         
         # Get currently selected modifier option IDs
         selected_modifier_ids = [mod['id'] for mod in item.modifiers] if item.modifiers else []
@@ -723,7 +744,7 @@ def cancel_bill(request, bill_id):
         
         # Get next available held bill to open
         next_bill = Bill.objects.filter(
-            outlet=request.user.outlet,
+            brand = request.user.brand,
             status='hold'
         ).order_by('-created_at').first()
         
@@ -786,7 +807,7 @@ def cancel_bill(request, bill_id):
     
     # Get next available held bill to open
     next_bill = Bill.objects.filter(
-        outlet=request.user.outlet,
+        brand = request.user.brand,
         status='hold'
     ).order_by('-created_at').first()
     
@@ -823,11 +844,61 @@ def confirm_void_modal(request, bill_id):
 def held_bills(request):
     """List held bills - HTMX"""
     bills = Bill.objects.filter(
-        outlet=request.user.outlet,
+        brand = request.user.brand,
         status='hold'
     ).select_related('table', 'created_by').prefetch_related('items__product').order_by('-created_at')
     
     return render(request, 'pos/partials/held_bills_list.html', {'bills': bills})
+
+
+@login_required
+def member_pin_modal(request, bill_id):
+    """Show member PIN input modal"""
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
+    return render(request, 'pos/partials/member_pin_modal.html', {'bill': bill})
+
+
+@login_required
+@require_http_methods(["POST"])
+def verify_member_pin(request, bill_id):
+    """Verify member code and attach member to bill - API endpoint returns JSON"""
+    from django.http import JsonResponse
+    
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
+    pin = request.POST.get('pin', '').strip()
+    
+    # Dummy member lookup - always returns same member data
+    # TODO: Replace with actual member lookup from database
+    if pin and len(pin) > 0:
+        # Dummy member data
+        member_data = {
+            'member_id': '1223343',
+            'member_name': 'DADIN JAENUDIN'
+        }
+        
+        # Save member info to bill
+        bill.member_code = member_data['member_id']
+        bill.member_name = member_data['member_name']
+        bill.save()
+        
+        return JsonResponse({
+            'success': True,
+            'member_id': member_data['member_id'],
+            'member_name': member_data['member_name'],
+            'message': 'Member attached successfully'
+        })
+    else:
+        return JsonResponse({
+            'success': False,
+            'message': 'Please enter valid member code.'
+        }, status=400)
+
+
+@login_required
+def refresh_bill_panel(request, bill_id):
+    """Refresh bill panel - HTMX"""
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
+    return render_bill_panel(request, bill)
 
 
 @login_required
@@ -902,134 +973,209 @@ def payment_modal(request, bill_id):
 @require_http_methods(["POST"])
 def process_payment(request, bill_id):
     """Process payment - supports split payment with multiple payment methods"""
-    bill = get_object_or_404(Bill, id=bill_id, status='open')
+    print(f"\n{'='*50}")
+    print(f"PROCESS PAYMENT CALLED - Bill ID: {bill_id}")
+    print(f"Request method: {request.method}")
+    print(f"User: {request.user}")
+    print(f"{'='*50}\n")
     
-    # Check if this is a split payment (multiple payment methods)
-    payment_count = 0
-    total_paid = Decimal('0')
-    
-    # Process split payments array
-    for key in request.POST.keys():
-        if key.startswith('payments[') and key.endswith('][method]'):
-            index = key.split('[')[1].split(']')[0]
-            method = request.POST.get(f'payments[{index}][method]')
-            amount = Decimal(request.POST.get(f'payments[{index}][amount]', 0))
-            reference = request.POST.get(f'payments[{index}][reference]', '')
-            
-            if amount > 0:
-                Payment.objects.create(
-                    bill=bill,
-                    method=method,
-                    amount=amount,
-                    reference=reference,
-                    created_by=request.user,
-                )
-                
-                BillLog.objects.create(
-                    bill=bill,
-                    action='payment',
-                    user=request.user,
-                    details={'method': method, 'amount': float(amount), 'split': True}
-                )
-                
-                total_paid += amount
-                payment_count += 1
-    
-    # Process current payment (if any)
-    method = request.POST.get('method')
-    amount = Decimal(request.POST.get('amount', 0))
-    reference = request.POST.get('reference', '')
-    
-    if amount > 0:
-        Payment.objects.create(
-            bill=bill,
-            method=method,
-            amount=amount,
-            reference=reference,
-            created_by=request.user,
-        )
+    try:
+        # Debug: Log all POST data
+        print(f"\n=== PAYMENT DEBUG ===")
+        print(f"Bill ID: {bill_id}")
+        print(f"POST data: {dict(request.POST)}")
+        print(f"====================\n")
         
-        BillLog.objects.create(
-            bill=bill,
-            action='payment',
-            user=request.user,
-            details={
-                'method': method, 
-                'amount': float(amount),
-                'split': payment_count > 0
-            }
-        )
-        
-        total_paid += amount
-        payment_count += 1
-    
-    # Check if bill is fully paid
-    if bill.get_remaining() <= 0:
-        bill.status = 'paid'
-        bill.closed_by = request.user
-        bill.closed_at = timezone.now()
-        bill.save()
-        
-        # Update table status and unjoin if part of group
-        if bill.table:
-            # Get all tables in the same group
-            from apps.tables.models import TableGroup
-            table_group = bill.table.table_group
-            
-            if table_group:
-                # Get all tables in this group
-                joined_tables = Table.objects.filter(table_group=table_group)
-                # Clear group and set status to dirty
-                joined_tables.update(table_group=None, status='dirty')
-                # Delete the group
-                table_group.delete()
-            else:
-                # Single table, just update status
-                bill.table.status = 'dirty'
-                bill.table.save()
-        
-        # Check if this was a split bill and auto-resume original bill
-        split_original_bill_id = request.session.pop('split_original_bill_id', None)
-        if split_original_bill_id:
-            # Check if original bill still exists and is open or hold
-            original_bill = Bill.objects.filter(id=split_original_bill_id, status__in=['open', 'hold']).first()
-            if original_bill:
-                # Set original bill as active
-                request.session['active_bill_id'] = original_bill.id
-                request.session.modified = True
-            else:
-                # Original bill already paid or doesn't exist, clear session
-                request.session.pop('active_bill_id', None)
-        else:
-            # Normal flow - clear active bill from session
-            request.session.pop('active_bill_id', None)
-        
-        BillLog.objects.create(
-            bill=bill, 
-            action='close', 
-            user=request.user,
-            details={
-                'total_payments': payment_count,
-                'split_payment': payment_count > 1
-            }
-        )
-        
-        # Print receipt
-        from apps.pos.services import print_receipt
+        # Check if bill exists
+        print("Step 1: Checking if bill exists...")
         try:
-            print_receipt(bill)
-        except:
-            pass  # Don't fail if printing fails
+            bill = Bill.objects.get(id=bill_id)
+            print(f"  ? Bill found: {bill.bill_number}")
+        except Bill.DoesNotExist:
+            print(f"  ? Bill not found")
+            return JsonResponse({
+                'error': f'Bill #{bill_id} not found'
+            }, status=404)
         
-        response = render(request, 'pos/partials/payment_success.html', {
-            'bill': bill,
-            'split_payment': payment_count > 1,
-            'payment_count': payment_count
-        })
-        return trigger_client_event(response, 'paymentComplete')
-    
-    # Still has remaining balance
-    return render(request, 'pos/partials/payment_modal.html', {'bill': bill})
+        # Check if bill is open
+        print(f"Step 2: Checking bill status...")
+        print(f"  Bill status: {bill.status}")
+        if bill.status not in ['open', 'hold']:
+            print(f"  ? Bill is not open or hold")
+            return JsonResponse({
+                'error': f'Bill #{bill_id} is {bill.status}, cannot process payment'
+            }, status=400)
+        print(f"  ? Bill is open or hold")
+        
+        # Helper function to parse amount (handle comma format)
+        print("Step 3: Defining parse_amount function...")
+        def parse_amount(value):
+            if not value:
+                return Decimal('0')
+            # Remove commas and convert to Decimal
+            cleaned = str(value).replace(',', '')
+            print(f"  parse_amount: '{value}' -> '{cleaned}'")
+            return Decimal(cleaned)
+        
+        # Check if this is a split payment (multiple payment methods)
+        print("Step 4: Checking for split payments...")
+        payment_count = 0
+        total_paid = Decimal('0')
+        
+        # Process split payments array
+        print("Step 5: Processing split payments array...")
+        for key in request.POST.keys():
+            if key.startswith('payments[') and key.endswith('][method]'):
+                print(f"  Found split payment key: {key}")
+                index = key.split('[')[1].split(']')[0]
+                method = request.POST.get(f'payments[{index}][method]')
+                amount = parse_amount(request.POST.get(f'payments[{index}][amount]', 0))
+                reference = request.POST.get(f'payments[{index}][reference]', '')
+                
+                print(f"  Split payment {index}: method={method}, amount={amount}, ref={reference}")
+                
+                if amount > 0:
+                    Payment.objects.create(
+                        bill=bill,
+                        method=method,
+                        amount=amount,
+                        reference=reference,
+                        created_by=request.user,
+                    )
+                    
+                    BillLog.objects.create(
+                        bill=bill,
+                        action='payment',
+                        user=request.user,
+                        details={'method': method, 'amount': float(amount), 'split': True}
+                    )
+                    
+                    total_paid += amount
+                    payment_count += 1
+        
+        # Process current payment (if any)
+        method = request.POST.get('method')
+        amount_raw = request.POST.get('amount', 0)
+        reference = request.POST.get('reference', '')
+        
+        print(f"Processing current payment...")
+        print(f"  method: {method}")
+        print(f"  amount_raw: {amount_raw} (type: {type(amount_raw)})")
+        print(f"  reference: {reference}")
+        
+        try:
+            amount = parse_amount(amount_raw)
+            print(f"  amount parsed: {amount} (type: {type(amount)})")
+        except Exception as e:
+            print(f"ERROR parsing amount: {e}")
+            raise
+        
+        if amount > 0:
+            print(f"Amount > 0, creating payment...")
+            Payment.objects.create(
+                bill=bill,
+                method=method,
+                amount=amount,
+                reference=reference,
+                created_by=request.user,
+            )
+            
+            BillLog.objects.create(
+                bill=bill,
+                action='payment',
+                user=request.user,
+                details={
+                    'method': method, 
+                    'amount': float(amount),
+                    'split': payment_count > 0
+                }
+            )
+            
+            total_paid += amount
+            payment_count += 1
+        
+        # Check if bill is fully paid
+        if bill.get_remaining() <= 0:
+            bill.status = 'paid'
+            bill.closed_by = request.user
+            bill.closed_at = timezone.now()
+            bill.save()
+            
+            # Update table status and unjoin if part of group
+            if bill.table:
+                # Get all tables in the same group
+                from apps.tables.models import TableGroup
+                table_group = bill.table.table_group
+                
+                if table_group:
+                    # Get all tables in this group
+                    joined_tables = Table.objects.filter(table_group=table_group)
+                    # Clear group and set status to dirty
+                    joined_tables.update(table_group=None, status='dirty')
+                    # Delete the group
+                    table_group.delete()
+                else:
+                    # Single table, just update status
+                    bill.table.status = 'dirty'
+                    bill.table.save()
+            
+            # Check if this was a split bill and auto-resume original bill
+            split_original_bill_id = request.session.pop('split_original_bill_id', None)
+            if split_original_bill_id:
+                # Check if original bill still exists and is open or hold
+                original_bill = Bill.objects.filter(id=split_original_bill_id, status__in=['open', 'hold']).first()
+                if original_bill:
+                    # Set original bill as active
+                    request.session['active_bill_id'] = original_bill.id
+                    request.session.modified = True
+                else:
+                    # Original bill already paid or doesn't exist, clear session
+                    request.session.pop('active_bill_id', None)
+            else:
+                # Normal flow - clear active bill from session
+                request.session.pop('active_bill_id', None)
+            
+            BillLog.objects.create(
+                bill=bill, 
+                action='close', 
+                user=request.user,
+                details={
+                    'total_payments': payment_count,
+                    'split_payment': payment_count > 1
+                }
+            )
+            
+            # Queue receipt print via Print Agent
+            from apps.pos.print_queue import queue_print_receipt
+            print(f"\n[VIEWS] Calling queue_print_receipt for Bill #{bill.bill_number}")
+            print(f"[VIEWS] terminal_id from session: {request.session.get('terminal_id')}")
+            try:
+                queue_print_receipt(bill, terminal_id=request.session.get('terminal_id'))
+                print(f"[VIEWS] ✅ queue_print_receipt completed")
+            except Exception as e:
+                print(f"[VIEWS] ❌ Print queue failed: {e}")
+                import traceback
+                traceback.print_exc()
+                pass  # Don't fail if printing fails
+            
+            response = render(request, 'pos/partials/payment_success.html', {
+                'bill': bill,
+                'split_payment': payment_count > 1,
+                'payment_count': payment_count
+            })
+            return trigger_client_event(response, 'paymentComplete')
+        
+        # Still has remaining balance
+        return render(request, 'pos/partials/payment_modal.html', {'bill': bill})
+        
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"ERROR in process_payment: {str(e)}")
+        print(error_detail)
+        return JsonResponse({
+            'error': f'Payment processing failed: {str(e)}'
+        }, status=400)
 
 
 @login_required
@@ -1037,7 +1183,7 @@ def split_bill_modal(request, bill_id):
     """Split bill modal - Enhanced UI"""
     bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     items = bill.items.filter(is_void=False)
-    tables = Table.objects.filter(area__outlet=bill.outlet, status='available')
+    tables = Table.objects.filter(area__brand=bill.brand, status='available')
     
     context = {
         'bill': bill,
@@ -1062,7 +1208,7 @@ def split_bill(request, bill_id):
     with transaction.atomic():
         # Create new bill
         new_bill = Bill.objects.create(
-            outlet=original_bill.outlet,
+            brand = original_bill.brand,
             table_id=new_table_id if new_table_id else original_bill.table_id,
             bill_type=original_bill.bill_type,
             guest_count=guest_count,
@@ -1162,16 +1308,27 @@ def split_bill(request, bill_id):
 @login_required
 def merge_bills_modal(request, bill_id):
     """Merge bills modal - Select bills to merge"""
-    current_bill = get_object_or_404(Bill, id=bill_id, outlet=request.user.outlet)
-    outlet = request.user.outlet
+    current_bill = get_object_or_404(Bill, id=bill_id)
+    
+    # Get Brand from store config
+    store_config = Store.get_current()
+    brand = store_config.brand
+    
+    # Get all open bills except current bill (include hold status too)
     open_bills = Bill.objects.filter(
-        outlet=outlet,
-        status='open'
-    ).exclude(id=bill_id).prefetch_related('items').order_by('-created_at')[:20]
+        brand = brand,
+        status__in=['open', 'hold']  # Include both open and hold bills
+    ).exclude(id=bill_id).prefetch_related('items', 'table', 'created_by').order_by('-created_at')
     
     context = {
         'current_bill': current_bill,
         'open_bills': open_bills,
+        'debug_info': {
+            'current_bill_id': current_bill.id,
+            'brand_id': brand.id,
+            'brand_name': brand.name,
+            'open_bills_count': open_bills.count(),
+        }
     }
     return render(request, 'pos/partials/merge_bills_modal.html', context)
 
@@ -1180,8 +1337,15 @@ def merge_bills_modal(request, bill_id):
 @require_http_methods(["POST"])
 def merge_bills(request):
     """Merge multiple bills into one"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     bill_ids = request.POST.getlist('bill_ids')
     target_bill_id = request.POST.get('target_bill_id')
+    
+    logger.info(f"=== MERGE BILLS DEBUG ===")
+    logger.info(f"Target Bill ID: {target_bill_id}")
+    logger.info(f"Source Bill IDs: {bill_ids}")
     
     if len(bill_ids) < 1:
         return JsonResponse({'error': 'Please select at least 1 bill to merge'}, status=400)
@@ -1191,15 +1355,19 @@ def merge_bills(request):
     
     with transaction.atomic():
         target_bill = get_object_or_404(Bill, id=target_bill_id, status__in=['open', 'hold'])
-        source_bills = Bill.objects.filter(id__in=bill_ids, status='open').exclude(id=target_bill_id)
+        source_bills = Bill.objects.filter(id__in=bill_ids, status__in=['open', 'hold']).exclude(id=target_bill_id)
         
         merged_count = 0
         merged_bills = []
         
         for source_bill in source_bills:
-            # Move all items to target bill
+            # Move all items to target bill (including sent items, but exclude voided ones)
             items = source_bill.items.filter(is_void=False)
             items_count = items.count()
+            
+            logger.info(f"Moving {items_count} items from bill {source_bill.bill_number} to {target_bill.bill_number}")
+            
+            # Use update to move items - this preserves all item properties including status
             items.update(bill=target_bill)
             
             merged_count += items_count
@@ -1229,7 +1397,13 @@ def merge_bills(request):
         # Update target bill guest count
         total_guests = sum([b.guest_count for b in source_bills]) + target_bill.guest_count
         target_bill.guest_count = total_guests
+        
+        # Recalculate totals for target bill
         target_bill.calculate_totals()
+        
+        # Verify items were moved
+        final_item_count = target_bill.items.filter(is_void=False).count()
+        logger.info(f"Target bill {target_bill.bill_number} now has {final_item_count} items (added {merged_count})")
         
         # Log merge on target bill
         BillLog.objects.create(
@@ -1242,13 +1416,22 @@ def merge_bills(request):
                 'total_guests': total_guests
             }
         )
+        
+        # Set target bill as active in session
+        request.session['active_bill_id'] = target_bill.id
+        request.session.modified = True
+        
+        logger.info(f"Merge completed. Target bill ID {target_bill.id} set as active in session")
     
     return JsonResponse({
         'success': True,
         'message': f'{len(merged_bills)} bills merged into {target_bill.bill_number}',
         'target_bill': target_bill.bill_number,
+        'target_bill_id': target_bill.id,
         'merged_bills': merged_bills,
-        'total_items': merged_count
+        'total_items': merged_count,
+        'final_item_count': final_item_count,  # Total items in target bill after merge
+        'redirect': True  # Signal to reload/redirect
     })
 
 
@@ -1257,7 +1440,7 @@ def move_table_modal(request, bill_id):
     """Move table modal"""
     bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     tables = Table.objects.filter(
-        area__outlet=bill.outlet,
+        area__brand=bill.brand,
         status__in=['available', 'reserved']
     ).exclude(id=bill.table_id).order_by('area__name', 'number')
     
@@ -1323,7 +1506,7 @@ def transfer_bill_modal(request, bill_id):
     """Transfer bill to another cashier modal"""
     bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
     cashiers = request.user.__class__.objects.filter(
-        outlet=bill.outlet,
+        brand=bill.brand,
         role__in=['cashier', 'waiter', 'manager']
     ).exclude(id=request.user.id).order_by('username')
     
@@ -1376,7 +1559,7 @@ def transfer_bill(request, bill_id):
 
 
 @login_required
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "GET"])
 def reprint_receipt(request, bill_id):
     """Reprint receipt - HTMX"""
     bill = get_object_or_404(Bill, id=bill_id)
@@ -1387,12 +1570,39 @@ def reprint_receipt(request, bill_id):
             status=403
         )
     
-    from apps.pos.services import print_receipt
-    print_receipt(bill)
+    # Queue reprint via Print Agent
+    from apps.pos.print_queue import queue_print_receipt
+    print(f"\n[VIEWS] Reprint - Calling queue_print_receipt for Bill #{bill.bill_number}")
+    try:
+        queue_print_receipt(bill, terminal_id=request.session.get('terminal_id'))
+        print(f"[VIEWS] ✅ queue_print_receipt completed")
+    except Exception as e:
+        print(f"[VIEWS] ❌ Print queue failed: {e}")
+        import traceback
+        traceback.print_exc()
     
     BillLog.objects.create(bill=bill, action='reprint_receipt', user=request.user)
     
-    return HttpResponse('<div class="p-3 bg-green-100 text-green-700 rounded">Receipt dicetak ulang</div>')
+    # Return success or print preview URL
+    return JsonResponse({
+        'success': True,
+        'message': 'Receipt printed',
+        'print_url': f'/pos/bill/{bill.id}/print-preview/'
+    })
+
+
+@login_required
+def print_preview(request, bill_id):
+    """Print preview - Opens in new window for browser print"""
+    bill = get_object_or_404(Bill, id=bill_id)
+    
+    context = {
+        'bill': bill,
+        'items': bill.items.filter(is_void=False),
+        'payments': bill.payments.all()
+    }
+    
+    return render(request, 'pos/print_receipt.html', context)
 
 
 @login_required
@@ -1424,7 +1634,9 @@ def reprint_kitchen(request, bill_id):
 def modifier_modal(request, product_id):
     """Modifier selection modal - HTMX"""
     product = get_object_or_404(Product, id=product_id)
-    modifiers = product.modifiers.prefetch_related('options')
+    modifiers = Modifier.objects.filter(
+        product_modifiers__product=product
+    ).prefetch_related('options')
     
     return render(request, 'pos/partials/modifier_modal.html', {
         'product': product,
@@ -1435,8 +1647,8 @@ def modifier_modal(request, product_id):
 @login_required
 def quick_order_modal(request):
     """Quick order modal - HTMX"""
-    categories = Category.objects.filter(outlet=request.user.outlet, is_active=True)
-    products = Product.objects.filter(category__outlet=request.user.outlet, is_active=True)
+    categories = Category.objects.filter(brand=request.user.brand, is_active=True)
+    products = Product.objects.filter(category__brand=request.user.brand, is_active=True)
     
     return render(request, 'pos/partials/quick_order_modal.html', {
         'categories': categories,
@@ -1448,6 +1660,8 @@ def quick_order_modal(request):
 @require_http_methods(["POST"])
 def quick_order_create(request):
     """Create quick order with direct payment - HTMX"""
+    from apps.pos.utils import generate_queue_number
+    
     items_data = request.POST.get('items')
     payment_method = request.POST.get('payment_method', 'cash')
     payment_amount = Decimal(request.POST.get('payment_amount', 0))
@@ -1456,17 +1670,11 @@ def quick_order_create(request):
     items = json.loads(items_data)
     
     with transaction.atomic():
-        today = timezone.now().date()
-        last_queue = Bill.objects.filter(
-            outlet=request.user.outlet,
-            bill_type='takeaway',
-            created_at__date=today
-        ).aggregate(max_queue=models.Max('queue_number'))
-        
-        queue_number = (last_queue['max_queue'] or 0) + 1
+        # Generate queue number using utility function
+        queue_number = generate_queue_number(request.user.brand)
         
         bill = Bill.objects.create(
-            outlet=request.user.outlet,
+            brand=request.user.brand,
             bill_type='takeaway',
             customer_name=customer_name,
             queue_number=queue_number,
@@ -1487,18 +1695,19 @@ def quick_order_create(request):
         
         bill.calculate_totals()
         
+        # Create payment record
         Payment.objects.create(
             bill=bill,
             method=payment_method,
-            amount=payment_amount,
+            amount=bill.total,  # Use actual bill total, not payment_amount
             created_by=request.user,
         )
         
-        if bill.get_remaining() <= 0:
-            bill.status = 'paid'
-            bill.closed_by = request.user
-            bill.closed_at = timezone.now()
-            bill.save()
+        # Quick orders are always paid immediately
+        bill.status = 'paid'
+        bill.closed_by = request.user
+        bill.closed_at = timezone.now()
+        bill.save()
         
         # Send to kitchen
         from collections import defaultdict
@@ -1516,43 +1725,78 @@ def quick_order_create(request):
         
         pending_items.update(status='sent')
         
-        from apps.pos.services import print_receipt
-        print_receipt(bill)
+        # Queue receipt print via Print Agent
+        from apps.pos.print_queue import queue_print_receipt
+        print(f"\n[VIEWS] Quick order - Calling queue_print_receipt for Bill #{bill.bill_number}")
+        try:
+            queue_print_receipt(bill, terminal_id=request.session.get('terminal_id'))
+            print(f"[VIEWS] ✅ queue_print_receipt completed")
+        except Exception as e:
+            print(f"[VIEWS] ❌ Print queue failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     change = payment_amount - bill.total if payment_amount > bill.total else Decimal('0')
     
     return render(request, 'pos/partials/quick_order_success.html', {
         'bill': bill,
+        'queue_number': queue_number,
         'change': change,
+        'payment_amount': payment_amount,
+        'payment_method': payment_method,
     })
 
 
 @login_required
 def queue_display(request):
-    """Queue number display screen"""
-    today = timezone.now().date()
+    """
+    Real-time queue display for TV/Monitor
+    Auto-refresh via HTMX every 5 seconds
+    NOW SERVING: Shows orders completed in last 3 minutes only
+    """
+    from apps.pos.utils import get_active_queues, get_serving_queues, get_queue_statistics
     
-    ready_orders = Bill.objects.filter(
-        outlet=request.user.outlet,
-        bill_type='takeaway',
-        created_at__date=today,
-        queue_number__isnull=False,
-    ).filter(
-        items__status='ready'
-    ).distinct().order_by('queue_number')[:10]
+    brand = request.user.brand
     
-    preparing_orders = Bill.objects.filter(
-        outlet=request.user.outlet,
-        bill_type='takeaway',
-        created_at__date=today,
-        queue_number__isnull=False,
-    ).filter(
-        items__status__in=['sent', 'preparing']
-    ).distinct().order_by('queue_number')[:10]
+    # Get current serving (completed in last 3 minutes only)
+    serving = get_serving_queues(brand, limit=2, minutes=3)
+    
+    # Get preparing orders (paid but not completed) - show up to 20
+    preparing = get_active_queues(brand, limit=20)
+    
+    # Get statistics
+    stats = get_queue_statistics(brand)
     
     return render(request, 'pos/queue_display.html', {
-        'ready_orders': ready_orders,
-        'preparing_orders': preparing_orders,
+        'serving': serving,
+        'preparing': preparing,
+        'stats': stats,
+        'avg_wait': stats['avg_wait_minutes'],
+    })
+
+
+@login_required
+@require_http_methods(['POST'])
+def mark_queue_completed(request, bill_id):
+    """
+    Mark queue order as completed (ready for pickup)
+    Called when kitchen finishes preparing the order
+    """
+    bill = get_object_or_404(Bill, id=bill_id, brand=request.user.brand)
+    
+    if bill.status != 'paid':
+        return JsonResponse({
+            'success': False,
+            'message': 'Only paid orders can be marked as completed'
+        }, status=400)
+    
+    # Mark as completed using model method
+    bill.mark_completed(request.user)
+    
+    return JsonResponse({
+        'success': True,
+        'message': f'Queue #{bill.queue_number} marked as completed',
+        'queue_number': bill.queue_number
     })
 
 
@@ -1564,7 +1808,7 @@ def queue_display(request):
 @require_http_methods(['POST'])
 def session_open(request):
     """Open new store session (business date)"""
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     
     # Check if session already open
     current_session = StoreSession.get_current(store_config)
@@ -1602,29 +1846,75 @@ def session_open(request):
 @login_required
 def shift_open_form(request):
     """Show shift open modal"""
-    store_config = StoreConfig.get_current()
-    current_session = StoreSession.get_current(store_config)
+    import logging
+    logger = logging.getLogger(__name__)
     
-    if not current_session:
-        return render(request, 'pos/partials/session_required.html')
-    
-    # Check if user already has open shift
-    existing_shift = CashierShift.objects.filter(
-        cashier=request.user,
-        status='open'
-    ).first()
-    
-    if existing_shift:
+    try:
+        store_config = Store.get_current()
+        if not store_config:
+            logger.error("No store config found")
+            return JsonResponse({
+                'error': 'Store configuration not found. Please contact administrator.'
+            }, status=400)
+        
+        current_session = StoreSession.get_current(store_config)
+        
+        if not current_session:
+            logger.warning("No active session found")
+            return render(request, 'pos/partials/session_required.html')
+        
+        # Clear stale shift_id from session if it's no longer open
+        session_shift_id = request.session.get('active_shift_id')
+        logger.info(f"Session shift_id: {session_shift_id}")
+        
+        if session_shift_id:
+            try:
+                session_shift = CashierShift.objects.get(id=session_shift_id)
+                logger.info(f"Found shift in session: {session_shift.id}, status: {session_shift.status}")
+                
+                if session_shift.status == 'closed':
+                    # Shift already closed, remove from session
+                    del request.session['active_shift_id']
+                    request.session.modified = True
+                    logger.info(f"Cleared closed shift {session_shift_id} from session")
+            except CashierShift.DoesNotExist:
+                # Shift doesn't exist, remove from session
+                del request.session['active_shift_id']
+                request.session.modified = True
+                logger.info(f"Cleared non-existent shift {session_shift_id} from session")
+        
+        # Check if user already has open shift
+        existing_shift = CashierShift.objects.filter(
+            cashier=request.user,
+            status='open'
+        ).first()
+        
+        logger.info(f"Existing open shift check: {existing_shift}")
+        
+        if existing_shift:
+            logger.warning(f"User {request.user} already has open shift {existing_shift.id}")
+            # Calculate shift duration
+            duration = timezone.now() - existing_shift.shift_start
+            hours = int(duration.total_seconds() // 3600)
+            minutes = int((duration.total_seconds() % 3600) // 60)
+            
+            context = {
+                'has_open_shift': True,
+                'existing_shift': existing_shift,
+                'duration': f"{hours}h {minutes}m"
+            }
+            return render(request, 'pos/partials/shift_open_modal.html', context)
+        
+        context = {
+            'current_session': current_session,
+            'terminal': request.terminal if hasattr(request, 'terminal') else None
+        }
+        return render(request, 'pos/partials/shift_open_modal.html', context)
+    except Exception as e:
+        logger.error(f"Error in shift_open_form: {str(e)}", exc_info=True)
         return JsonResponse({
-            'error': 'You already have an open shift',
-            'shift_id': str(existing_shift.id)
+            'error': f'Server error: {str(e)}'
         }, status=400)
-    
-    context = {
-        'current_session': current_session,
-        'terminal': request.terminal if hasattr(request, 'terminal') else None
-    }
-    return render(request, 'pos/partials/shift_open_modal.html', context)
 
 
 @login_required
@@ -1635,7 +1925,7 @@ def shift_open(request):
     logger = logging.getLogger(__name__)
     
     try:
-        store_config = StoreConfig.get_current()
+        store_config = Store.get_current()
         current_session = StoreSession.get_current(store_config)
         
         logger.info(f"Shift open request - User: {request.user}, Session: {current_session}")
@@ -1761,8 +2051,17 @@ def shift_close(request):
     
     shift = get_object_or_404(CashierShift, id=shift_id, status='open')
     
+    # Helper function to clean currency input
+    def clean_currency(value):
+        """Remove commas and non-digit chars, convert to Decimal"""
+        if not value:
+            return Decimal('0')
+        # Remove everything except digits
+        cleaned = ''.join(filter(str.isdigit, str(value)))
+        return Decimal(cleaned) if cleaned else Decimal('0')
+    
     # Get actual amounts per payment method
-    actual_cash = Decimal(request.POST.get('actual_cash', '0'))
+    actual_cash = clean_currency(request.POST.get('actual_cash', '0'))
     notes = request.POST.get('notes', '')
     
     # Delete existing payment summaries to avoid duplicates
@@ -1772,7 +2071,7 @@ def shift_close(request):
     payment_methods = ['cash', 'card', 'qris', 'ewallet', 'transfer', 'voucher']
     for method in payment_methods:
         actual_amount_key = f'actual_{method}'
-        actual_amount = Decimal(request.POST.get(actual_amount_key, '0'))
+        actual_amount = clean_currency(request.POST.get(actual_amount_key, '0'))
         
         if actual_amount > 0 or method == 'cash':  # Always create cash summary
             summary = ShiftPaymentSummary.objects.create(
@@ -1790,9 +2089,14 @@ def shift_close(request):
             notes=notes
         )
         
-        # Clear session
+        # Clear session explicitly
         if 'active_shift_id' in request.session:
             del request.session['active_shift_id']
+            request.session.modified = True
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Shift {shift.id} closed. Session cleared. Shift status: {shift.status}")
         
         return JsonResponse({
             'success': True,
@@ -1803,6 +2107,9 @@ def shift_close(request):
         })
     
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error closing shift: {str(e)}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=400)
 
 
@@ -2170,28 +2477,213 @@ def shift_print_interim(request, shift_id):
 
 @login_required
 def shift_status(request):
-    """Get current shift status (for top bar indicator)"""
+    """Get current shift status (for sidebar indicator)"""
     shift_id = request.session.get('active_shift_id')
+    shift = None
     
-    if not shift_id:
+    # Try to get shift from session first
+    if shift_id:
+        try:
+            shift = CashierShift.objects.get(id=shift_id, status='open')
+        except CashierShift.DoesNotExist:
+            # Clear invalid session
+            if 'active_shift_id' in request.session:
+                del request.session['active_shift_id']
+                request.session.modified = True
+    
+    # If no shift in session, check if user has any open shift
+    if not shift:
+        shift = CashierShift.objects.filter(
+            cashier=request.user,
+            status='open'
+        ).first()
+        
+        # If found, update session
+        if shift:
+            request.session['active_shift_id'] = str(shift.id)
+            request.session.modified = True
+    
+    if not shift:
         return render(request, 'pos/partials/shift_status.html', {'has_shift': False})
+    
+    # Calculate duration
+    duration = timezone.now() - shift.shift_start
+    hours = int(duration.total_seconds() // 3600)
+    minutes = int((duration.total_seconds() % 3600) // 60)
+    
+    return render(request, 'pos/partials/shift_status.html', {
+        'has_shift': True,
+        'shift_id': str(shift.id),
+        'opening_cash': shift.opening_cash,
+        'duration': f"{hours}h {minutes}m",
+        'terminal': shift.terminal.terminal_code if shift.terminal else 'Unknown'
+    })
+
+
+# ==================== CASH DROP VIEWS ====================
+
+@login_required
+def cash_drop_form(request):
+    """Show cash drop modal"""
+    shift_id = request.session.get('active_shift_id')
+    if not shift_id:
+        return JsonResponse({'error': 'No active shift'}, status=400)
+    
+    shift = get_object_or_404(CashierShift, id=shift_id, status='open')
+    
+    context = {
+        'shift': shift,
+    }
+    
+    return render(request, 'pos/partials/cash_drop_modal.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def cash_drop_create(request):
+    """Create cash drop transaction"""
+    from apps.core.models_session import CashDrop
+    from apps.core.models import Company, Brand, Store
+    
+    shift_id = request.session.get('active_shift_id')
+    if not shift_id:
+        return JsonResponse({'error': 'No active shift'}, status=400)
+    
+    shift = get_object_or_404(CashierShift, id=shift_id, status='open')
+    
+    # Helper function to clean currency input
+    def clean_currency(value):
+        """Remove commas and non-digit chars, convert to Decimal"""
+        if not value:
+            return Decimal('0')
+        # Remove everything except digits
+        cleaned = ''.join(filter(str.isdigit, str(value)))
+        return Decimal(cleaned) if cleaned else Decimal('0')
+    
+    # Get form data
+    amount = clean_currency(request.POST.get('amount', '0'))
+    reason = request.POST.get('reason', 'regular')
+    notes = request.POST.get('notes', '')
+    
+    # Validate amount
+    if amount <= 0:
+        return JsonResponse({'error': 'Amount must be greater than zero'}, status=400)
+    
+    # Get multi-tenant context
+    store_config = Store.get_current()
+    brand = request.user.brand
+    company = brand.company if brand else None
+    
+    if not all([company, brand, store_config]):
+        return JsonResponse({'error': 'Store configuration incomplete'}, status=400)
     
     try:
-        shift = CashierShift.objects.get(id=shift_id, status='open')
-        duration = timezone.now() - shift.shift_start
-        hours = int(duration.total_seconds() // 3600)
-        minutes = int((duration.total_seconds() % 3600) // 60)
+        # Create cash drop
+        cash_drop = CashDrop.objects.create(
+            company=company,
+            brand = brand,
+            store=store_config,
+            cashier_shift=shift,
+            amount=amount,
+            reason=reason,
+            notes=notes,
+            created_by=request.user
+        )
         
-        return render(request, 'pos/partials/shift_status.html', {
-            'has_shift': True,
-            'shift_id': str(shift.id),
-            'opening_cash': shift.opening_cash,
-            'duration': f"{hours}h {minutes}m",
-            'terminal': shift.terminal.terminal_code if shift.terminal else 'Unknown'
-        })
-    except CashierShift.DoesNotExist:
-        # Clear invalid session
-        if 'active_shift_id' in request.session:
-            del request.session['active_shift_id']
-        return render(request, 'pos/partials/shift_status.html', {'has_shift': False})
+        # Return success response with receipt
+        response_html = f"""
+        <div class="fixed inset-0 z-50 overflow-y-auto" x-data="{{ isOpen: true }}" x-show="isOpen" x-cloak>
+            <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="isOpen = false"></div>
+            
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div class="relative bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all">
+                    <!-- Success Header -->
+                    <div class="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-6 rounded-t-2xl">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold">Cash Drop Recorded</h3>
+                                <p class="text-green-100 text-sm">Successfully saved</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Receipt Details -->
+                    <div class="p-6 space-y-4">
+                        <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+                            <div class="flex justify-between items-center pb-2 border-b border-gray-200">
+                                <span class="text-sm text-gray-600">Receipt Number</span>
+                                <span class="font-mono font-bold text-blue-600">{cash_drop.receipt_number}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Amount</span>
+                                <span class="text-2xl font-bold text-green-600">Rp {amount:,.0f}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Reason</span>
+                                <span class="font-medium">{dict(CashDrop.REASON_CHOICES).get(reason, reason)}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-gray-600">Time</span>
+                                <span class="font-medium">{cash_drop.created_at.strftime('%H:%M:%S')}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Info -->
+                        <div class="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
+                            <p class="text-sm text-blue-800">
+                                <strong>Important:</strong> This amount has been recorded and will be reflected in your shift reconciliation.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="p-6 border-t flex gap-3">
+                        <button 
+                            onclick="window.open('/pos/cash-drop/{cash_drop.id}/print/', '_blank')"
+                            class="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                            </svg>
+                            Print Receipt
+                        </button>
+                        <button 
+                            @click="isOpen = false; document.getElementById('modal-container').innerHTML = '';"
+                            class="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+        
+        return HttpResponse(response_html)
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating cash drop: {str(e)}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+def cash_drop_print(request, drop_id):
+    """Print cash drop receipt"""
+    from apps.core.models_session import CashDrop
+    
+    cash_drop = get_object_or_404(CashDrop, id=drop_id)
+    
+    # Mark as printed
+    cash_drop.mark_printed()
+    
+    context = {
+        'cash_drop': cash_drop,
+    }
+    
+    return render(request, 'pos/partials/cash_drop_receipt.html', context)
 

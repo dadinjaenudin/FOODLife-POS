@@ -106,9 +106,14 @@
              
              // Check if we have any payments
              if (this.payments.length === 0) {
-                 alert('Please add at least one payment');
+                 alert('Please add at least one payment or enter an amount');
                  return false;
              }
+             
+             // Update hidden input values before submit (untuk ensure data terkirim)
+             console.log('Submitting payments:', this.payments);
+             console.log('Current amount:', this.amount);
+             console.log('Current method:', this.method);
              
              return true;
          }

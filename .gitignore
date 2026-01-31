@@ -1,0 +1,101 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# Environment files
+#.env
+#.env.local
+#.env.*.local
+#.env.docker
+#.env.edge
+#.env.prod
+
+# Keep example files
+#!.env.example
+#!.env.edge.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+tmp_*
+*.tmp
+*.bak
+*.backup
+
+# Print Agent
+print_agent/*.log
+print_agent/printed_jobs.json
+print_agent/dist/
+print_agent/build/
+
+# Media uploads (except examples)
+media/products/*
+media/users/*
+!media/products/.gitkeep
+!media/users/.gitkeep
+
+# Database backups
+*.sql
+*.dump
+
+# Node modules (if any)
+node_modules/

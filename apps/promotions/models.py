@@ -1,229 +1,296 @@
+"""
+Promotion Models - Denormalized schema for fast querying
+Based on Edge Server design principles
+"""
 from django.db import models
-from django.utils import timezone
-from decimal import Decimal
+import uuid
+import json
 
 
 class Promotion(models.Model):
-    TYPE_CHOICES = [
-        ('percent_discount', 'Percent Discount'),
-        ('amount_discount', 'Amount Discount'),
-        ('buy_x_get_y', 'Buy X Get Y'),
-        ('combo', 'Combo Price'),
-        ('free_item', 'Free Item'),
-    ]
+    """
+    Main promotions table - denormalized for fast querying
+    Stores all promotion data synced from CMS
+    """
+    # Primary Key
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    APPLY_TO_CHOICES = [
-        ('all', 'All Products'),
-        ('category', 'Specific Category'),
-        ('product', 'Specific Product'),
-        ('bill', 'Entire Bill'),
-    ]
+    # Basic Info
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    terms_conditions = models.TextField(blank=True, default='')
     
-    name = models.CharField(max_length=200)
-    code = models.CharField(max_length=50, unique=True, blank=True, null=True)
-    promo_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    apply_to = models.CharField(max_length=20, choices=APPLY_TO_CHOICES, default='all')
+    # Multi-tenant Context
+    company = models.ForeignKey('core.Company', on_delete=models.CASCADE, related_name='promotions')
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE, related_name='promotions')
+    store = models.ForeignKey('core.Store', on_delete=models.CASCADE, related_name='promotions', null=True, blank=True)
     
-    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Type & Configuration
+    promo_type = models.CharField(max_length=50)  # percent_discount, buy_x_get_y, etc.
+    apply_to = models.CharField(max_length=20)  # all, category, product
+    execution_stage = models.CharField(max_length=20)  # item_level, cart_level, payment_level
+    execution_priority = models.IntegerField(default=500)
     
-    buy_quantity = models.IntegerField(default=0)
-    get_quantity = models.IntegerField(default=0)
-    get_product = models.ForeignKey(
-        'core.Product',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='free_promos'
-    )
-    
-    combo_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    combo_products = models.ManyToManyField('core.Product', blank=True, related_name='combo_promos')
-    
-    categories = models.ManyToManyField('core.Category', blank=True)
-    products = models.ManyToManyField('core.Product', blank=True, related_name='promos')
-    outlet = models.ForeignKey('core.Outlet', on_delete=models.CASCADE, related_name='promotions')
-    
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField()
-    
-    valid_days = models.JSONField(default=list, blank=True)
-    valid_time_start = models.TimeField(null=True, blank=True)
-    valid_time_end = models.TimeField(null=True, blank=True)
-    
-    max_uses = models.IntegerField(default=0)
-    max_uses_per_customer = models.IntegerField(default=0)
-    current_uses = models.IntegerField(default=0)
-    
-    min_purchase = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    min_quantity = models.IntegerField(default=0)
-    
+    # Flags
     is_active = models.BooleanField(default=True)
     is_auto_apply = models.BooleanField(default=False)
+    require_voucher = models.BooleanField(default=False)
+    member_only = models.BooleanField(default=False)
+    is_stackable = models.BooleanField(default=False)
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    # Validity (Denormalized for fast filtering)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    time_start = models.TimeField(null=True, blank=True)
+    time_end = models.TimeField(null=True, blank=True)
+    valid_days = models.TextField(blank=True, default='')  # JSON array
+    exclude_holidays = models.BooleanField(default=False)
+    
+    # Rules (JSON - Full promotion rules)
+    rules_json = models.TextField()  # JSON string
+    
+    # Scope (JSON - Product/Category targeting)
+    scope_json = models.TextField(blank=True, default='')  # JSON string
+    
+    # Targeting (JSON - Store/Brand/Customer targeting)
+    targeting_json = models.TextField(blank=True, default='')  # JSON string
+    
+    # Limits
+    max_uses = models.IntegerField(null=True, blank=True)
+    max_uses_per_customer = models.IntegerField(null=True, blank=True)
+    max_uses_per_day = models.IntegerField(null=True, blank=True)
+    current_uses = models.IntegerField(default=0)
+    
+    # Metadata
+    compiled_at = models.DateTimeField()
+    synced_at = models.DateTimeField(auto_now=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
-        ordering = ['-created_at']
+        db_table = 'promotions_promotion'
+        ordering = ['-start_date', 'execution_priority', 'name']
+        indexes = [
+            models.Index(fields=['company', 'store']),
+            models.Index(fields=['brand']),
+            models.Index(fields=['is_active', 'start_date', 'end_date']),
+            models.Index(fields=['promo_type']),
+            models.Index(fields=['code']),
+        ]
     
     def __str__(self):
-        return self.name
+        return f"{self.code} - {self.name}"
+    
+    def get_rules(self):
+        """Parse and return rules JSON as dict"""
+        import json
+        if self.rules_json:
+            try:
+                if isinstance(self.rules_json, str):
+                    return json.loads(self.rules_json)
+                return self.rules_json
+            except:
+                return {}
+        return {}
+    
+    def get_scope(self):
+        """Parse and return scope JSON as dict"""
+        import json
+        if self.scope_json:
+            try:
+                if isinstance(self.scope_json, str):
+                    return json.loads(self.scope_json)
+                return self.scope_json
+            except:
+                return {}
+        return {}
+    
+    def get_targeting(self):
+        """Parse and return targeting JSON as dict"""
+        import json
+        if self.targeting_json:
+            try:
+                if isinstance(self.targeting_json, str):
+                    return json.loads(self.targeting_json)
+                return self.targeting_json
+            except:
+                return {}
+        return {}
     
     def is_valid_now(self):
+        """Check if promotion is currently valid"""
+        from django.utils import timezone
         now = timezone.now()
+        today = now.date()
+        current_time = now.time()
         
-        if not (self.start_date <= now <= self.end_date):
+        # Check date range
+        if not (self.start_date <= today <= self.end_date):
             return False
         
-        if self.valid_days and now.weekday() not in self.valid_days:
-            return False
-        
-        if self.valid_time_start and self.valid_time_end:
-            current_time = now.time()
-            if not (self.valid_time_start <= current_time <= self.valid_time_end):
+        # Check time range if specified
+        if self.time_start and self.time_end:
+            if not (self.time_start <= current_time <= self.time_end):
                 return False
         
-        if self.max_uses > 0 and self.current_uses >= self.max_uses:
+        # Check active status
+        if not self.is_active:
             return False
         
-        return self.is_active
+        return True
     
-    def calculate_discount(self, bill):
-        if not self.is_valid_now():
-            return Decimal('0')
+    def get_rules(self):
+        """Parse rules JSON"""
+        try:
+            return json.loads(self.rules_json) if self.rules_json else {}
+        except:
+            return {}
+    
+    def get_scope(self):
+        """Parse scope JSON"""
+        try:
+            return json.loads(self.scope_json) if self.scope_json else {}
+        except:
+            return {}
+    
+    def get_targeting(self):
+        """Parse targeting JSON"""
+        try:
+            return json.loads(self.targeting_json) if self.targeting_json else {}
+        except:
+            return {}
+    
+    def get_valid_days(self):
+        """Parse valid days JSON"""
+        try:
+            return json.loads(self.valid_days) if self.valid_days else []
+        except:
+            return []
+    
+    def get_discount_amount(self, original_amount):
+        """Calculate discount amount based on rules"""
+        rules = self.get_rules()
         
-        if bill.subtotal < self.min_purchase:
-            return Decimal('0')
-        
-        discount = Decimal('0')
-        
-        if self.promo_type == 'percent_discount':
-            if self.apply_to == 'bill':
-                discount = bill.subtotal * (self.discount_percent / 100)
-            elif self.apply_to == 'category':
-                applicable_total = sum(
-                    item.total for item in bill.items.filter(
-                        product__category__in=self.categories.all(),
-                        is_void=False
-                    )
-                )
-                discount = applicable_total * (self.discount_percent / 100)
-            elif self.apply_to == 'product':
-                applicable_total = sum(
-                    item.total for item in bill.items.filter(
-                        product__in=self.products.all(),
-                        is_void=False
-                    )
-                )
-                discount = applicable_total * (self.discount_percent / 100)
-        
-        elif self.promo_type == 'amount_discount':
-            discount = self.discount_amount
-        
-        elif self.promo_type == 'buy_x_get_y':
-            qualifying_items = bill.items.filter(
-                product__in=self.products.all(),
-                is_void=False
-            )
-            total_qty = sum(item.quantity for item in qualifying_items)
-            free_count = (total_qty // self.buy_quantity) * self.get_quantity
+        if rules.get('type') == 'percent':
+            discount_percent = rules.get('discount_percent', 0)
+            discount = original_amount * (discount_percent / 100)
             
-            if self.get_product:
-                discount = self.get_product.price * free_count
-            else:
-                prices = sorted([item.unit_price for item in qualifying_items])
-                discount = sum(prices[:free_count])
+            # Apply max discount if specified
+            max_discount = rules.get('max_discount_amount')
+            if max_discount and discount > max_discount:
+                discount = max_discount
+            
+            return discount
         
-        return min(discount, bill.subtotal)
+        elif rules.get('type') == 'fixed':
+            return rules.get('discount_amount', 0)
+        
+        return 0
+    
+    def can_apply_to_product(self, product_id):
+        """Check if promotion applies to specific product"""
+        scope = self.get_scope()
+        apply_to = scope.get('apply_to', 'all')
+        
+        if apply_to == 'all':
+            # Check if product is excluded
+            excluded = scope.get('exclude_products', [])
+            return str(product_id) not in excluded
+        
+        # Add more logic for specific products/categories
+        return False
 
 
-class Voucher(models.Model):
-    STATUS_CHOICES = [
-        ('active', 'Active'),
-        ('used', 'Used'),
-        ('expired', 'Expired'),
-        ('cancelled', 'Cancelled'),
+class PromotionUsage(models.Model):
+    """Track promotion usage for limits enforcement"""
+    
+    # References
+    promotion = models.ForeignKey(Promotion, on_delete=models.CASCADE, related_name='usages')
+    promotion_code = models.CharField(max_length=50)
+    
+    # Transaction Info
+    transaction_id = models.UUIDField()
+    order_number = models.CharField(max_length=50, blank=True)
+    
+    # Customer Info
+    customer_id = models.UUIDField(null=True, blank=True)
+    customer_phone = models.CharField(max_length=20, blank=True)
+    member_tier = models.CharField(max_length=50, blank=True)
+    
+    # Usage Details
+    discount_amount = models.DecimalField(max_digits=15, decimal_places=2)
+    original_amount = models.DecimalField(max_digits=15, decimal_places=2)
+    final_amount = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # Context
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE)
+    store = models.ForeignKey('core.Store', on_delete=models.CASCADE)
+    
+    # Timestamp
+    used_at = models.DateTimeField(auto_now_add=True)
+    usage_date = models.DateField()
+    
+    class Meta:
+        db_table = 'promotion_usage'
+        indexes = [
+            models.Index(fields=['promotion', 'usage_date']),
+            models.Index(fields=['promotion', 'customer_id', 'usage_date']),
+            models.Index(fields=['transaction_id']),
+        ]
+    
+    def __str__(self):
+        return f"{self.promotion_code} - {self.usage_date}"
+
+
+class PromotionSyncLog(models.Model):
+    """Track sync operations for debugging and monitoring"""
+    
+    SYNC_TYPE_CHOICES = [
+        ('full', 'Full Sync'),
+        ('incremental', 'Incremental'),
+        ('manual', 'Manual'),
     ]
     
-    code = models.CharField(max_length=50, unique=True)
-    promotion = models.ForeignKey(Promotion, on_delete=models.CASCADE, related_name='vouchers')
+    STATUS_CHOICES = [
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+        ('partial', 'Partial'),
+    ]
     
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    # Sync Info
+    sync_type = models.CharField(max_length=20, choices=SYNC_TYPE_CHOICES)
+    sync_status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     
-    customer_phone = models.CharField(max_length=20, blank=True)
-    customer_name = models.CharField(max_length=200, blank=True)
+    # Statistics
+    promotions_received = models.IntegerField(default=0)
+    promotions_added = models.IntegerField(default=0)
+    promotions_updated = models.IntegerField(default=0)
+    promotions_deleted = models.IntegerField(default=0)
     
-    qr_code = models.ImageField(upload_to='vouchers/', blank=True)
+    # Context
+    company = models.ForeignKey('core.Company', on_delete=models.CASCADE)
+    store = models.ForeignKey('core.Store', on_delete=models.CASCADE)
     
-    used_at = models.DateTimeField(null=True, blank=True)
-    used_by = models.ForeignKey('core.User', on_delete=models.SET_NULL, null=True, blank=True)
-    used_bill = models.ForeignKey('pos.Bill', on_delete=models.SET_NULL, null=True, blank=True)
+    # Error Info
+    error_message = models.TextField(blank=True)
+    error_details = models.TextField(blank=True)
     
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
+    # Timestamp
+    started_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.IntegerField(null=True, blank=True)
     
-    def __str__(self):
-        return self.code
+    # Metadata
+    cms_version = models.CharField(max_length=20, blank=True)
+    edge_version = models.CharField(max_length=20, blank=True)
     
-    def save(self, *args, **kwargs):
-        if not self.code:
-            self.code = self.generate_code()
-        super().save(*args, **kwargs)
-    
-    def generate_code(self):
-        import random
-        import string
-        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    
-    def generate_qr_code(self):
-        import qrcode
-        from io import BytesIO
-        from django.core.files import File
-        
-        qr = qrcode.make(self.code)
-        buffer = BytesIO()
-        qr.save(buffer, format='PNG')
-        self.qr_code.save(f'voucher_{self.code}.png', File(buffer), save=True)
-    
-    def is_valid(self):
-        if self.status != 'active':
-            return False, f"Voucher {self.status}"
-        
-        if self.expires_at and timezone.now() > self.expires_at:
-            self.status = 'expired'
-            self.save()
-            return False, "Voucher expired"
-        
-        if not self.promotion.is_valid_now():
-            return False, "Promo tidak berlaku"
-        
-        return True, "Valid"
-    
-    def redeem(self, bill, user):
-        is_valid, message = self.is_valid()
-        if not is_valid:
-            return False, message
-        
-        self.status = 'used'
-        self.used_at = timezone.now()
-        self.used_by = user
-        self.used_bill = bill
-        self.save()
-        
-        self.promotion.current_uses += 1
-        self.promotion.save()
-        
-        return True, "Voucher berhasil digunakan"
-
-
-class BillPromotion(models.Model):
-    bill = models.ForeignKey('pos.Bill', on_delete=models.CASCADE, related_name='applied_promos')
-    promotion = models.ForeignKey(Promotion, on_delete=models.PROTECT)
-    voucher = models.ForeignKey(Voucher, on_delete=models.SET_NULL, null=True, blank=True)
-    
-    discount_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    applied_at = models.DateTimeField(auto_now_add=True)
-    applied_by = models.ForeignKey('core.User', on_delete=models.PROTECT)
+    class Meta:
+        db_table = 'promotion_sync_log'
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['started_at']),
+            models.Index(fields=['sync_status']),
+        ]
     
     def __str__(self):
-        return f"{self.bill.bill_number} - {self.promotion.name}"
+        return f"{self.sync_type} - {self.sync_status} - {self.started_at}"

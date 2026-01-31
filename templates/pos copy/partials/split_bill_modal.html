@@ -1,0 +1,498 @@
+{% load humanize %}
+<!-- Split Bill Modal -->
+<div id="split-bill-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 animate-fadeIn"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl" style="max-height: 85vh;">
+        <!-- Compact Header -->
+        <div class="bg-gradient-to-r from-teal-600 to-cyan-600 px-5 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Split Bill</h2>
+                        <p class="text-xs text-teal-100">{{ bill.bill_number }} • {% if bill.table %}Table {{ bill.table.number }}{% else %}Takeaway{% endif %}</p>
+                    </div>
+                </div>
+                <button onclick="closeModal()" class="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4">
+            <form id="split-bill-form">
+                <!-- Compact Info Notice -->
+                <div class="bg-teal-50 border border-teal-200 rounded-lg p-3 mb-4 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-teal-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <p class="text-xs text-teal-800">Select items to move to new bill</p>
+                </div>
+
+                <!-- Compact Item Selection -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-bold text-gray-900">Select Items</h3>
+                        <span id="selected-count" class="text-xs text-teal-600 font-medium">0 selected</span>
+                    </div>
+                    
+                    <div class="space-y-1.5 max-h-[250px] overflow-y-auto">
+                        {% for item in items %}
+                        <label class="flex items-center p-3 border rounded-lg hover:bg-teal-50 cursor-pointer transition item-checkbox"
+                               data-item-id="{{ item.id }}"
+                               data-item-total="{{ item.total|stringformat:'f' }}"
+                               data-item-qty="{{ item.quantity }}"
+                               data-unit-price="{{ item.unit_price|stringformat:'f' }}">
+                            <input type="checkbox" 
+                                   name="split_items" 
+                                   value="{{ item.id }}" 
+                                   class="split-item-checkbox w-4 h-4 text-teal-600 rounded border-gray-300">
+                            <div class="ml-2 flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="font-semibold text-sm text-gray-900 truncate">{{ item.product.name }}</span>
+                                    <span class="font-bold text-sm text-gray-900 whitespace-nowrap item-total-display">Rp {{ item.total|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs text-gray-600 mt-1">
+                                    <div class="flex items-center gap-2">
+                                        <span>Qty:</span>
+                                        <input type="number" 
+                                               name="split_qty_{{ item.id }}"
+                                               value="{{ item.quantity }}"
+                                               min="1"
+                                               max="{{ item.quantity }}"
+                                               class="split-qty-input w-16 px-2 py-1 border border-gray-300 rounded text-center font-semibold"
+                                               data-original-qty="{{ item.quantity }}"
+                                               disabled>
+                                        <span class="text-gray-400">/ {{ item.quantity }}</span>
+                                    </div>
+                                    <span class="text-gray-500">@ Rp {{ item.unit_price|floatformat:0|intcomma }}</span>
+                                </div>
+                            </div>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Compact Split Summary -->
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h3 class="font-bold text-sm text-gray-900 mb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                        </svg>
+                        Split Summary
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-white p-3 rounded-lg border">
+                            <p class="text-xs text-gray-600 mb-1">Original (Remaining)</p>
+                            <p class="text-lg font-bold text-gray-900">
+                                Rp <span id="original-remaining">0</span>
+                            </p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                <span id="items-remaining">0</span> items
+                            </p>
+                        </div>
+                        <div class="bg-teal-50 p-3 rounded-lg border border-teal-200">
+                            <p class="text-xs text-teal-700 mb-1">New Bill (Split)</p>
+                            <p class="text-lg font-bold text-teal-600">
+                                Rp <span id="new-bill-total">0</span>
+                            </p>
+                            <p class="text-xs text-teal-600 mt-1">
+                                <span id="items-selected">0</span> items
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compact Table Selection -->
+                {% if bill.table %}
+                <div>
+                    <label class="flex items-center gap-2 text-xs font-bold text-gray-900 mb-2">
+                        <svg class="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                        </svg>
+                        Move to Table (Optional)
+                    </label>
+                    <select name="new_table_id" 
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+                        <option value="">Same table ({{ bill.table.number }})</option>
+                        {% for table in tables %}
+                        {% if table.status == 'available' %}
+                        <option value="{{ table.id }}">{{ table.area.name }} - Table {{ table.number }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+
+        <!-- Compact Footer -->
+        <div class="p-4 border-t bg-gray-50 flex items-center gap-2">
+            <button onclick="closeModal()" 
+                    type="button"
+                    class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 font-semibold text-sm rounded-lg hover:bg-gray-100 transition">
+                Cancel
+            </button>
+            <button type="button"
+                    onclick="submitSplitBill()"
+                    id="submit-split-btn"
+                    disabled
+                    class="flex-1 px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-semibold text-sm rounded-lg hover:from-teal-700 hover:to-cyan-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                </svg>
+                <span>Split Bill</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Store original data
+const totalItems = {{ items|length }};
+const itemData = [
+    {% for item in items %}
+    { id: {{ item.id }}, total: parseFloat('{{ item.total|stringformat:"f" }}') || 0 }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Calculate original total from items (not bill.total which may include tax/service)
+const originalTotal = itemData.reduce((sum, item) => sum + item.total, 0);
+
+// Format number to Indonesian Rupiah format - single source of truth
+function formatNumber(number) {
+    return new Intl.NumberFormat('id-ID', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(Math.round(number));
+}
+
+function updateSplitSummary() {
+    const checkboxes = document.querySelectorAll('input[name="split_items"]:checked');
+    const selectedCount = checkboxes.length;
+    
+    // Calculate new bill total based on selected items and their qty
+    let newBillTotal = 0;
+    let remainingItems = 0;
+    
+    checkboxes.forEach(cb => {
+        const itemId = parseInt(cb.value);
+        const label = cb.closest('.item-checkbox');
+        const qtyInput = label.querySelector('.split-qty-input');
+        const splitQty = parseInt(qtyInput.value);
+        const unitPrice = parseFloat(label.dataset.unitPrice);
+        
+        // Calculate total for this item based on split qty
+        newBillTotal += splitQty * unitPrice;
+    });
+    
+    // Calculate remaining total from all items
+    const allLabels = document.querySelectorAll('.item-checkbox');
+    let originalTotalCalc = 0;
+    allLabels.forEach(label => {
+        const checkbox = label.querySelector('.split-item-checkbox');
+        const originalQty = parseInt(label.dataset.itemQty);
+        const unitPrice = parseFloat(label.dataset.unitPrice);
+        const qtyInput = label.querySelector('.split-qty-input');
+        const splitQty = parseInt(qtyInput.value);
+        
+        if (checkbox.checked) {
+            // Item will be split
+            const remainingQty = originalQty - splitQty;
+            if (remainingQty > 0) {
+                originalTotalCalc += remainingQty * unitPrice;
+                remainingItems++;
+            }
+        } else {
+            // Item stays in original bill
+            originalTotalCalc += originalQty * unitPrice;
+            remainingItems++;
+        }
+    });
+    
+    // Update UI with proper formatting
+    document.getElementById('selected-count').textContent = selectedCount + ' selected';
+    document.getElementById('new-bill-total').textContent = formatNumber(newBillTotal);
+    document.getElementById('original-remaining').textContent = formatNumber(originalTotalCalc);
+    document.getElementById('items-selected').textContent = selectedCount;
+    document.getElementById('items-remaining').textContent = remainingItems;
+    
+    // Enable/disable submit button
+    // Button is enabled if:
+    // 1. At least one item is selected
+    // 2. New bill total > 0 (has something to split)
+    // 3. Original bill will still have something (not moving everything)
+    const submitBtn = document.getElementById('submit-split-btn');
+    if (selectedCount > 0 && newBillTotal > 0 && originalTotalCalc > 0) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    } else {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    
+    // Update checkbox container styling
+    document.querySelectorAll('.item-checkbox').forEach(label => {
+        const checkbox = label.querySelector('input[type="checkbox"]');
+        if (checkbox.checked) {
+            label.classList.add('border-teal-500', 'bg-teal-50');
+            label.classList.remove('border-gray-200');
+        } else {
+            label.classList.remove('border-teal-500', 'bg-teal-50');
+            label.classList.add('border-gray-200');
+        }
+    });
+}
+
+function submitSplitBill() {
+    const checkboxes = document.querySelectorAll('input[name="split_items"]:checked');
+    if (checkboxes.length === 0) {
+        alert('Please select at least one item to split');
+        return;
+    }
+    
+    // Validate that original bill will still have remaining items/qty
+    // This is now handled by the button enable/disable logic in updateSplitSummary
+    // which checks: newBillTotal > 0 && originalTotalCalc > 0
+    
+    const submitBtn = document.getElementById('submit-split-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Processing...</span>';
+    
+    // Build FormData manually to ensure correct format
+    const formData = new FormData();
+    
+    // Add selected items with [] notation and their qty
+    checkboxes.forEach(cb => {
+        const itemId = cb.value;
+        const label = cb.closest('.item-checkbox');
+        const qtyInput = label.querySelector('.split-qty-input');
+        const splitQty = qtyInput.value;
+        
+        formData.append('split_items[]', itemId);
+        formData.append(`split_qty_${itemId}`, splitQty);
+    });
+    
+    // Add other form fields
+    const newTableSelect = document.querySelector('select[name="new_table_id"]');
+    if (newTableSelect && newTableSelect.value) {
+        formData.append('new_table_id', newTableSelect.value);
+    }
+    
+    // Add guest count (default 1)
+    formData.append('guest_count', '1');
+    
+    fetch('{% url "pos:split_bill" bill.id %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || 'Failed to split bill');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            // Close split modal
+            closeModal();
+            
+            // Show success message
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-50';
+            toast.innerHTML = `
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <p class="font-bold">Bill split! Opening payment for ${data.new_bill.number}...</p>
+            `;
+            document.body.appendChild(toast);
+            
+            // Auto-remove toast after 2 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 2000);
+            
+            // Directly open payment modal for the NEW bill
+            setTimeout(() => {
+                payBill(data.new_bill.id);
+            }, 500);
+        } else {
+            throw new Error(data.error || 'Failed to split bill');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg><span>Split Bill</span>';
+    });
+}
+
+// Attach event listeners after DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    attachSplitEventListeners();
+});
+
+// Also attach when HTMX swaps content
+function attachSplitEventListeners() {
+    // Checkbox change listeners
+    document.querySelectorAll('.split-item-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const label = this.closest('.item-checkbox');
+            const qtyInput = label.querySelector('.split-qty-input');
+            
+            // Enable/disable qty input based on checkbox
+            qtyInput.disabled = !this.checked;
+            
+            // Update styling
+            if (this.checked) {
+                label.classList.add('border-teal-500', 'bg-teal-50');
+                label.classList.remove('border-gray-200');
+                
+                // Update total display with current qty when checked
+                const qty = parseInt(qtyInput.value);
+                const unitPrice = parseFloat(label.dataset.unitPrice);
+                const newTotal = qty * unitPrice;
+                const totalDisplay = label.querySelector('.item-total-display');
+                if (totalDisplay) {
+                    totalDisplay.textContent = 'Rp ' + formatNumber(newTotal);
+                }
+            } else {
+                label.classList.remove('border-teal-500', 'bg-teal-50');
+                label.classList.add('border-gray-200');
+                
+                // Reset to original total when unchecked
+                const originalQty = parseInt(label.dataset.itemQty);
+                const unitPrice = parseFloat(label.dataset.unitPrice);
+                const originalTotal = originalQty * unitPrice;
+                const totalDisplay = label.querySelector('.item-total-display');
+                if (totalDisplay) {
+                    totalDisplay.textContent = 'Rp ' + formatNumber(originalTotal);
+                }
+            }
+            
+            updateSplitSummary();
+        });
+    });
+    
+    // Qty input change listeners - handle both 'input' and 'change' events
+    document.querySelectorAll('.split-qty-input').forEach(input => {
+        console.log('Found qty input:', input, 'Value:', input.value);
+        const handleQtyChange = function() {
+            console.log('Qty input changed, new value:', this.value);
+            const label = this.closest('.item-checkbox');
+            const originalQty = parseInt(this.dataset.originalQty);
+            const unitPrice = parseFloat(label.dataset.unitPrice);
+            let value = parseInt(this.value) || 0;
+            console.log('originalQty:', originalQty, 'unitPrice:', unitPrice, 'value:', value);
+            
+            // Validate qty
+            if (value < 1) value = 1;
+            if (value > originalQty) value = originalQty;
+            this.value = value;
+            console.log('After validation, value:', value);
+            
+            // Update item total display
+            const newTotal = value * unitPrice;
+            console.log('Calculated newTotal:', newTotal);
+            const totalDisplay = label.querySelector('.item-total-display');
+            if (totalDisplay) {
+                console.log('Before format, totalDisplay.textContent:', totalDisplay.textContent);
+                totalDisplay.textContent = 'Rp ' + formatNumber(newTotal);
+                console.log('After format, totalDisplay.textContent:', totalDisplay.textContent);
+            }
+            
+            updateSplitSummary();
+        };
+        
+        // Listen to both input (typing) and change (spinner arrows)
+        input.addEventListener('input', handleQtyChange);
+        input.addEventListener('change', handleQtyChange);
+        console.log('Attached input and change listeners to:', input);
+        input.addEventListener('input', handleQtyChange);
+        input.addEventListener('change', handleQtyChange);
+    });
+}
+
+// Call it immediately as well
+setTimeout(attachSplitEventListeners, 100);
+
+// Function to process payment for selected bill
+function payBill(billId) {
+    // Set active bill in session and open payment modal
+    fetch(`/pos/bill/${billId}/payment/`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Remove payment selection modal
+        const paymentSelectionModal = document.getElementById('payment-selection-modal');
+        if (paymentSelectionModal) {
+            paymentSelectionModal.remove();
+        }
+        
+        // Set as active bill
+        fetch(`/pos/bill/${billId}/resume/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            }
+        }).then(() => {
+            // Show payment modal
+            const modalContainer = document.getElementById('modal-container');
+            if (modalContainer) {
+                modalContainer.innerHTML = html;
+                htmx.process(modalContainer);
+            }
+        });
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to open payment modal');
+    });
+}
+</script>
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideUp {
+    animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+</style>

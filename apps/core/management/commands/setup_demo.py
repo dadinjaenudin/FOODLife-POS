@@ -1,5 +1,5 @@
-from django.core.management.base import BaseCommand
-from apps.core.models import Company, User, Outlet, Category, Product
+﻿from django.core.management.base import BaseCommand
+from apps.core.models import Company, User, Brand, Category, Product
 
 
 class Command(BaseCommand):
@@ -16,8 +16,8 @@ class Command(BaseCommand):
         )
         self.stdout.write(f'Company: {company.name}')
         
-        # Create outlet
-        outlet, _ = Outlet.objects.get_or_create(
+        # Create Brand
+        Brand, _ = Brand.objects.get_or_create(
             code='RST01',
             company=company,
             defaults={
@@ -29,7 +29,7 @@ class Command(BaseCommand):
                 'receipt_footer': 'Terima Kasih Atas Kunjungan Anda!'
             }
         )
-        self.stdout.write(f'Outlet: {outlet.name}')
+        self.stdout.write(f'Brand: {Brand.name}')
         
         # Create admin user
         admin, created = User.objects.get_or_create(
@@ -38,7 +38,7 @@ class Command(BaseCommand):
                 'email': 'admin@demo.com',
                 'role': 'admin',
                 'company': company,
-                'outlet': outlet,
+                'Brand': Brand,
                 'is_staff': True,
                 'is_superuser': True,
             }
@@ -57,7 +57,7 @@ class Command(BaseCommand):
                 'last_name': 'Manager',
                 'role': 'manager',
                 'company': company,
-                'outlet': outlet,
+                'Brand': Brand,
                 'is_staff': True,
             }
         )
@@ -73,7 +73,7 @@ class Command(BaseCommand):
                 'email': 'kasir@demo.com',
                 'role': 'cashier',
                 'company': company,
-                'outlet': outlet,
+                'Brand': Brand,
                 'pin': '1234',
             }
         )
@@ -88,7 +88,7 @@ class Command(BaseCommand):
         for name in categories_data:
             cat, _ = Category.objects.get_or_create(
                 name=name,
-                outlet=outlet,
+                Brand=Brand,
             )
             categories[name] = cat
         self.stdout.write(f'Categories created: {len(categories)}')
@@ -139,7 +139,7 @@ class Command(BaseCommand):
         for area_name, table_count in areas_data:
             area, _ = TableArea.objects.get_or_create(
                 name=area_name,
-                outlet=outlet,
+                Brand=Brand,
             )
             for i in range(1, table_count + 1):
                 Table.objects.get_or_create(

@@ -31,13 +31,15 @@
         <div class="flex gap-3">
             <button 
                 class="flex-1 py-3 rounded-lg border border-gray-300 font-medium hover:bg-gray-50"
-                hx-post="{% url 'pos:reprint_receipt' bill.id %}"
-                hx-swap="none">
+                onclick="printReceipt({{ bill.id }})">
                 Reprint
             </button>
             <button 
                 class="flex-1 py-3 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700"
-                onclick="document.getElementById('modal-container').innerHTML = ''; window.location.reload(true);">
+                onclick="document.getElementById('modal-container').innerHTML = ''; 
+                    // Refresh product grid to show No Active Bill
+                    htmx.ajax('GET', '{% url 'pos:products' %}?category=all', {target: '#product-grid', swap: 'innerHTML'});
+                    window.location.reload(true);">
                 Done
             </button>
         </div>
@@ -45,6 +47,27 @@
 </div>
 
 <script>
+// Auto print receipt on success - Open in new window immediately
+(function() {
+    console.log('Payment success modal loaded, opening print preview...');
+    const billId = {{ bill.id }};
+    const printUrl = `/pos/bill/${billId}/print-preview/`;
+    const printWindow = window.open(printUrl, 'PrintReceipt', 'width=400,height=600,menubar=no,toolbar=no,location=no');
+    
+    if (!printWindow) {
+        alert('Print preview blocked by popup blocker. Please allow popups for this site.');
+    }
+})();
+
+function printReceipt(billId) {
+    const printUrl = `/pos/bill/${billId}/print-preview/`;
+    const printWindow = window.open(printUrl, 'PrintReceipt', 'width=400,height=600,menubar=no,toolbar=no,location=no');
+    
+    if (!printWindow) {
+        alert('Print preview blocked by popup blocker. Please allow popups for this site.');
+    }
+}
+
 function closeModal() {
     document.getElementById('modal-container').innerHTML = '';
 }

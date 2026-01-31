@@ -1,0 +1,347 @@
+{% load humanize %}
+<!-- Payment Modal v2.0 -->
+<div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto animate-fadeIn"
+     x-data="{
+         method: 'cash',
+         amount: 0,
+         amountDisplay: '',
+         reference: '',
+         total: parseInt('{{ total_int|escapejs }}'),
+         paid: parseInt('{{ paid_int|escapejs }}'),
+         payments: [],
+         get remaining() { return this.total - this.paid - this.payments.reduce((sum, p) => sum + p.amount, 0); },
+         get change() { 
+             if (this.method !== 'cash') return 0;
+             return Math.max(0, this.amount - this.remaining); 
+         },
+         formatNumber(num) {
+             if (!num && num !== 0) return '0';
+             const str = Math.floor(num).toString();
+             const result = str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+             console.log('formatNumber input:', num, 'output:', result);
+             return result;
+         },
+         updateAmount(value) {
+             // Remove non-digits
+             const cleanValue = value.replace(/\D/g, '');
+             this.amount = cleanValue ? parseInt(cleanValue) : 0;
+             this.amountDisplay = this.amount ? this.formatNumber(this.amount) : '';
+         },
+         init() {
+             console.log('Payment Modal Init - amount:', this.amount, 'remaining:', this.remaining);
+             this.amountDisplay = this.formatNumber(this.amount);
+         },
+         addPayment() {
+             if (this.amount <= 0) {
+                 alert('Please enter an amount');
+                 return;
+             }
+             
+             // Non-cash payment methods cannot exceed remaining balance
+             if (this.method !== 'cash' && this.amount > this.remaining) {
+                 alert('Non-cash payment cannot exceed remaining balance of Rp ' + this.formatNumber(this.remaining));
+                 return;
+             }
+             
+             // Cash can overpay only for single payment (no split)
+             if (this.method === 'cash' && this.payments.length > 0 && this.amount > this.remaining) {
+                 alert('Cash overpayment only allowed for single payment');
+                 return;
+             }
+             
+             this.payments.push({
+                 method: this.method,
+                 amount: this.amount,
+                 reference: this.reference,
+                 methodLabel: this.getMethodLabel(this.method)
+             });
+             
+             // Reset for next payment
+             this.amount = 0;
+             this.amountDisplay = '';
+             this.reference = '';
+             
+             // Show success feedback
+             if (this.remaining > 0) {
+                 console.log('Payment added. Remaining: Rp ' + this.formatNumber(this.remaining));
+             }
+         },
+         removePayment(index) {
+             this.payments.splice(index, 1);
+         },
+         getMethodLabel(method) {
+             const labels = {
+                 'cash': '💵 Cash',
+                 'card': '💳 Card',
+                 'qris': '📱 QRIS',
+                 'ewallet': '🏦 E-Wallet',
+                 'transfer': '🔄 Transfer',
+                 'voucher': '🎟️ Voucher'
+             };
+             return labels[method] || method;
+         },
+         submitPayment() {
+             // If user entered amount but didn't click Add Payment yet, add it now
+             if (this.amount > 0) {
+                 // Validate before adding
+                 if (this.method !== 'cash' && this.amount > this.remaining) {
+                     alert('Non-cash payment cannot exceed remaining balance of Rp ' + this.formatNumber(this.remaining));
+                     return false;
+                 }
+                 
+                 // For split payment, cash cannot overpay
+                 if (this.method === 'cash' && this.payments.length > 0 && this.amount > this.remaining) {
+                     alert('Cash overpayment only allowed for single payment. Current remaining: Rp ' + this.formatNumber(this.remaining));
+                     return false;
+                 }
+                 
+                 // Add the current payment
+                 this.payments.push({
+                     method: this.method,
+                     amount: this.amount,
+                     reference: this.reference,
+                     methodLabel: this.getMethodLabel(this.method)
+                 });
+             }
+             
+             // Check if we have any payments
+             if (this.payments.length === 0) {
+                 alert('Please add at least one payment');
+                 return false;
+             }
+             
+             return true;
+         }
+     }"
+     @click.self="closeModal()">
+    <div class="bg-white/95 backdrop-blur-lg rounded-2xl w-full max-w-xl m-4 shadow-2xl border border-white/20 animate-slideUp overflow-hidden" @click.stop>
+        <div class="px-5 py-3.5 flex justify-between items-center bg-gradient-to-br from-slate-50/90 via-blue-50/90 to-indigo-50/90 backdrop-blur-sm">
+            <div>
+                <h2 class="text-lg font-bold text-gray-900">Payment - {{ bill.bill_number }}</h2>
+                {% if bill.table %}
+                <p class="text-blue-700 text-xs font-medium">Table: {{ bill.table.number }}</p>
+                {% endif %}
+            </div>
+            <button onclick="closeModal()" class="p-2 hover:bg-white/50 rounded-lg text-gray-700 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        
+        <form hx-post="{% url 'pos:process_payment' bill.id %}"
+              hx-target="#modal-container"
+              hx-swap="innerHTML"
+              @submit.prevent="if(submitPayment()) $el.requestSubmit()">
+            {% csrf_token %}
+            
+            <div class="p-4">
+                <!-- Bill Summary -->
+                <div class="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-3 mb-4 border border-gray-200">
+                    <div class="flex justify-between mb-1.5">
+                        <span class="text-sm text-gray-600">Total Bill</span>
+                        <span class="font-bold text-gray-900">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                    </div>
+                    {% if bill.get_paid_amount > 0 %}
+                    <div class="flex justify-between mb-2 text-green-600">
+                        <span>Already Paid</span>
+                        <span class="font-semibold">- Rp {{ bill.get_paid_amount|floatformat:0|intcomma }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="flex justify-between pt-2 border-t border-gray-300">
+                        <span class="text-base font-bold text-gray-900">Remaining</span>
+                        <span class="text-xl font-bold text-red-600" x-text="'Rp ' + formatNumber(remaining)"></span>
+                    </div>
+                </div>
+                
+                <!-- Split Payment List -->
+                <div x-show="payments.length > 0" class="mb-4">
+                    <h3 class="font-semibold text-sm text-gray-800 mb-2">Split Payments</h3>
+                    <div class="space-y-2">
+                        <template x-for="(payment, index) in payments" :key="index">
+                            <div class="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div>
+                                    <span class="font-semibold" x-text="payment.methodLabel"></span>
+                                    <span class="text-gray-600 text-sm ml-2" x-text="'Rp ' + formatNumber(payment.amount)"></span>
+                                    <span x-show="payment.reference" class="text-gray-500 text-xs ml-2" x-text="'(' + payment.reference + ')'"></span>
+                                </div>
+                                <button type="button" @click="removePayment(index)" class="text-red-600 hover:text-red-800">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <!-- Payment Method Selection -->
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold text-gray-700 mb-2">Payment Method</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" @click="method = 'cash'" 
+                                :class="method === 'cash' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                class="p-3 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                                <div class="text-xl mb-0.5">💵</div>
+                            <div class="font-semibold text-sm">Cash</div>
+                        </button>
+                        <button type="button" @click="method = 'card'" 
+                                :class="method === 'card' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                            <div class="text-2xl mb-1">💳</div>
+                            <div class="font-semibold">Card</div>
+                        </button>
+                        <button type="button" @click="method = 'qris'" 
+                                :class="method === 'qris' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                            <div class="text-2xl mb-1">📱</div>
+                            <div class="font-semibold">QRIS</div>
+                        </button>
+                        <button type="button" @click="method = 'ewallet'" 
+                                :class="method === 'ewallet' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                            <div class="text-2xl mb-1">🏦</div>
+                            <div class="font-semibold text-sm">E-Wallet</div>
+                        </button>
+                        <button type="button" @click="method = 'transfer'" 
+                                :class="method === 'transfer' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                            <div class="text-2xl mb-1">🔄</div>
+                            <div class="font-semibold text-sm">Transfer</div>
+                        </button>
+                        <button type="button" @click="method = 'voucher'" 
+                                :class="method === 'voucher' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                            <div class="text-2xl mb-1">🎟️</div>
+                            <div class="font-semibold text-sm">Voucher</div>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Amount Input -->
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">Amount</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 text-lg font-semibold">Rp</span>
+                        <input type="text" 
+                               x-model="amountDisplay"
+                               @input="updateAmount($event.target.value)"
+                               class="w-full pl-12 pr-3 py-3 border-2 border-gray-300 rounded-lg text-right text-2xl font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                               placeholder="0"
+                               inputmode="numeric">
+                    </div>
+                    
+                    <!-- Quick Amount Buttons (Cash only) -->
+                    <div x-show="method === 'cash'" class="grid grid-cols-4 gap-2 mt-2">
+                        <button type="button" @click="amount = remaining; amountDisplay = formatNumber(amount)" 
+                                class="py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg font-semibold transition">
+                            Exact
+                        </button>
+                        <button type="button" @click="amount = 50000; amountDisplay = formatNumber(amount)" 
+                                class="py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition">
+                            50K
+                        </button>
+                        <button type="button" @click="amount = 100000; amountDisplay = formatNumber(amount)" 
+                                class="py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition">
+                            100K
+                        </button>
+                        <button type="button" @click="amount = Math.ceil(remaining/50000)*50000; amountDisplay = formatNumber(amount)" 
+                                class="py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition">
+                            Round
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Reference for non-cash -->
+                <div x-show="method !== 'cash'" class="mb-3">
+                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                        <span x-show="method === 'card'">Card Last 4 Digits / Approval Code</span>
+                        <span x-show="method === 'qris'">Transaction ID</span>
+                        <span x-show="method === 'ewallet'">Reference Number</span>
+                        <span x-show="method === 'transfer'">Transfer Reference</span>
+                        <span x-show="method === 'voucher'">Voucher Code</span>
+                    </label>
+                    <input type="text" 
+                           x-model="reference"
+                           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="Enter reference...">
+                </div>
+                
+                <!-- Change Display (Cash only) -->
+                <div x-show="method === 'cash' && change > 0" 
+                     class="mb-3 p-3 bg-green-100 border-2 border-green-400 rounded-lg text-center">
+                    <span class="text-xs text-green-700 font-semibold">Change</span>
+                    <div class="text-2xl font-bold text-green-800" x-text="'Rp ' + formatNumber(change)"></div>
+                </div>
+                
+                <!-- Hidden inputs for split payments -->
+                <template x-for="(payment, index) in payments" :key="index">
+                    <div>
+                        <input type="hidden" :name="'payments[' + index + '][method]'" :value="payment.method">
+                        <input type="hidden" :name="'payments[' + index + '][amount]'" :value="payment.amount">
+                        <input type="hidden" :name="'payments[' + index + '][reference]'" :value="payment.reference">
+                    </div>
+                </template>
+                
+                <!-- Current payment (will be added on submit if remaining > 0) -->
+                <input type="hidden" name="method" x-model="method">
+                <input type="hidden" name="amount" x-model="amount">
+                <input type="hidden" name="reference" x-model="reference">
+                
+                <!-- Actions -->
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeModal()" 
+                            class="flex-1 py-3 rounded-lg bg-white border-2 border-gray-300 text-gray-800 font-bold hover:bg-gray-50 hover:border-gray-400 transition shadow-sm">
+                        Cancel
+                    </button>
+                    
+                    <!-- Add Payment Button (for split payment) -->
+                    <button type="button" 
+                            @click="addPayment()"
+                            x-show="remaining > amount && amount > 0"
+                            class="flex-1 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold hover:from-blue-700 hover:to-blue-800 transition shadow-lg">
+                        + Add Payment
+                    </button>
+                    
+                    <!-- Submit Button -->
+                    <button type="submit"
+                            :disabled="amount < 1 && payments.length === 0"
+                            class="flex-1 py-3 rounded-lg bg-gradient-to-r from-green-600 to-green-700 text-white font-bold hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
+                        <span x-show="payments.length > 0">Complete Payment</span>
+                        <span x-show="payments.length === 0">Pay Now</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes slideUp {
+    from { 
+        opacity: 0; 
+        transform: translateY(20px) scale(0.95); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0) scale(1); 
+    }
+}
+.animate-fadeIn {
+    animation: fadeIn 0.2s ease-out;
+}
+.animate-slideUp {
+    animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+</style>
+
+<script>
+function closeModal() {
+    document.getElementById('modal-container').innerHTML = '';
+}
+</script>
+

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Check for overdue EOD sessions and send alerts
 
 Run this as a cron job every hour:
@@ -59,7 +59,7 @@ class Command(BaseCommand):
         (Implement your notification service here)
         """
         # Example: Send SMS to store manager
-        # manager = session.store.outlet.manager
+        # manager = session.store.Brand.manager
         # sms_service.send(manager.phone, alert.message)
         
         self.stdout.write(

@@ -1,87 +1,71 @@
 {% load humanize %}
 
 <div class="bg-white rounded-lg shadow-lg overflow-hidden relative
-            {% if order.priority == 'urgent' %}border-4 border-red-600 animate-pulse{% endif %}
-            {% if order.priority == 'rush' %}border-2 border-orange-500{% endif %}
-            {% if order.status == 'new' and order.get_time_status == 'overdue' %}border-l-8 border-red-600{% elif order.status == 'new' %}border-l-4 border-red-500{% endif %}
-            {% if order.status == 'preparing' and order.get_time_status == 'overdue' %}border-l-8 border-red-600{% elif order.status == 'preparing' %}border-l-4 border-yellow-500{% endif %}"
+            {% if order.priority == 'urgent' %}ring-4 ring-red-600 animate-pulse{% endif %}
+            {% if order.priority == 'rush' %}ring-2 ring-orange-500{% endif %}"
      x-data="{ elapsedTime: {{ order.get_elapsed_time }}, updateTimer() { this.elapsedTime++; } }"
      x-init="setInterval(() => updateTimer(), 1000)">
     
-    <!-- Priority Badge -->
-    {% if order.priority == 'urgent' %}
-    <div class="absolute top-2 right-2 z-10">
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white animate-pulse">
-            🚨 URGENT
-        </span>
-    </div>
-    {% elif order.priority == 'rush' %}
-    <div class="absolute top-2 right-2 z-10">
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-orange-500 text-white">
-            ⚡ RUSH
-        </span>
-    </div>
-    {% endif %}
-    
-    <!-- Header -->
-    <div class="p-3 {% if order.status == 'new' %}bg-red-50{% else %}bg-yellow-50{% endif %}">
-        <div class="flex justify-between items-center">
-            <span class="font-bold text-xl">
-                {% if order.bill.table %}
-                    Meja {{ order.bill.table.number }}
-                {% else %}
-                    #{{ order.bill.queue_number|default:order.bill.bill_number }}
-                {% endif %}
-            </span>
-            
-            <!-- Timer Display -->
-            <div class="text-right">
-                <div class="text-2xl font-bold
-                    {% if order.get_time_status == 'overdue' %}text-red-600 animate-pulse
-                    {% elif order.get_time_status == 'warning' %}text-yellow-600
-                    {% else %}text-green-600{% endif %}"
-                    x-text="Math.floor(elapsedTime / 60) + ':' + String(elapsedTime % 60).padStart(2, '0')">
-                    {{ order.get_elapsed_minutes }}:{{ order.get_elapsed_time|add:"-60"|divisibleby:order.get_elapsed_minutes }}
+    <!-- Compact Header with Timer -->
+    <div class="p-2.5 
+        {% if order.status == 'new' %}bg-gradient-to-r from-red-500 to-red-600
+        {% elif order.status == 'preparing' %}bg-gradient-to-r from-yellow-500 to-yellow-600
+        {% else %}bg-gradient-to-r from-green-500 to-green-600{% endif %} text-white">
+        
+        <div class="flex justify-between items-start">
+            <!-- Table/Queue Info -->
+            <div class="flex-1">
+                <div class="font-bold text-xl leading-tight">
+                    {% if order.bill.table %}
+                        🪑 {{ order.bill.table.number }}
+                    {% else %}
+                        #{{ order.bill.queue_number|default:order.bill.bill_number|slice:"-4" }}
+                    {% endif %}
                 </div>
-                <div class="text-xs text-gray-500">
-                    Target: {{ order.target_prep_time }}m
+                <div class="text-xs opacity-90 mt-0.5">
+                    {{ order.created_at|date:"H:i" }}
+                    {% if order.priority == 'urgent' %}
+                        • 🚨 URGENT
+                    {% elif order.priority == 'rush' %}
+                        • ⚡ RUSH
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Big Timer -->
+            <div class="text-right">
+                <div class="text-3xl font-black leading-none tracking-tight
+                    {% if order.get_time_status == 'overdue' %}animate-pulse{% endif %}"
+                    x-text="Math.floor(elapsedTime / 60) + ':' + String(elapsedTime % 60).padStart(2, '0')">
+                    0:00
+                </div>
+                <div class="text-[10px] opacity-80 mt-0.5">
+                    max {{ order.target_prep_time }}m
                 </div>
             </div>
         </div>
-        <div class="text-sm text-gray-600 mt-1">
-            {{ order.bill.bill_number }} • {{ order.created_at|date:"H:i" }}
-        </div>
         
-        <!-- Time Status Bar -->
-        <div class="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div class="h-full transition-all duration-1000
-                {% if order.get_time_status == 'overdue' %}bg-red-600
-                {% elif order.get_time_status == 'warning' %}bg-yellow-500
-                {% else %}bg-green-500{% endif %}"
+        <!-- Progress Bar -->
+        <div class="mt-2 h-1.5 bg-black/20 rounded-full overflow-hidden">
+            <div class="h-full bg-white transition-all duration-1000"
                  :style="'width: ' + Math.min((elapsedTime / ({{ order.target_prep_time }} * 60)) * 100, 100) + '%'">
             </div>
         </div>
     </div>
     
-    <!-- Items -->
-    <div class="p-3 space-y-2 max-h-60 overflow-y-auto">
+    <!-- Items List - Compact -->
+    <div class="p-2.5 space-y-1.5 max-h-48 overflow-y-auto bg-gray-50">
         {% for item in order.bill.items.all %}
         {% if item.product.printer_target == order.station and not item.is_void %}
-        <div class="{% if item.status == 'ready' %}line-through text-gray-400{% endif %}">
-            <div class="flex gap-2">
-                <span class="font-bold text-lg">{{ item.quantity }}x</span>
-                <span class="font-medium">{{ item.product.name }}</span>
+        <div class="bg-white rounded px-2 py-1.5 {% if item.status == 'ready' %}opacity-50 line-through{% endif %}">
+            <div class="flex gap-1.5 items-center">
+                <span class="bg-gray-900 text-white px-1.5 py-0.5 rounded text-xs font-bold min-w-[28px] text-center">{{ item.quantity }}x</span>
+                <span class="font-semibold text-sm">{{ item.product.name }}</span>
             </div>
-            {% if item.modifiers %}
-            <div class="text-sm text-gray-500 ml-6">
-                {% for mod in item.modifiers %}
-                - {{ mod.name }}<br>
-                {% endfor %}
-            </div>
-            {% endif %}
             {% if item.notes %}
-            <div class="text-sm text-red-600 ml-6 font-bold">
-                ⚠ {{ item.notes }}
+            <div class="text-xs text-red-600 font-bold mt-1 ml-8 flex items-start gap-1">
+                <span>⚠️</span>
+                <span>{{ item.notes }}</span>
             </div>
             {% endif %}
         </div>
@@ -89,53 +73,31 @@
         {% endfor %}
     </div>
     
-    <!-- Actions -->
-    <div class="p-3 border-t space-y-2">
-        <!-- Priority Selector -->
-        {% if order.status == 'new' %}
-        <div class="flex gap-1">
-            <button class="flex-1 py-1 text-xs rounded {% if order.priority == 'normal' %}bg-gray-200{% else %}bg-gray-100 text-gray-400{% endif %}"
-                    hx-post="{% url 'kitchen:set_priority' order.id %}"
-                    hx-vals='{"priority": "normal"}'
-                    hx-target="closest div.bg-white"
-                    hx-swap="outerHTML">
-                Normal
-            </button>
-            <button class="flex-1 py-1 text-xs rounded {% if order.priority == 'rush' %}bg-orange-200 text-orange-800{% else %}bg-gray-100 text-gray-400{% endif %}"
-                    hx-post="{% url 'kitchen:set_priority' order.id %}"
-                    hx-vals='{"priority": "rush"}'
-                    hx-target="closest div.bg-white"
-                    hx-swap="outerHTML">
-                ⚡ Rush
-            </button>
-            <button class="flex-1 py-1 text-xs rounded {% if order.priority == 'urgent' %}bg-red-200 text-red-800{% else %}bg-gray-100 text-gray-400{% endif %}"
-                    hx-post="{% url 'kitchen:set_priority' order.id %}"
-                    hx-vals='{"priority": "urgent"}'
-                    hx-target="closest div.bg-white"
-                    hx-swap="outerHTML">
-                🚨 Urgent
-            </button>
-        </div>
-        {% endif %}
-        
-        <!-- Main Action Button -->
+    <!-- Action Button -->
+    <div class="p-2">
         {% if order.status == 'new' %}
         <button 
-            class="w-full py-3 rounded bg-yellow-500 text-white font-bold text-lg hover:bg-yellow-600"
+            class="w-full py-2.5 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold text-base shadow-lg hover:shadow-xl transition-all"
             hx-post="{% url 'kitchen:kds_start' order.id %}"
             hx-target="closest div.bg-white"
-            hx-swap="outerHTML"
-        >
-            START COOKING
+            hx-swap="outerHTML">
+            ▶️ START
         </button>
+        
         {% elif order.status == 'preparing' %}
         <button 
-            class="w-full py-3 rounded bg-green-600 text-white font-bold text-lg hover:bg-green-700 pulse-animation"
+            class="w-full py-2.5 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-base shadow-lg hover:shadow-xl transition-all pulse-glow"
             hx-post="{% url 'kitchen:kds_ready' order.id %}"
             hx-swap="delete"
-            hx-target="closest div.bg-white"
-        >
-            ✓ READY TO SERVE
+            hx-target="closest div.bg-white">
+            ✅ DONE
+        </button>
+        
+        {% elif order.status == 'ready' %}
+        <button 
+            class="w-full py-2.5 rounded-lg bg-gray-200 text-gray-500 font-bold text-base cursor-not-allowed"
+            disabled>
+            ✓ Ready to Serve
         </button>
         {% endif %}
     </div>
@@ -143,11 +105,17 @@
 
 <style>
 @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 10px rgba(34, 197, 94, 0.5); }
-    50% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.8); }
+    0%, 100% { 
+        box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4);
+        transform: scale(1);
+    }
+    50% { 
+        box-shadow: 0 6px 30px rgba(34, 197, 94, 0.6);
+        transform: scale(1.02);
+    }
 }
 
-.pulse-animation {
+.pulse-glow {
     animation: pulse-glow 2s ease-in-out infinite;
 }
 </style>

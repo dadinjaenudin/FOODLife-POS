@@ -27,21 +27,21 @@ def kds_screen(request, station='kitchen'):
         return redirect('kitchen:kds_station', station='kitchen')
     
     orders = KitchenOrder.objects.filter(
-        bill__outlet=request.user.outlet,
+        bill__brand=request.user.brand,
         station=station,
         status__in=['new', 'preparing']
     ).select_related('bill', 'bill__table').prefetch_related('bill__items')
     
     # Get station config
     station_config = KitchenStation.objects.filter(
-        outlet=request.user.outlet,
+        brand=request.user.brand,
         code=station
     ).first()
     
     # Get today's performance metrics with error handling for invalid decimal
     try:
         today_performance = KitchenPerformance.objects.filter(
-            outlet=request.user.outlet,
+            brand=request.user.brand,
             station=station,
             date=timezone.now().date()
         ).first()
@@ -49,7 +49,7 @@ def kds_screen(request, station='kitchen'):
         print(f"Error loading KitchenPerformance: {e}")
         today_performance = None
     
-    print(f"DEBUG KDS: User outlet: {request.user.outlet}, Station: {station}, Orders count: {orders.count()}")
+    print(f"DEBUG KDS: User Brand: {request.user.brand}, Station: {station}, Orders count: {orders.count()}")
     if orders.exists():
         for order in orders:
             print(f"  - Order {order.id}: Bill {order.bill.bill_number}, Status {order.status}")
@@ -64,16 +64,36 @@ def kds_screen(request, station='kitchen'):
 
 @login_required
 def kds_orders(request, station='kitchen'):
-    """KDS orders partial - HTMX polling"""
-    orders = KitchenOrder.objects.filter(
-        bill__outlet=request.user.outlet,
-        station=station,
-        status__in=['new', 'preparing']
-    ).select_related('bill', 'bill__table').prefetch_related('bill__items')
+    """KDS orders partial - HTMX polling with status filter"""
+    status_filter = request.GET.get('status', None)
+    
+    # Base query
+    query = KitchenOrder.objects.filter(
+        bill__brand=request.user.brand,
+        station=station
+    )
+    
+    # Apply status filter
+    if status_filter == 'new':
+        query = query.filter(status='new')
+    elif status_filter == 'preparing':
+        query = query.filter(status='preparing')
+    elif status_filter == 'ready':
+        query = query.filter(status='ready')
+    else:
+        # Default: show new and preparing only
+        query = query.filter(status__in=['new', 'preparing'])
+    
+    # Order by priority and time (oldest first for better queue management)
+    orders = query.select_related('bill', 'bill__table').prefetch_related('bill__items').order_by(
+        '-priority',  # urgent/rush first
+        'created_at'  # oldest first
+    )
     
     return render(request, 'kitchen/partials/kds_orders.html', {
         'orders': orders,
         'station': station,
+        'status_filter': status_filter,
     })
 
 
@@ -119,7 +139,7 @@ def kds_ready(request, order_id):
         
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f"pos_{order.bill.outlet.id}",
+            f"pos_{order.bill.Brand.id}",
             {
                 'type': 'order_ready',
                 'order_id': order.id,
@@ -155,7 +175,7 @@ def kds_bump(request, order_id):
 @login_required
 def printer_list(request):
     """Printer configuration list"""
-    printers = PrinterConfig.objects.filter(outlet=request.user.outlet)
+    printers = PrinterConfig.objects.filter(brand=request.user.brand)
     return render(request, 'kitchen/printers.html', {'printers': printers})
 
 
@@ -209,14 +229,14 @@ def performance_metrics(request, station='kitchen'):
     
     # Daily metrics for last 7 days
     daily_metrics = KitchenPerformance.objects.filter(
-        outlet=request.user.outlet,
+        brand=request.user.brand,
         station=station,
         date__gte=week_ago
     ).order_by('date')
     
     # Current active orders
     active_orders = KitchenOrder.objects.filter(
-        bill__outlet=request.user.outlet,
+        bill__brand=request.user.brand,
         station=station,
         status__in=['new', 'preparing']
     )
@@ -243,7 +263,7 @@ def update_kitchen_performance(order):
     
     # Get or create today's performance record
     perf, created = KitchenPerformance.objects.get_or_create(
-        outlet=order.bill.outlet,
+        brand=order.bill.brand,
         station=order.station,
         date=today,
         defaults={
@@ -285,7 +305,7 @@ def update_kitchen_performance(order):
 def check_overdue_orders(request, station='kitchen'):
     """Check for overdue orders and return notifications - HTMX polling"""
     orders = KitchenOrder.objects.filter(
-        bill__outlet=request.user.outlet,
+        bill__brand=request.user.brand,
         station=station,
         status__in=['new', 'preparing']
     )
@@ -317,3 +337,4 @@ def check_overdue_orders(request, station='kitchen'):
         return JsonResponse({'notifications': notifications})
     
     return JsonResponse({'notifications': []})
+

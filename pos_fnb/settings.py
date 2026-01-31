@@ -1,7 +1,16 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env.edge file if it exists
+env_file = BASE_DIR / '.env.edge'
+if env_file.exists():
+    load_dotenv(env_file)
+    print(f"[SETTINGS] Loaded environment from {env_file}")
+else:
+    print(f"[SETTINGS] No .env.edge file found, using environment variables")
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-production')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
@@ -18,9 +27,12 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     
     # Third party
+    'rest_framework',
+    'rest_framework_simplejwt',
     'django_htmx',
     'widget_tweaks',
     'channels',
+    'django_celery_beat',
     
     # Local apps
     'apps.core',
@@ -57,6 +69,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'apps.core.context_processors.terminal_config',
             ],
         },
     },
@@ -151,14 +164,28 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Session Settings
+SESSION_COOKIE_AGE = 86400  # 24 hours
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False  # False for development (HTTP)
+SESSION_SAVE_EVERY_REQUEST = True  # Ensure session is saved on every request
+
 # CSRF Settings
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8001',
     'http://127.0.0.1:8001',
+    'http://localhost:8002',
+    'http://127.0.0.1:8002',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
 CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF cookie
 CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_USE_SESSIONS = False  # Use cookie-based CSRF token
+CSRF_COOKIE_SECURE = False  # False for development (HTTP)
+CSRF_USE_SESSIONS = False  # Use cookie-based CSRF (needed for forms)
+CSRF_COOKIE_NAME = 'csrftoken'  # Explicit cookie name
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  # For AJAX requests
 
 # Custom settings
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:8000')
@@ -171,6 +198,43 @@ NUMBER_GROUPING = 3
 # Celery
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0')
+
+# Print Agent Settings
+PRINT_AGENT_AUTH_REQUIRED = os.environ.get('PRINT_AGENT_AUTH_REQUIRED', 'False') == 'True'
+PRINT_AGENT_API_KEY = os.environ.get('PRINT_AGENT_API_KEY', 'your-secret-api-key-here')
+
+# HO Server Sync Settings (for Edge Server)
+HO_API_URL = os.environ.get('HO_API_URL', None)
+HO_API_USERNAME = os.environ.get('HO_API_USERNAME', 'admin')
+HO_API_PASSWORD = os.environ.get('HO_API_PASSWORD', 'admin123')
+
+# REST Framework & JWT Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False,
+    'UPDATE_LAST_LOGIN': False,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+}
 
 # Logging
 LOGGING = {

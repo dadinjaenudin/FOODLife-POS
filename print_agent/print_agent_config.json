@@ -1,0 +1,49 @@
+{
+  "_comment": "Print Agent Configuration - Production Ready",
+  
+  "terminal_identity": {
+    "terminal_id": "POS-001",
+    "printer_role": "cashier",
+    "location_id": "store-yogya-main",
+    "station_name": "Kasir 1"
+  },
+  
+  "server": {
+    "url": "http://127.0.0.1:8000",
+    "api_key": "your-secret-api-key-here",
+    "poll_interval": 2,
+    "heartbeat_interval": 30
+  },
+  
+  "job_types_accepted": [
+    "receipt",
+    "reprint"
+  ],
+  
+  "printer": {
+    "type": "win32",
+    "name": "TP808",
+    "brand": "HRPT",
+    "model": "TP808-Thermal-80",
+    "paper_width": 32,
+    "config": {
+      "timeout": 30,
+      "retry_on_error": true
+    }
+  },
+  
+  "error_handling": {
+    "max_retry": 3,
+    "backoff_seconds": [5, 10, 30],
+    "critical_errors": [
+      "PRINTER_OFFLINE",
+      "USB_DISCONNECTED"
+    ]
+  },
+  
+  "logging": {
+    "level": "DEBUG",
+    "log_file": "print_agent.log",
+    "max_size_mb": 10
+  }
+}

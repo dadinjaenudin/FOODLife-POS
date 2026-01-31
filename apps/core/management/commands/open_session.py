@@ -1,6 +1,6 @@
-from django.core.management.base import BaseCommand
+﻿from django.core.management.base import BaseCommand
 from django.utils import timezone
-from apps.core.models import StoreConfig, User
+from apps.core.models import Store, User
 from apps.core.models_session import StoreSession
 
 
@@ -8,7 +8,7 @@ class Command(BaseCommand):
     help = 'Quick open store session for testing'
 
     def handle(self, *args, **options):
-        store_config = StoreConfig.get_current()
+        store_config = Store.get_current()
         if not store_config:
             self.stdout.write(self.style.ERROR('No store config found. Run setup first.'))
             return

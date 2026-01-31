@@ -3,6 +3,7 @@
 {% block title %}Master Data - Management{% endblock %}
 
 {% block content %}
+
 <div class="container mx-auto px-3 py-3">
     <!-- Page Header (Compact) -->
     <div class="flex justify-between items-center mb-3">
@@ -45,25 +46,6 @@
     </div>
     {% else %}
 
-    <!-- Sync Architecture Info (Compact) -->
-    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-        <h2 class="text-sm font-bold text-blue-900 mb-2">📡 Sync Architecture</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-            <div>
-                <div class="font-semibold text-blue-800 mb-0.5">⬇️ PULL (Download from HO)</div>
-                <p class="text-blue-700">Master data: Products, Categories, Users, Tables, Promotions</p>
-            </div>
-            <div>
-                <div class="font-semibold text-green-800 mb-0.5">⬆️ PUSH (Upload to HO)</div>
-                <p class="text-green-700">Transaction data: Bills, Payments, Sessions, EOD Reports</p>
-            </div>
-            <div>
-                <div class="font-semibold text-gray-800 mb-0.5">🔒 LOCAL ONLY</div>
-                <p class="text-gray-700">Edge Server specific: Terminals, Local configs</p>
-            </div>
-        </div>
-    </div>
-
     <!-- Master Data Summary (Compact) -->
     <div class="mb-3">
         <div class="flex items-center justify-between mb-2">
@@ -71,13 +53,32 @@
                 <h2 class="text-base font-bold text-gray-800">Master Data (Pull from HO)</h2>
                 <p class="text-xs text-gray-600 mt-0.5">Tables yang perlu disinkronisasi dengan HO/Cloud</p>
             </div>
-            <a href="{% url 'management:import_excel' %}" 
-               class="px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg shadow hover:shadow-md transition-all flex items-center text-sm font-medium">
-                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                </svg>
-                Import Excel
-            </a>
+            <div class="flex gap-2">
+                <button onclick="showSyncModal()" 
+                   class="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow hover:shadow-md transition-all flex items-center text-sm font-medium">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Sync Selected from HO
+                </button>
+                <a href="{% url 'management:import_excel' %}" 
+                   class="px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg shadow hover:shadow-md transition-all flex items-center text-sm font-medium">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    Import Excel
+                </a>
+            </div>
+        </div>
+        
+        <!-- Select All Checkbox -->
+        <div class="mb-2 flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+            <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" 
+                   class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+            <label for="selectAll" class="text-xs font-medium text-gray-700 cursor-pointer">
+                Select All Tables
+            </label>
+            <span id="selectedCount" class="ml-auto text-xs text-gray-600">0 selected</span>
         </div>
         
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -85,15 +86,33 @@
             <div class="bg-white rounded-lg shadow border border-gray-200 hover:shadow-md transition-shadow">
                 <div class="p-3">
                     <div class="flex items-start justify-between mb-2">
-                        <div class="flex items-center">
+                        <div class="flex items-center flex-1">
+                            {% if item.sync == 'pull' and item.table not in 'core_company,core_brand,core_Store' %}
+                            <input type="checkbox" 
+                                   class="sync-checkbox w-4 h-4 text-blue-600 rounded focus:ring-blue-500 mr-2" 
+                                   data-table="{{ item.table }}"
+                                   data-name="{{ item.name }}"
+                                   onchange="updateSelectedCount()">
+                            {% endif %}
                             <span class="text-2xl mr-2">{{ item.icon }}</span>
                             <div>
                                 <h3 class="text-sm font-bold text-gray-800">{{ item.name }}</h3>
                                 <p class="text-[10px] text-gray-500 font-mono">{{ item.table }}</p>
+                                {% if item.table == 'core_company' %}
+                                <p class="text-[10px] text-blue-600 mt-0.5">{{ company.name }}</p>
+                                {% elif item.table == 'core_brand' %}
+                                <p class="text-[10px] text-blue-600 mt-0.5">{{ brand.name }}</p>
+                                {% elif item.table == 'core_Store' %}
+                                <p class="text-[10px] text-blue-600 mt-0.5">{{ store_config.store_name }}</p>
+                                {% endif %}
                             </div>
                         </div>
                         {% if item.sync == 'pull' %}
-                        <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded">⬇️ PULL</span>
+                            {% if item.table in 'core_company,core_brand,core_Store' %}
+                            <span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded">✓ SETUP</span>
+                            {% else %}
+                            <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded">⬇️ PULL</span>
+                            {% endif %}
                         {% elif item.sync == 'none' %}
                         <span class="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded">LOCAL</span>
                         {% endif %}
@@ -101,19 +120,32 @@
                     
                     <p class="text-xs text-gray-600 mb-2">{{ item.description }}</p>
                     
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between gap-2">
                         <div class="text-center">
                             <div class="text-xl font-bold text-gray-800">{{ item.count }}</div>
                             <div class="text-[10px] text-gray-500">Records</div>
                         </div>
                         
-                        {% if item.url %}
-                        <a href="{% url item.url %}" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
-                            View →
-                        </a>
-                        {% else %}
-                        <span class="text-[10px] text-gray-400">Read-only</span>
-                        {% endif %}
+                        <div class="flex gap-1">
+                            {% if item.sync == 'pull' and item.table not in 'core_company,core_brand,core_Store' %}
+                                <button onclick="showSyncModalForSingle('{{ item.table }}', '{{ item.name }}')" 
+                                    class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded transition-colors flex items-center"
+                                    title="Sync from HO">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                Sync
+                            </button>
+                            {% endif %}
+                            
+                            {% if item.url %}
+                            <a href="{% url item.url %}" class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded transition-colors">
+                                View
+                            </a>
+                            {% else %}
+                            <span class="text-[10px] text-gray-400">Read-only</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -163,60 +195,240 @@
         </div>
     </div>
 
-    <!-- Summary Stats (Compact) -->
-    <div class="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow p-3 text-white">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div class="text-center">
-                <div class="text-xl font-bold">{{ total_master_tables }}</div>
-                <div class="text-[10px] opacity-90">Master Tables</div>
-            </div>
-            <div class="text-center">
-                <div class="text-xl font-bold">{{ total_transaction_tables }}</div>
-                <div class="text-[10px] opacity-90">Transaction Tables</div>
-            </div>
-            <div class="text-center">
-                <div class="text-xl font-bold">{{ company.name }}</div>
-                <div class="text-[10px] opacity-90">Company (Tenant)</div>
-            </div>
-            <div class="text-center">
-                <div class="text-xl font-bold">SQLite</div>
-                <div class="text-[10px] opacity-90">Database Engine</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- HO/Cloud API Endpoints Reference (Compact) -->
-    <div class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
-        <h2 class="text-sm font-bold text-gray-800 mb-2">🔗 HO/Cloud API Endpoints (Phase 5)</h2>
-        <div class="space-y-1.5 text-xs font-mono">
-            <div class="flex items-center">
-                <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 font-bold rounded mr-2 text-[10px]">POST</span>
-                <span class="text-gray-700">/api/v1/edge/authenticate</span>
-                <span class="text-gray-500 ml-auto text-[10px]">Store ID + API Key → JWT</span>
-            </div>
-            <div class="flex items-center">
-                <span class="px-1.5 py-0.5 bg-green-100 text-green-700 font-bold rounded mr-2 text-[10px]">GET</span>
-                <span class="text-gray-700">/api/v1/edge/stores/{store_id}/config</span>
-                <span class="text-gray-500 ml-auto text-[10px]">Download Company/Outlet/Store</span>
-            </div>
-            <div class="flex items-center">
-                <span class="px-1.5 py-0.5 bg-green-100 text-green-700 font-bold rounded mr-2 text-[10px]">GET</span>
-                <span class="text-gray-700">/api/v1/edge/stores/{store_id}/products</span>
-                <span class="text-gray-500 ml-auto text-[10px]">Download Products & Categories</span>
-            </div>
-            <div class="flex items-center">
-                <span class="px-1.5 py-0.5 bg-green-100 text-green-700 font-bold rounded mr-2 text-[10px]">GET</span>
-                <span class="text-gray-700">/api/v1/edge/stores/{store_id}/users</span>
-                <span class="text-gray-500 ml-auto text-[10px]">Download Staff & Permissions</span>
-            </div>
-            <div class="flex items-center">
-                <span class="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 font-bold rounded mr-2 text-[10px]">POST</span>
-                <span class="text-gray-700">/api/v1/edge/stores/{store_id}/transactions</span>
-                <span class="text-gray-500 ml-auto text-[10px]">Upload Bills & Payments</span>
-            </div>
-        </div>
-    </div>
-
     {% endif %}
 </div>
+
+<!-- Sync Confirmation Modal (matching terminal delete pattern) -->
+<div id="sync-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-t-2xl p-6">
+            <div class="flex items-center justify-center w-16 h-16 bg-white bg-opacity-20 rounded-full mx-auto mb-4">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white text-center">Sync from HO</h3>
+        </div>
+        
+        <!-- Modal Body -->
+        <div class="p-6">
+            <div class="text-center mb-6">
+                <p class="text-gray-700 text-lg mb-2">Sync <span id="sync-table-count" class="font-bold">0</span> table(s) from HO Server?</p>
+                <p class="text-sm text-gray-600 mb-4" id="sync-table-names">Modifiers, Options, Products</p>
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
+                    <div class="flex items-start">
+                        <svg class="w-5 h-5 text-blue-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zm-11-1a1 1 0 11-2 0 1 1 0 012 0zM10 7a1 1 0 11-2 0 1 1 0 012 0zm3 1a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                        </svg>
+                        <div class="text-left">
+                            <p class="text-sm font-semibold text-blue-800 mb-1">Data Sync Operation</p>
+                            <p class="text-sm text-blue-700">This will download latest data from HO and update local database. This may take a few moments.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex gap-3">
+                <button onclick="hideSyncModal()"
+                        class="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+                    <span class="flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        Cancel
+                    </span>
+                </button>
+                <button onclick="confirmSync()"
+                        class="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition font-medium shadow-lg hover:shadow-xl">
+                    <span class="flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Sync Now
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sync Loading Modal -->
+<div id="sync-loading-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-8 text-center">
+        <div class="flex justify-center mb-4">
+            <svg class="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </div>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">Syncing...</h3>
+        <p class="text-gray-600">Processing data from HO Server</p>
+    </div>
+</div>
+
+<!-- Sync Results Modal -->
+<div id="sync-results-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 transform transition-all max-h-[90vh] overflow-y-auto">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl p-6 sticky top-0">
+            <div class="flex items-center justify-center w-16 h-16 bg-white bg-opacity-20 rounded-full mx-auto mb-4">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white text-center">Sync Completed</h3>
+        </div>
+        
+        <!-- Modal Body -->
+        <div class="p-6">
+            <p class="text-gray-700 text-center mb-4" id="sync-results-message">Data has been synchronized</p>
+            
+            <div class="bg-gray-50 p-4 rounded-lg mb-6">
+                <h4 class="font-semibold text-gray-800 mb-3">Validation Results:</h4>
+                <div id="sync-results-content" class="text-sm"></div>
+            </div>
+            
+            <!-- Action Button -->
+            <div class="flex justify-center">
+                <button onclick="closeSyncResults()"
+                        class="px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition font-medium shadow-lg hover:shadow-xl">
+                    <span class="flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        Close & Reload
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.sync-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const checkboxes = document.querySelectorAll('.sync-checkbox:checked');
+    const count = checkboxes.length;
+    document.getElementById('selectedCount').textContent = `${count} selected`;
+    
+    // Update select all checkbox state
+    const allCheckboxes = document.querySelectorAll('.sync-checkbox');
+    const selectAllCheckbox = document.getElementById('selectAll');
+    selectAllCheckbox.checked = (count === allCheckboxes.length && count > 0);
+}
+
+async function syncSingleTable(tableName, displayName) {
+    showSyncModalForSingle(tableName, displayName);
+    return;
+}
+
+function hideSyncModal() {
+    document.getElementById('sync-modal').classList.add('hidden');
+}
+
+function showSyncModal(selectedTables = null) {
+    let tables = selectedTables;
+
+    if (!tables) {
+        const checkboxes = document.querySelectorAll('.sync-checkbox:checked');
+
+        if (checkboxes.length === 0) {
+            alert('Please select at least one table to sync');
+            return;
+        }
+
+        tables = Array.from(checkboxes).map(cb => ({
+            table: cb.dataset.table,
+            name: cb.dataset.name
+        }));
+    }
+
+    document.getElementById('sync-table-count').textContent = tables.length;
+    document.getElementById('sync-table-names').textContent = tables.map(t => t.name).join(', ');
+    document.getElementById('sync-modal').classList.remove('hidden');
+    document.getElementById('sync-modal').dataset.selectedTables = JSON.stringify(tables);
+}
+
+function showSyncModalForSingle(tableName, displayName) {
+    showSyncModal([{ table: tableName, name: displayName }]);
+}
+
+async function confirmSync() {
+    const modal = document.getElementById('sync-modal');
+    const selectedTables = JSON.parse(modal.dataset.selectedTables);
+    hideSyncModal();
+    performSync(selectedTables);
+}
+
+async function performSync(selectedTables) {
+    // Show loading modal
+    const loadingModal = document.getElementById('sync-loading-modal');
+    loadingModal.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('{% url "management:sync_from_ho" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                tables: selectedTables.map(t => t.table)
+            })
+        });
+        
+        const result = await response.json();
+        loadingModal.classList.add('hidden');
+        
+        if (result.success) {
+            // Show results modal
+            const resultsModal = document.getElementById('sync-results-modal');
+            let checklistHTML = '<div style="text-align: left; margin-top: 8px;">';
+            checklistHTML += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+            
+            if (result.checklist_items && result.checklist_items.length > 0) {
+                result.checklist_items.forEach(item => {
+                    const bgColor = item.match ? '#dcfce7' : '#fef3c7';
+                    const textColor = item.match ? '#15803d' : '#92400e';
+                    const icon = item.match ? '✓' : '⚠';
+                    checklistHTML += `<tr style="background-color: ${bgColor}; border-bottom: 1px solid #e5e7eb;">`;
+                    checklistHTML += `<td style="padding: 8px; color: ${textColor}; font-weight: 600;">${icon} ${item.item}</td>`;
+                    checklistHTML += `<td style="padding: 8px; text-align: right; color: #666;">HO: ${item.ho}</td>`;
+                    checklistHTML += `<td style="padding: 8px; text-align: center; color: #999;">→</td>`;
+                    checklistHTML += `<td style="padding: 8px; text-align: left; color: #666;">Edge: ${item.edge}</td>`;
+                    checklistHTML += `<td style="padding: 8px; text-align: right;"><span style="font-size: 11px; padding: 2px 6px; background: ${item.match ? '#d1fae5' : '#fef08a'}; color: ${item.match ? '#065f46' : '#854d0e'}; border-radius: 4px; font-weight: 600;">${item.match ? 'OK' : 'WARN'}</span></td>`;
+                    checklistHTML += '</tr>';
+                });
+            }
+            
+            checklistHTML += '</table>';
+            checklistHTML += '<div style="margin-top: 12px; padding: 10px; background: ' + (result.all_match ? '#dcfce7' : '#fef3c7') + '; color: ' + (result.all_match ? '#15803d' : '#92400e') + '; border-radius: 6px; text-align: center; font-weight: 600; font-size: 14px;">' + (result.all_match ? '✓ All counts match!' : '⚠ Some counts differ') + '</div>';
+            checklistHTML += '</div>';
+            
+            document.getElementById('sync-results-content').innerHTML = checklistHTML;
+            document.getElementById('sync-results-message').textContent = result.message;
+            document.getElementById('sync-results-modal').classList.remove('hidden');
+        } else {
+            alert('Sync failed: ' + result.error);
+        }
+    } catch (error) {
+        loadingModal.classList.add('hidden');
+        alert('Sync error: ' + error.message);
+    }
+}
+
+function closeSyncResults() {
+    document.getElementById('sync-results-modal').classList.add('hidden');
+    location.reload();
+}
+</script>
 {% endblock %}

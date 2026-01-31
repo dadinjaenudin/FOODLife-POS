@@ -1,42 +1,26 @@
-from django.shortcuts import render, redirect
+﻿from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
-from .models import User, StoreConfig
+from .models import User, Store
 
 
+@ensure_csrf_cookie
 def login_view(request):
+    """Login view with explicit CSRF cookie"""
     # Get store config for login image
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
-        terminal_id = request.POST.get('terminal_id')  # From localStorage via JS
-        
-        # CRITICAL: Validate terminal_id exists
-        if not terminal_id:
-            return render(request, 'core/login.html', {
-                'error': '⚠️ Terminal not setup. Please setup terminal first.',
-                'store_config': store_config
-            })
         
         user = authenticate(request, username=username, password=password)
         
         if user is not None:
             login(request, user)
-            
-            # Store terminal ID in session if provided
-            if terminal_id:
-                try:
-                    from apps.core.models import POSTerminal
-                    terminal = POSTerminal.objects.get(id=terminal_id, is_active=True)
-                    request.session['terminal_id'] = str(terminal.id)
-                    request.session['terminal_code'] = terminal.terminal_code
-                except POSTerminal.DoesNotExist:
-                    pass  # Terminal not found, middleware will handle redirect
             
             # Smart redirect based on user role
             next_url = request.GET.get('next')
@@ -50,12 +34,23 @@ def login_view(request):
                 # Cashier/waiter/kitchen need terminal or go to POS
                 return redirect('pos:main')
         else:
-            return render(request, 'core/login.html', {
+            response = render(request, 'core/login.html', {
                 'error': 'Invalid credentials',
                 'store_config': store_config
             })
+            # Ensure CSRF cookie is set
+            response.set_cookie(
+                'csrftoken',
+                request.META.get('CSRF_COOKIE', ''),
+                max_age=31449600,  # 1 year
+                httponly=False,
+                samesite='Lax'
+            )
+            return response
     
-    return render(request, 'core/login.html', {'store_config': store_config})
+    # For GET requests, ensure CSRF cookie is explicitly set
+    response = render(request, 'core/login.html', {'store_config': store_config})
+    return response
 
 
 def logout_view(request):
@@ -68,27 +63,10 @@ def pin_login(request):
     """Quick PIN login for staff"""
     if request.method == 'POST':
         pin = request.POST.get('pin')
-        terminal_id = request.POST.get('terminal_id')  # From localStorage via JS
-        
-        # CRITICAL: Validate terminal_id exists
-        if not terminal_id:
-            return render(request, 'core/pin_login.html', {
-                'error': '⚠️ Terminal not setup. Please setup terminal first.'
-            })
         
         try:
             user = User.objects.get(pin=pin, is_active=True)
             login(request, user)
-            
-            # Store terminal ID in session
-            if terminal_id:
-                try:
-                    from apps.core.models import POSTerminal
-                    terminal = POSTerminal.objects.get(id=terminal_id, is_active=True)
-                    request.session['terminal_id'] = str(terminal.id)
-                    request.session['terminal_code'] = terminal.terminal_code
-                except POSTerminal.DoesNotExist:
-                    pass
             
             return redirect('pos:main')
         except User.DoesNotExist:

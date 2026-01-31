@@ -1,15 +1,16 @@
-from django.shortcuts import render, redirect
+﻿from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
-from apps.core.models import StoreConfig, POSTerminal
+from apps.core.models import Store, POSTerminal
+from apps.core.terminal_config import get_terminal_config
 import json
 
 
 def terminal_setup(request):
     """Terminal registration page"""
-    store = StoreConfig.get_current()
+    store = Store.get_current()
     
     if not store:
         return render(request, 'core/terminal_setup_error.html', {
@@ -53,9 +54,26 @@ def terminal_setup(request):
         request.session['terminal_id'] = str(terminal.id)
         request.session['terminal_code'] = terminal.terminal_code
         
+        # Save to terminal-config.json file (persistent across browser sessions)
+        terminal_cfg = get_terminal_config()
+        terminal_cfg.update({
+            'terminal_id': str(terminal.id),
+            'terminal_code': terminal.terminal_code,
+            'terminal_name': terminal.terminal_name,
+            'terminal_type': terminal.device_type,
+            'store_id': str(store.id),
+            'store_code': store.store_code,
+            'company_id': str(store.brand.company.id),
+            'company_name': store.brand.company.name,
+            'brand_id': str(store.brand.id) if store.brand else None,
+            'brand_name': store.brand.name if store.brand else None,
+            'setup_completed': True,
+            'setup_date': timezone.now().isoformat(),
+        })
+        
         messages.success(request, f'Terminal {terminal.terminal_code} registered successfully!')
         
-        # Return terminal info as JSON for localStorage
+        # Return terminal info as JSON for localStorage (fallback)
         return JsonResponse({
             'success': True,
             'terminal': {
@@ -65,12 +83,14 @@ def terminal_setup(request):
                 'type': terminal.device_type,
                 'store_id': str(store.id),
                 'store_code': store.store_code,
-                'company_id': str(store.outlet.company.id),
-                'company_name': store.outlet.company.name,
+                'company_id': str(store.brand.company.id),
+                'company_name': store.brand.company.name,
+                'brand_id': str(store.brand.id) if store.brand else None,
+                'brand_name': store.brand.name if store.brand else None,
                 'ip': terminal.ip_address,
                 'mac': terminal.mac_address,
             },
-            'message': f'Terminal {terminal.terminal_code} registered successfully!',
+            'message': f'Terminal {terminal.terminal_code} registered successfully! Config saved to terminal-config.json',
             'redirect': '/'
         })
     
@@ -106,12 +126,28 @@ def terminal_heartbeat(request):
 
 def terminal_list(request):
     """List all registered terminals (for admin)"""
-    store = StoreConfig.get_current()
+    store = Store.get_current()
     terminals = POSTerminal.objects.filter(store=store).order_by('-last_heartbeat')
     
     return render(request, 'core/terminal_list.html', {
         'store': store,
         'terminals': terminals,
+    })
+
+
+def check_terminal_code(request):
+    """Check if terminal code is already registered (AJAX endpoint)"""
+    code = request.GET.get('code', '').strip().upper()
+    
+    if not code:
+        return JsonResponse({'error': 'Code required'}, status=400)
+    
+    # Check if terminal code exists in database
+    exists = POSTerminal.objects.filter(terminal_code=code).exists()
+    
+    return JsonResponse({
+        'exists': exists,
+        'code': code
     })
 
 

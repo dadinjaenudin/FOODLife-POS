@@ -1,24 +1,31 @@
-"""
-Management Interface Views
-Dashboard, Terminal Management, Reports Overview
-"""
-from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
-from django.db.models import Sum, Count, Q, Avg
-from django.utils import timezone
+﻿# -*- coding: utf-8 -*-
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.shortcuts import render, redirect, get_object_or_404
+from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+from django.db.models import Sum, Avg, Q, Count
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from apps.core.models import POSTerminal, StoreConfig, Category, Product, User, ProductPhoto
+from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto
 from apps.core.models_session import StoreSession
 from apps.pos.models import Bill, Payment
 from apps.tables.models import Table, TableArea
-from apps.promotions.models import Promotion, Voucher
-from apps.promotions.models import Promotion, Voucher
+from apps.promotions.models import Promotion
 from .decorators import manager_required, supervisor_required
+
+
+def check_store_config(request, template_name):
+    """Helper to check if store is configured, return error response if not"""
+    store_config = Store.get_current()
+    if not store_config:
+        return None, render(request, template_name, {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+            'store_config': None,
+        })
+    return store_config, None
 
 
 @manager_required
@@ -26,7 +33,7 @@ def dashboard(request):
     """
     Management Dashboard - Real-time metrics & overview
     """
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     
     # Handle case where store not configured yet
     if not store_config:
@@ -35,13 +42,26 @@ def dashboard(request):
             'store_config': None,
         })
     
+    # Check if store has any brands
+    from apps.core.models import StoreBrand
+    if not StoreBrand.objects.filter(store=store_config, is_active=True).exists():
+        return render(request, 'management/dashboard.html', {
+            'error': 'No active brands found for this store. Please run setup wizard to associate brands.',
+            'store_config': store_config,
+        })
+    
     # Today's date
     today = timezone.now().date()
     
-    # Get today's stats
+    # Get active brands for this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = store_brands.values_list('brand_id', flat=True)
+    
+    # Get today's stats (all brands in this store)
     today_bills = Bill.objects.filter(
         created_at__date=today,
-        outlet=store_config.outlet
+        brand_id__in=brand_ids
     )
     
     closed_bills = today_bills.filter(status='paid')
@@ -63,7 +83,7 @@ def dashboard(request):
     # Payment methods breakdown
     payments = Payment.objects.filter(
         bill__created_at__date=today,
-        bill__outlet=store_config.outlet
+        bill__brand_id__in=brand_ids
     ).values('method').annotate(
         total=Sum('amount')
     )
@@ -118,7 +138,7 @@ def terminals_list(request):
     """
     Terminal Management Page - List all terminals with status
     """
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     
     # Get all terminals
     terminals = POSTerminal.objects.filter(
@@ -274,6 +294,25 @@ def terminal_reactivate(request, terminal_id):
     return render(request, 'management/partials/terminal_row.html', {'terminal': terminal})
 
 
+@supervisor_required
+def terminal_delete(request, terminal_id):
+    """
+    Delete Terminal (HTMX endpoint)
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    terminal = get_object_or_404(POSTerminal, id=terminal_id)
+    terminal_code = terminal.terminal_code
+    
+    # Delete the terminal
+    terminal.delete()
+    
+    # Return empty response (HTMX will remove the row)
+    from django.http import HttpResponse
+    return HttpResponse('')
+
+
 @manager_required
 def dashboard_refresh(request):
     """
@@ -282,7 +321,7 @@ def dashboard_refresh(request):
     # Reuse dashboard logic but return only the metrics partial
     # This will be called every 30 seconds via HTMX polling
     
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     current_session = StoreSession.objects.filter(is_closed=False).first()
     
     # Similar logic as dashboard view...
@@ -304,15 +343,15 @@ def settings(request):
     print(f"[DEBUG] settings() called - Method: {request.method}, Path: {request.path}")
     print(f"[DEBUG] Headers: {dict(request.headers)}")
     
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     
     if not store_config:
         return render(request, 'management/settings.html', {
             'error': 'Store configuration not found. Please run setup wizard first.',
         })
     
-    outlet = store_config.outlet
-    company = outlet.company
+    brand = store_config.brand
+    company = brand.company
     
     # Get terminal count
     terminal_count = POSTerminal.objects.filter(store=store_config).count()
@@ -328,7 +367,7 @@ def settings(request):
     
     context = {
         'store_config': store_config,
-        'outlet': outlet,
+        'brand': brand,
         'company': company,
         'terminal_count': terminal_count,
         'db_size': db_size,
@@ -350,14 +389,13 @@ def settings_update(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     if not store_config:
         return JsonResponse({'error': 'Store configuration not found'}, status=404)
     
     try:
-        # Update StoreConfig
-        store_config.store_code = request.POST.get('store_code', store_config.store_code)
-        store_config.store_name = request.POST.get('store_name', store_config.store_name)
+        # Update Store (only editable fields: address, phone, login_image)
+        # store_code and store_name are read-only, set from /setup/
         store_config.address = request.POST.get('address', store_config.address)
         store_config.phone = request.POST.get('phone', store_config.phone)
         
@@ -382,12 +420,12 @@ def settings_update(request):
         
         store_config.save()
         
-        # Update Outlet (tax & service charge)
-        outlet = store_config.outlet
-        outlet.tax_rate = Decimal(request.POST.get('tax_rate', outlet.tax_rate))
-        outlet.service_charge = Decimal(request.POST.get('service_charge', outlet.service_charge))
-        outlet.receipt_footer = request.POST.get('receipt_footer', outlet.receipt_footer)
-        outlet.save()
+        # Update Brand (tax & service charge)
+        brand = store_config.brand
+        brand.tax_rate = Decimal(request.POST.get('tax_rate', brand.tax_rate))
+        brand.service_charge = Decimal(request.POST.get('service_charge', brand.service_charge))
+        brand.receipt_footer = request.POST.get('receipt_footer', brand.receipt_footer)
+        brand.save()
         
         return JsonResponse({
             'success': True,
@@ -410,14 +448,14 @@ def master_data(request):
     """
     print(f"[DEBUG] master_data() called - Method: {request.method}")
     
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     if not store_config:
         return render(request, 'management/master_data.html', {
             'error': 'Store configuration not found. Please run setup wizard first.',
         })
     
-    outlet = store_config.outlet
-    company = outlet.company
+    Brand = store_config.brand
+    company = Brand.company
     
     # Count all master data
     master_data_summary = [
@@ -431,94 +469,49 @@ def master_data(request):
             'url': None,  # Read-only
         },
         {
-            'name': 'Outlet (Brand)',
-            'table': 'core_outlet',
+            'name': 'Brand (Brand)',
+            'table': 'core_brand',
             'count': 1,  # Always 1 per Edge Server
             'sync': 'pull',
-            'description': 'Brand/Outlet configuration',
-            'icon': '🏪',
+            'description': 'Brand/Brand configuration',
+            'icon': '🏷️',
             'url': None,  # Read-only
         },
         {
             'name': 'Store Configuration',
-            'table': 'core_storeconfig',
+            'table': 'core_Store',
             'count': 1,  # Singleton
             'sync': 'pull',
             'description': 'This Edge Server configuration',
-            'icon': '⚙️',
+            'icon': '🏪',
             'url': 'management:settings',
         },
         {
-            'name': 'Categories',
-            'table': 'core_category',
-            'count': Category.objects.filter(outlet=outlet).count(),
-            'sync': 'pull',
-            'description': 'Product categories (Food, Drinks, etc)',
-            'icon': '📁',
-            'url': 'management:categories',
-        },
-        {
-            'name': 'Products',
+            'name': 'Master Data',
             'table': 'core_product',
-            'count': Product.objects.filter(category__outlet=outlet).count(),
+            'count': Product.objects.filter(category__brand=Brand).count(),
             'sync': 'pull',
-            'description': 'Menu items with prices',
-            'icon': '🍔',
+            'description': 'Categories, Products, Modifiers, Modifier Options, Product-Modifier Links',
+            'icon': '🍽️',
             'url': 'management:products',
         },
         {
             'name': 'Tables',
             'table': 'tables_table',
-            'count': Table.objects.filter(area__outlet=outlet).count(),
+            'count': Table.objects.filter(area__brand=Brand).count(),
             'sync': 'pull',
-            'description': 'Restaurant tables & seating',
+            'description': 'Tables, Table Areas, Table Groups',
             'icon': '🪑',
             'url': 'management:tables',
         },
         {
-            'name': 'Table Areas',
-            'table': 'tables_tablearea',
-            'count': TableArea.objects.filter(outlet=outlet).count(),
-            'sync': 'pull',
-            'description': 'Table zones/sections',
-            'icon': '🗺️',
-            'url': 'management:table_areas',
-        },
-        {
-            'name': 'Users (Staff)',
-            'table': 'core_user',
-            'count': User.objects.filter(outlet=outlet).count(),
-            'sync': 'pull',
-            'description': 'Cashiers, waiters, kitchen staff',
-            'icon': '👤',
-            'url': 'management:users',
-        },
-        {
             'name': 'Promotions',
             'table': 'promotions_promotion',
-            'count': Promotion.objects.filter(outlet=outlet).count(),
+            'count': 0,  # Will be counted from promotions_compiled
             'sync': 'pull',
-            'description': 'Active promotions & discounts',
+            'description': 'Active promotions & discounts (compiled from HO)',
             'icon': '🎁',
             'url': 'management:promotions',
-        },
-        {
-            'name': 'Vouchers',
-            'table': 'promotions_voucher',
-            'count': Voucher.objects.filter(promotion__outlet=outlet).count(),
-            'sync': 'pull',
-            'description': 'Discount vouchers',
-            'icon': '🎟️',
-            'url': 'management:vouchers',
-        },
-        {
-            'name': 'Terminals',
-            'table': 'core_posterminal',
-            'count': POSTerminal.objects.filter(store=store_config).count(),
-            'sync': 'none',  # Local only (no sync)
-            'description': 'Registered POS terminals',
-            'icon': '🖥️',
-            'url': 'management:terminals',
         },
     ]
     
@@ -527,19 +520,19 @@ def master_data(request):
         {
             'name': 'Bills (Transactions)',
             'table': 'pos_bill',
-            'count': Bill.objects.filter(outlet=outlet).count(),
+            'count': Bill.objects.filter(brand=Brand).count(),
             'sync': 'push',
             'description': 'All sales transactions',
-            'icon': '🧾',
+            'icon': '??',
             'url': 'management:bills',
         },
         {
             'name': 'Payments',
             'table': 'pos_payment',
-            'count': Payment.objects.filter(bill__outlet=outlet).count(),
+            'count': Payment.objects.filter(bill__brand=Brand).count(),
             'sync': 'push',
             'description': 'Payment records',
-            'icon': '💳',
+            'icon': '??',
             'url': 'management:payments',
         },
         {
@@ -548,14 +541,14 @@ def master_data(request):
             'count': StoreSession.objects.filter(store=store_config).count(),
             'sync': 'push',
             'description': 'Daily business sessions & EOD',
-            'icon': '📅',
+            'icon': '??',
             'url': 'management:store_sessions',
         },
     ]
     
     context = {
         'store_config': store_config,
-        'outlet': outlet,
+        'Brand': Brand,
         'company': company,
         'master_data_summary': master_data_summary,
         'transaction_data': transaction_data,
@@ -566,14 +559,607 @@ def master_data(request):
     return render(request, 'management/master_data.html', context)
 
 
+@csrf_exempt
+@require_POST
+@manager_required
+def sync_from_ho(request):
+    """
+    Sync selected master data tables from HO Server using HOAPIClient
+    """
+    import json
+    from apps.core.ho_api import HOAPIClient, HOAPIException
+    from decimal import Decimal
+    
+    try:
+        # Parse request body
+        body = json.loads(request.body)
+        selected_tables = body.get('tables', [])
+        
+        if not selected_tables:
+            return JsonResponse({
+                'success': False,
+                'error': 'No tables selected'
+            }, status=400)
+        
+        # Get store config
+        store_config = Store.get_current()
+        if not store_config:
+            return JsonResponse({
+                'success': False,
+                'error': 'Store not configured'
+            }, status=400)
+        
+        from apps.core.models import StoreBrand
+        store_brand = StoreBrand.objects.filter(store=store_config, is_active=True).first()
+        if not store_brand:
+            return JsonResponse({
+                'success': False,
+                'error': 'No active brand found for this store'
+            }, status=400)
+        
+        brand = store_brand.brand
+        company = brand.company
+        company_id = str(company.id)
+        ho_store_id = str(store_brand.ho_store_id)
+        
+        # Initialize HO API Client
+        client = HOAPIClient()
+        
+        synced_tables = []
+        sync_results = {}
+        
+        # Sync each selected table
+        for table_name in selected_tables:
+            try:
+                if table_name == 'core_category':
+                    # Sync Categories
+                    categories = client.get_categories(company_id=company_id, store_id=ho_store_id)
+                    saved_count = 0
+                    
+                    # First pass: Create/update all categories without parent
+                    for cat_data in categories:
+                        try:
+                            defaults = {
+                                'brand': brand,
+                                'name': cat_data.get('name', 'Unnamed Category'),
+                                'is_active': cat_data.get('is_active', True),
+                                'sort_order': cat_data.get('sort_order', 0),
+                                'icon': cat_data.get('icon', ''),
+                            }
+                            
+                            Category.objects.update_or_create(
+                                id=cat_data['id'],
+                                defaults=defaults
+                            )
+                            saved_count += 1
+                        except Exception as cat_error:
+                            print(f"Error saving category {cat_data.get('name', 'unknown')}: {cat_error}")
+                            continue
+                    
+                    # Second pass: Update parent relationships
+                    for cat_data in categories:
+                        try:
+                            if cat_data.get('parent_id'):
+                                category = Category.objects.get(id=cat_data['id'])
+                                parent = Category.objects.filter(id=cat_data['parent_id']).first()
+                                if parent:
+                                    category.parent = parent
+                                    category.save(update_fields=['parent'])
+                        except Exception as parent_error:
+                            print(f"Error setting parent for category {cat_data.get('name', 'unknown')}: {parent_error}")
+                            continue
+                    
+                    synced_tables.append(table_name)
+                    sync_results[table_name] = {
+                        'success': True,
+                        'records_count': saved_count
+                    }
+                
+                elif table_name == 'tables_table':
+                    # Sync Tables with dependencies in correct order:
+                    # 1. Table Areas → 2. Tables → 3. Table Groups
+                    
+                    from apps.tables.models import TableArea, Table, TableGroup
+                    
+                    # Step 1: Sync Table Areas
+                    table_areas = client.get_table_areas(company_id=company_id, store_id=ho_store_id)
+                    area_count = 0
+                    for area_data in table_areas:
+                        try:
+                            TableArea.objects.update_or_create(
+                                id=area_data['id'],
+                                defaults={
+                                    'brand': brand,
+                                    'company': company,
+                                    'store': store_config,
+                                    'name': area_data['name'],
+                                    'description': area_data.get('description', ''),
+                                    'sort_order': area_data.get('sort_order', 0),
+                                    'is_active': area_data.get('is_active', True),
+                                    'floor_width': area_data.get('floor_width'),
+                                    'floor_height': area_data.get('floor_height'),
+                                }
+                            )
+                            area_count += 1
+                        except Exception as area_error:
+                            print(f"Error saving table area {area_data.get('name', 'unknown')}: {area_error}")
+                            continue
+                    
+                    # Step 2: Sync Tables
+                    tables = client.get_tables(company_id=company_id, store_id=ho_store_id)
+                    table_count = 0
+                    for table_data in tables:
+                        try:
+                            area = TableArea.objects.filter(id=table_data.get('area_id')).first()
+                            if area:
+                                Table.objects.update_or_create(
+                                    id=table_data['id'],
+                                    defaults={
+                                        'area': area,
+                                        'number': table_data['number'],
+                                        'capacity': table_data.get('capacity', 4),
+                                        'status': table_data.get('status', 'available'),
+                                        'qr_code': table_data.get('qr_code', ''),
+                                        'is_active': table_data.get('is_active', True),
+                                        'pos_x': table_data.get('pos_x'),
+                                        'pos_y': table_data.get('pos_y'),
+                                    }
+                                )
+                                table_count += 1
+                            else:
+                                print(f"Table {table_data.get('number')} skipped - area not found: {table_data.get('area_id')}")
+                        except Exception as table_error:
+                            print(f"Error saving table {table_data.get('number', 'unknown')}: {table_error}")
+                            continue
+                    
+                    # Step 3: Sync Table Groups (optional, may be empty)
+                    try:
+                        table_groups = client.get_table_groups(company_id=company_id, store_id=ho_store_id)
+                        group_count = 0
+                        for group_data in table_groups:
+                            try:
+                                main_table = Table.objects.filter(id=group_data.get('main_table_id')).first()
+                                if main_table:
+                                    TableGroup.objects.update_or_create(
+                                        id=group_data['id'],
+                                        defaults={
+                                            'main_table': main_table,
+                                            'brand': brand,
+                                            'created_by_id': group_data.get('created_by_id'),
+                                        }
+                                    )
+                                    group_count += 1
+                            except Exception as group_error:
+                                print(f"Error saving table group: {group_error}")
+                                continue
+                    except Exception as e:
+                        print(f"Table groups sync skipped: {e}")
+                        group_count = 0
+                    
+                    synced_tables.append(table_name)
+                    sync_results[table_name] = {
+                        'success': True,
+                        'records_count': table_count,
+                        'details': f'{area_count} areas, {table_count} tables, {group_count} groups'
+                    }
+                
+                elif table_name == 'promotions_promotion':
+                    # Sync Promotions from HO (denormalized schema)
+                    from apps.promotions.models import Promotion, PromotionSyncLog
+                    from datetime import datetime
+                    import json
+                    
+                    sync_start = timezone.now()
+                    promotions = client.get_promotions(company_id=company_id, store_id=ho_store_id)
+                    promo_count = 0
+                    updated_count = 0
+                    
+                    for promo_data in promotions:
+                        try:
+                            # Extract validity fields
+                            validity = promo_data.get('validity', {})
+                            start_date_str = validity.get('start_date')
+                            end_date_str = validity.get('end_date')
+                            
+                            # Parse dates
+                            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date() if start_date_str else None
+                            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else None
+                            
+                            if not start_date or not end_date:
+                                print(f"Promotion {promo_data.get('code')} skipped - missing dates")
+                                continue
+                            
+                            # Parse time fields
+                            time_start = validity.get('time_start')
+                            time_end = validity.get('time_end')
+                            if time_start:
+                                time_start = datetime.strptime(time_start, '%H:%M:%S').time()
+                            if time_end:
+                                time_end = datetime.strptime(time_end, '%H:%M:%S').time()
+                            
+                            # Parse compiled_at
+                            compiled_at_str = promo_data.get('compiled_at')
+                            if compiled_at_str:
+                                compiled_at = datetime.fromisoformat(compiled_at_str.replace('Z', '+00:00'))
+                            else:
+                                compiled_at = timezone.now()
+                            
+                            # Create or update promotion
+                            promo, created = Promotion.objects.update_or_create(
+                                id=promo_data['id'],
+                                defaults={
+                                    'company': company,
+                                    'brand': brand,
+                                    'store': store_config,
+                                    'code': promo_data['code'],
+                                    'name': promo_data['name'],
+                                    'description': promo_data.get('description', ''),
+                                    'terms_conditions': promo_data.get('terms_conditions', ''),
+                                    'promo_type': promo_data.get('promo_type', 'percent_discount'),
+                                    'apply_to': promo_data.get('apply_to', 'all'),
+                                    'execution_stage': promo_data.get('execution_stage', 'item_level'),
+                                    'execution_priority': promo_data.get('execution_priority', 500),
+                                    'is_active': promo_data.get('is_active', True),
+                                    'is_auto_apply': promo_data.get('is_auto_apply', False),
+                                    'require_voucher': promo_data.get('require_voucher', False),
+                                    'member_only': promo_data.get('member_only', False),
+                                    'is_stackable': promo_data.get('is_stackable', False),
+                                    'start_date': start_date,
+                                    'end_date': end_date,
+                                    'time_start': time_start,
+                                    'time_end': time_end,
+                                    'valid_days': json.dumps(validity.get('days_of_week', [])),
+                                    'exclude_holidays': validity.get('exclude_holidays', False),
+                                    'rules_json': json.dumps(promo_data.get('rules', {})),
+                                    'scope_json': json.dumps(promo_data.get('scope', {})),
+                                    'targeting_json': json.dumps(promo_data.get('targeting', {})),
+                                    'max_uses': promo_data.get('limits', {}).get('max_uses'),
+                                    'max_uses_per_customer': promo_data.get('limits', {}).get('max_uses_per_customer'),
+                                    'max_uses_per_day': promo_data.get('limits', {}).get('max_uses_per_day'),
+                                    'current_uses': promo_data.get('limits', {}).get('current_uses', 0),
+                                    'compiled_at': compiled_at,
+                                }
+                            )
+                            
+                            if created:
+                                promo_count += 1
+                            else:
+                                updated_count += 1
+                                
+                        except Exception as promo_error:
+                            print(f"Error saving promotion {promo_data.get('code', 'unknown')}: {promo_error}")
+                            continue
+                    
+                    # Log sync operation
+                    sync_end = timezone.now()
+                    duration = int((sync_end - sync_start).total_seconds())
+                    
+                    PromotionSyncLog.objects.create(
+                        sync_type='manual',
+                        sync_status='success',
+                        promotions_received=len(promotions),
+                        promotions_added=promo_count,
+                        promotions_updated=updated_count,
+                        promotions_deleted=0,
+                        company=company,
+                        store=store_config,
+                        started_at=sync_start,
+                        completed_at=sync_end,
+                        duration_seconds=duration,
+                        edge_version='1.0'
+                    )
+                    
+                    synced_tables.append(table_name)
+                    sync_results[table_name] = {
+                        'success': True,
+                        'records_count': promo_count + updated_count,
+                        'details': f'{promo_count} added, {updated_count} updated'
+                    }
+                
+                elif table_name == 'core_product':
+                    # Sync Products with dependencies in correct order:
+                    # 1. Modifiers → 2. Modifier Options → 3. Products → 4. Product-Modifier relationships
+                    
+                    from apps.core.models import Modifier, ModifierOption, ProductModifier
+                    
+                    # API call order (as requested):
+                    # 0) categories, 1) product-modifiers, 2) modifier-options, 3) modifiers, 4) products
+                    categories = client.get_categories(company_id=company_id, store_id=ho_store_id)
+                    product_modifiers = client.get_product_modifiers(company_id=company_id, store_id=ho_store_id)
+                    modifier_options = client.get_modifier_options(company_id=company_id, store_id=ho_store_id)
+                    modifiers = client.get_modifiers(company_id=company_id, store_id=ho_store_id)
+                    products = client.get_products(company_id=company_id, store_id=ho_store_id)
+                    product_received = len(products)
+
+                    # Sync categories first (needed for products)
+                    category_count = 0
+                    for cat_data in categories:
+                        try:
+                            defaults = {
+                                'brand': brand,
+                                'name': cat_data.get('name', 'Unnamed Category'),
+                                'is_active': cat_data.get('is_active', True),
+                                'sort_order': cat_data.get('sort_order', 0),
+                                'icon': cat_data.get('icon', ''),
+                            }
+
+                            Category.objects.update_or_create(
+                                id=cat_data['id'],
+                                defaults=defaults
+                            )
+                            category_count += 1
+                        except Exception as cat_error:
+                            print(f"Error saving category {cat_data.get('name', 'unknown')}: {cat_error}")
+                            continue
+
+                    for cat_data in categories:
+                        try:
+                            if cat_data.get('parent_id'):
+                                category = Category.objects.get(id=cat_data['id'])
+                                parent = Category.objects.filter(id=cat_data['parent_id']).first()
+                                if parent:
+                                    category.parent = parent
+                                    category.save(update_fields=['parent'])
+                        except Exception as parent_error:
+                            print(f"Error setting parent for category {cat_data.get('name', 'unknown')}: {parent_error}")
+                            continue
+
+                    # Process in safe FK order:
+                    # 1) modifiers -> 2) modifier options -> 3) products -> 4) product-modifier links
+                    modifier_count = 0
+                    for mod_data in modifiers:
+                        try:
+                            Modifier.objects.update_or_create(
+                                id=mod_data['id'],
+                                defaults={
+                                    'brand': brand,
+                                    'name': mod_data['name'],
+                                    'is_required': mod_data.get('is_required', False),
+                                    'max_selections': mod_data.get('max_selections', 1),
+                                    'is_active': mod_data.get('is_active', True),
+                                }
+                            )
+                            modifier_count += 1
+                        except Exception as mod_error:
+                            print(f"Error saving modifier {mod_data.get('name', 'unknown')}: {mod_error}")
+                            continue
+
+                    option_count = 0
+                    for opt_data in modifier_options:
+                        try:
+                            modifier = Modifier.objects.filter(id=opt_data.get('modifier_id')).first()
+                            if modifier:
+                                ModifierOption.objects.update_or_create(
+                                    id=opt_data['id'],
+                                    defaults={
+                                        'modifier': modifier,
+                                        'name': opt_data['name'],
+                                        'price_adjustment': Decimal(str(opt_data.get('price_adjustment', 0))),
+                                        'is_default': opt_data.get('is_default', False),
+                                        'sort_order': opt_data.get('sort_order', 0),
+                                        'is_active': opt_data.get('is_active', True),
+                                    }
+                                )
+                                option_count += 1
+                        except Exception as opt_error:
+                            print(f"Error saving modifier option {opt_data.get('name', 'unknown')}: {opt_error}")
+                            continue
+
+                    product_count = 0
+                    product_duplicate_sku_updates = 0
+                    product_skipped_missing_category = 0
+                    product_errors = 0
+                    for prod_data in products:
+                        try:
+                            category = Category.objects.filter(id=prod_data.get('category_id')).first()
+                            if category:
+                                try:
+                                    Product.objects.update_or_create(
+                                        id=prod_data['id'],
+                                        defaults={
+                                            'brand': brand,
+                                            'category': category,
+                                            'name': prod_data['name'],
+                                            'description': prod_data.get('description', ''),
+                                            'price': Decimal(str(prod_data['price'])),
+                                            'sku': prod_data.get('sku', ''),
+                                            'is_active': prod_data.get('is_active', True),
+                                            'printer_target': prod_data.get('printer_target', 'kitchen'),
+                                        }
+                                    )
+                                    product_count += 1
+                                except IntegrityError:
+                                    sku = prod_data.get('sku', '')
+                                    existing = None
+                                    if sku:
+                                        existing = Product.objects.filter(brand=brand, sku=sku).first()
+                                    if existing:
+                                        existing.category = category
+                                        existing.name = prod_data['name']
+                                        existing.description = prod_data.get('description', '')
+                                        existing.price = Decimal(str(prod_data['price']))
+                                        existing.is_active = prod_data.get('is_active', True)
+                                        existing.printer_target = prod_data.get('printer_target', 'kitchen')
+                                        existing.save(update_fields=[
+                                            'category', 'name', 'description', 'price', 'is_active', 'printer_target'
+                                        ])
+                                        product_count += 1
+                                        product_duplicate_sku_updates += 1
+                                        print(f"Product {prod_data.get('name', 'unknown')} updated by SKU due to duplicate constraint (sku={sku})")
+                                    else:
+                                        raise
+                            else:
+                                print(f"Product {prod_data.get('name')} skipped - category not found: {prod_data.get('category_id')}")
+                                product_skipped_missing_category += 1
+                        except Exception as prod_error:
+                            print(f"Error saving product {prod_data.get('name', 'unknown')}: {prod_error}")
+                            product_errors += 1
+                            continue
+
+                    link_count = 0
+                    for pm_data in product_modifiers:
+                        try:
+                            product = Product.objects.filter(id=pm_data.get('product_id')).first()
+                            modifier = Modifier.objects.filter(id=pm_data.get('modifier_id')).first()
+                            if product and modifier:
+                                product_modifier, created = ProductModifier.objects.get_or_create(
+                                    product=product,
+                                    modifier=modifier,
+                                    defaults={
+                                        'sort_order': pm_data.get('sort_order', 0)
+                                    }
+                                )
+                                if created:
+                                    link_count += 1
+                        except Exception as pm_error:
+                            print(f"Error linking product-modifier: {pm_error}")
+                            continue
+                    
+                    # Count totals in Edge DB
+                    brand_category_total = Category.objects.filter(brand=brand).count()
+                    brand_product_total = Product.objects.filter(brand=brand).count()
+                    brand_modifier_total = Modifier.objects.filter(brand=brand).count()
+                    modifier_ids = list(Modifier.objects.filter(brand=brand).values_list('id', flat=True))
+                    brand_option_total = ModifierOption.objects.filter(modifier_id__in=modifier_ids).count()
+                    brand_link_total = ProductModifier.objects.filter(modifier__brand=brand).count()
+                    
+                    # Track HO counts
+                    ho_category_count = len(categories)
+                    ho_modifier_count = len(modifiers)
+                    ho_option_count = len(modifier_options)
+                    ho_product_count = len(products)
+                    ho_link_count = len(product_modifiers)
+                    
+                    # Build comparison checklist
+                    checklist = {
+                        'categories': {
+                            'ho': ho_category_count,
+                            'edge': brand_category_total,
+                            'match': ho_category_count == brand_category_total
+                        },
+                        'modifiers': {
+                            'ho': ho_modifier_count,
+                            'edge': brand_modifier_total,
+                            'match': ho_modifier_count == brand_modifier_total
+                        },
+                        'options': {
+                            'ho': ho_option_count,
+                            'edge': brand_option_total,
+                            'match': ho_option_count == brand_option_total
+                        },
+                        'products': {
+                            'ho': ho_product_count,
+                            'edge': brand_product_total,
+                            'match': ho_product_count == brand_product_total
+                        },
+                        'links': {
+                            'ho': ho_link_count,
+                            'edge': brand_link_total,
+                            'match': ho_link_count == brand_link_total
+                        }
+                    }
+                    
+                    synced_tables.append(table_name)
+                    sync_results[table_name] = {
+                        'success': True,
+                        'records_count': brand_product_total,
+                        'checklist': checklist,
+                        'details': (
+                            f'{modifier_count} modifiers, {option_count} options, '
+                            f'{product_count} products processed (received {product_received}, '
+                            f'updated_by_sku {product_duplicate_sku_updates}, '
+                            f'skipped_category {product_skipped_missing_category}, '
+                            f'errors {product_errors}, total_in_db {brand_product_total}), '
+                            f'{link_count} links'
+                        )
+                    }
+                
+                else:
+                    # Table not yet implemented
+                    sync_results[table_name] = {
+                        'success': False,
+                        'error': f'Sync for table "{table_name}" not yet implemented. Coming soon!'
+                    }
+            
+            except HOAPIException as e:
+                sync_results[table_name] = {
+                    'success': False,
+                    'error': f'HO API Error: {str(e)}'
+                }
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                sync_results[table_name] = {
+                    'success': False,
+                    'error': str(e)
+                }
+        
+        # Prepare response with checklist validation
+        if synced_tables:
+            # Build checklist items with HO vs Edge comparison
+            all_match = True
+            checklist_items = []
+            
+            label_map = {
+                'categories': 'categories',
+                'modifiers': 'modifiers',
+                'options': 'modifier-options',
+                'products': 'products',
+                'links': 'product-modifiers',
+            }
+
+            for table_name, result in sync_results.items():
+                if result.get('success') and 'checklist' in result:
+                    checklist = result['checklist']
+                    for item_name, comparison in checklist.items():
+                        is_match = comparison.get('match', False)
+                        all_match = all_match and is_match
+                        icon = '✓' if is_match else '✗'
+                        checklist_items.append({
+                            'item': label_map.get(item_name, item_name),
+                            'ho': comparison['ho'],
+                            'edge': comparison['edge'],
+                            'match': is_match,
+                            'icon': icon
+                        })
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Successfully synced {len(synced_tables)} table(s)',
+                'synced_tables': synced_tables,
+                'results': sync_results,
+                'checklist_items': checklist_items,
+                'all_match': all_match
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'No tables were synced successfully',
+                'results': sync_results
+            }, status=400)
+    
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON in request body'
+        }, status=400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
 @manager_required
 def categories(request):
     """Categories Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     categories_list = Category.objects.filter(
-        outlet=outlet
+        brand=Brand
     ).select_related('parent').order_by('sort_order', 'name')
     
     # Calculate counts for template
@@ -593,13 +1179,13 @@ def categories(request):
 @manager_required
 def products(request):
     """Products Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get all products
     products_list = Product.objects.filter(
-        category__outlet=outlet
-    ).select_related('category').prefetch_related('modifiers', 'photos').order_by('category__name', 'name')
+        category__brand=Brand
+    ).select_related('category').prefetch_related('product_modifiers__modifier', 'photos').order_by('category__name', 'name')
     
     # Filter by category
     category_filter = request.GET.get('category', '')
@@ -621,12 +1207,12 @@ def products(request):
         products_list = products_list.filter(is_active=False)
     
     # Get categories for filter dropdown
-    categories_list = Category.objects.filter(outlet=outlet).order_by('name')
+    categories_list = Category.objects.filter(brand=Brand).order_by('name')
     
     # Calculate counts
     total_count = products_list.count()
-    active_count = Product.objects.filter(category__outlet=outlet, is_active=True).count()
-    inactive_count = Product.objects.filter(category__outlet=outlet, is_active=False).count()
+    active_count = Product.objects.filter(category__brand=Brand, is_active=True).count()
+    inactive_count = Product.objects.filter(category__brand=Brand, is_active=False).count()
     
     # Pagination
     paginator = Paginator(products_list, 20)  # 20 products per page
@@ -657,11 +1243,14 @@ def products(request):
 @manager_required
 def tables_list(request):
     """Tables Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config, error_response = check_store_config(request, 'management/tables_management.html')
+    if error_response:
+        return error_response
+    
+    Brand = store_config.brand
     
     tables = Table.objects.filter(
-        area__outlet=outlet
+        area__brand=Brand
     ).select_related('area').order_by('area__name', 'number')
     
     # Filter by area
@@ -675,7 +1264,7 @@ def tables_list(request):
         tables = tables.filter(status=status_filter)
     
     # Get areas for filter
-    areas = TableArea.objects.filter(outlet=outlet).order_by('name')
+    areas = TableArea.objects.filter(brand=Brand).order_by('name')
     
     # Calculate status counts
     available_count = tables.filter(status='available').count()
@@ -699,11 +1288,14 @@ def tables_list(request):
 @manager_required
 def users_list(request):
     """Users Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config, error_response = check_store_config(request, 'management/users_list.html')
+    if error_response:
+        return error_response
+    
+    Brand = store_config.brand
     
     users = User.objects.filter(
-        outlet=outlet
+        brand=Brand
     ).order_by('role', 'username')
     
     # Filter by role
@@ -740,6 +1332,76 @@ def users_list(request):
     }
     
     return render(request, 'management/users.html', context)
+
+
+@csrf_exempt
+@require_POST
+@manager_required
+def user_create(request):
+    """Create New User"""
+    
+    try:
+        # Get form data
+        username = request.POST.get('username', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        email = request.POST.get('email', '').strip()
+        role = request.POST.get('role', '').strip()
+        password = request.POST.get('password', '').strip()
+        pin = request.POST.get('pin', '').strip()
+        
+        # Validation
+        if not username:
+            return JsonResponse({'error': 'Username is required'}, status=400)
+        
+        if not first_name:
+            return JsonResponse({'error': 'First name is required'}, status=400)
+        
+        if not role:
+            return JsonResponse({'error': 'Role is required'}, status=400)
+        
+        if not password:
+            return JsonResponse({'error': 'Password is required'}, status=400)
+        
+        if len(password) < 6:
+            return JsonResponse({'error': 'Password must be at least 6 characters'}, status=400)
+        
+        # Check if username already exists
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({'error': 'Username already exists'}, status=400)
+        
+        # Validate PIN if provided
+        if pin:
+            if not pin.isdigit() or len(pin) != 6:
+                return JsonResponse({'error': 'PIN must be exactly 6 digits'}, status=400)
+        
+        # Get current Brand
+        store_config = Store.get_current()
+        Brand = store_config.brand
+        
+        # Create user
+        user = User.objects.create(
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            role=role,
+            brand=Brand,
+            company=Brand.company,
+            pin=pin if pin else ''
+        )
+        
+        # Set password
+        user.set_password(password)
+        user.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'User {username} created successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 @csrf_exempt
@@ -798,11 +1460,11 @@ def user_set_pin(request, user_id):
 @manager_required
 def table_areas_list(request):
     """Table Areas Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     areas = TableArea.objects.filter(
-        outlet=outlet
+        brand=Brand
     ).order_by('sort_order', 'name')
     
     # Count tables per area
@@ -825,13 +1487,14 @@ def table_areas_list(request):
 
 @manager_required
 def promotions_list(request):
-    """Promotions Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    """Promotions Management - Shows Promotions from HO"""
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
+    # Use new Promotion model (denormalized schema)
     promotions = Promotion.objects.filter(
-        outlet=outlet
-    ).order_by('-created_at')
+        brand=Brand
+    ).order_by('-start_date', 'name')
     
     # Filter by status
     status_filter = request.GET.get('status', '')
@@ -853,13 +1516,13 @@ def promotions_list(request):
         )
     
     # Calculate counts
-    active_count = Promotion.objects.filter(outlet=outlet, is_active=True).count()
-    inactive_count = Promotion.objects.filter(outlet=outlet, is_active=False).count()
+    active_count = Promotion.objects.filter(brand=Brand, is_active=True).count()
+    inactive_count = Promotion.objects.filter(brand=Brand, is_active=False).count()
     
     # Check current validity
     now = timezone.now()
     valid_count = Promotion.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         is_active=True,
         start_date__lte=now,
         end_date__gte=now
@@ -874,20 +1537,87 @@ def promotions_list(request):
         'status_filter': status_filter,
         'type_filter': type_filter,
         'search': search,
-        'promo_types': Promotion.TYPE_CHOICES,
     }
     
     return render(request, 'management/promotions.html', context)
 
 
 @manager_required
+def promotion_detail(request, promotion_id):
+    """Promotion Detail - Show all promotion information"""
+    store_config = Store.get_current()
+    Brand = store_config.brand
+    
+    promotion = get_object_or_404(
+        Promotion.objects.select_related('brand', 'company', 'store'),
+        id=promotion_id,
+        brand=Brand
+    )
+    
+    # Parse JSON fields
+    rules = promotion.get_rules()
+    scope = promotion.get_scope()
+    targeting = promotion.get_targeting()
+    valid_days = promotion.get_valid_days()
+    
+    # Resolve category/product UUIDs to names
+    if scope:
+        # Resolve categories
+        if 'categories' in scope and scope['categories']:
+            category_ids = scope['categories']
+            categories = Category.objects.filter(id__in=category_ids).values_list('name', flat=True)
+            scope['category_names'] = list(categories)
+        
+        if 'exclude_categories' in scope and scope['exclude_categories']:
+            category_ids = scope['exclude_categories']
+            categories = Category.objects.filter(id__in=category_ids).values_list('name', flat=True)
+            scope['exclude_category_names'] = list(categories)
+        
+        # Resolve products
+        if 'products' in scope and scope['products']:
+            product_ids = scope['products']
+            products = Product.objects.filter(id__in=product_ids).values_list('name', flat=True)
+            scope['product_names'] = list(products)
+        
+        if 'exclude_products' in scope and scope['exclude_products']:
+            product_ids = scope['exclude_products']
+            products = Product.objects.filter(id__in=product_ids).values_list('name', flat=True)
+            scope['exclude_product_names'] = list(products)
+    
+    # Get usage statistics
+    from apps.promotions.models import PromotionUsage
+    usage_stats = PromotionUsage.objects.filter(promotion=promotion).aggregate(
+        total_usage=Count('id'),
+        total_discount=Sum('discount_amount'),
+        total_original=Sum('original_amount')
+    )
+    
+    # Recent usage
+    recent_usage = PromotionUsage.objects.filter(
+        promotion=promotion
+    ).order_by('-used_at')[:10]
+    
+    context = {
+        'promotion': promotion,
+        'rules': rules,
+        'scope': scope,
+        'targeting': targeting,
+        'valid_days': valid_days,
+        'usage_stats': usage_stats,
+        'recent_usage': recent_usage,
+    }
+    
+    return render(request, 'management/promotion_detail.html', context)
+
+
+@manager_required
 def vouchers_list(request):
     """Vouchers Management"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     vouchers = Voucher.objects.filter(
-        promotion__outlet=outlet
+        promotion__brand=Brand
     ).select_related('promotion').order_by('-created_at')
     
     # Filter by status
@@ -910,16 +1640,16 @@ def vouchers_list(request):
     
     # Calculate counts
     active_count = Voucher.objects.filter(
-        promotion__outlet=outlet,
+        promotion__brand=Brand,
         is_active=True,
         is_used=False
     ).count()
     used_count = Voucher.objects.filter(
-        promotion__outlet=outlet,
+        promotion__brand=Brand,
         is_used=True
     ).count()
     expired_count = Voucher.objects.filter(
-        promotion__outlet=outlet,
+        promotion__brand=Brand,
         expiry_date__lt=timezone.now(),
         is_used=False
     ).count()
@@ -940,11 +1670,11 @@ def vouchers_list(request):
 @manager_required
 def bills_list(request):
     """Bills/Transactions List"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     bills = Bill.objects.filter(
-        outlet=outlet
+        brand=Brand
     ).select_related('table', 'created_by', 'terminal').order_by('-created_at')
     
     # Filter by status
@@ -966,13 +1696,13 @@ def bills_list(request):
         bills = bills.filter(bill_number__icontains=search)
     
     # Calculate counts and totals (before pagination)
-    total_bills = Bill.objects.filter(outlet=outlet).count()
-    open_count = Bill.objects.filter(outlet=outlet, status='open').count()
-    paid_count = Bill.objects.filter(outlet=outlet, status='paid').count()
-    void_count = Bill.objects.filter(outlet=outlet, status='void').count()
+    total_bills = Bill.objects.filter(brand=Brand).count()
+    open_count = Bill.objects.filter(brand=Brand, status='open').count()
+    paid_count = Bill.objects.filter(brand=Brand, status='paid').count()
+    void_count = Bill.objects.filter(brand=Brand, status='void').count()
     
     total_revenue = Bill.objects.filter(
-        outlet=outlet, 
+        brand=Brand, 
         status='paid'
     ).aggregate(total=Sum('total'))['total'] or Decimal('0')
     
@@ -1006,11 +1736,11 @@ def bills_list(request):
 @manager_required
 def payments_list(request):
     """Payments List"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     payments = Payment.objects.filter(
-        bill__outlet=outlet
+        bill__brand=Brand
     ).select_related('bill', 'bill__created_by').order_by('-created_at')
     
     # Filter by payment method
@@ -1032,19 +1762,19 @@ def payments_list(request):
         payments = payments.filter(bill__bill_number__icontains=search)
     
     # Calculate totals by method (before pagination)
-    total_payments = Payment.objects.filter(bill__outlet=outlet).count()
+    total_payments = Payment.objects.filter(bill__brand=Brand).count()
     cash_total = Payment.objects.filter(
-        bill__outlet=outlet, method='cash'
+        bill__brand=Brand, method='cash'
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
     card_total = Payment.objects.filter(
-        bill__outlet=outlet, method='card'
+        bill__brand=Brand, method='card'
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
     qris_total = Payment.objects.filter(
-        bill__outlet=outlet, method='qris'
+        bill__brand=Brand, method='qris'
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
     
     total_amount = Payment.objects.filter(
-        bill__outlet=outlet
+        bill__brand=Brand
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
     
     # Pagination
@@ -1077,7 +1807,7 @@ def payments_list(request):
 @manager_required
 def store_sessions_list(request):
     """Store Sessions List"""
-    store_config = StoreConfig.get_current()
+    store_config = Store.get_current()
     
     sessions = StoreSession.objects.filter(
         store=store_config
@@ -1128,21 +1858,21 @@ def store_sessions_list(request):
 @manager_required
 def reports_dashboard(request):
     """Reports overview dashboard"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Quick stats for last 7 days
     today = timezone.now().date()
     week_ago = today - timedelta(days=7)
     
     last_week_revenue = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=week_ago
     ).aggregate(total=Sum('total'))['total'] or Decimal('0')
     
     last_week_bills = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=week_ago
     ).count()
@@ -1159,8 +1889,8 @@ def reports_dashboard(request):
 @manager_required
 def sales_report(request):
     """Sales report with period selection"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range from request
     period = request.GET.get('period', 'today')
@@ -1198,7 +1928,7 @@ def sales_report(request):
     
     # Get bills in date range
     bills = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=date_from,
         created_at__date__lte=date_to
@@ -1230,7 +1960,7 @@ def sales_report(request):
     prev_end = date_from - timedelta(days=1)
     
     prev_bills = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=prev_start,
         created_at__date__lte=prev_end
@@ -1261,8 +1991,8 @@ def sales_report(request):
 @manager_required
 def products_report(request):
     """Top products and categories analysis"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range
     period = request.GET.get('period', 'week')
@@ -1280,7 +2010,7 @@ def products_report(request):
     # Top products by quantity
     from apps.pos.models import BillItem
     top_products_qty = BillItem.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__status='paid',
         bill__created_at__date__gte=date_from,
         is_void=False
@@ -1294,7 +2024,7 @@ def products_report(request):
     
     # Top products by revenue
     top_products_revenue = BillItem.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__status='paid',
         bill__created_at__date__gte=date_from,
         is_void=False
@@ -1308,7 +2038,7 @@ def products_report(request):
     
     # Category performance
     category_performance = BillItem.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__status='paid',
         bill__created_at__date__gte=date_from,
         is_void=False
@@ -1334,8 +2064,8 @@ def products_report(request):
 @manager_required
 def cashier_report(request):
     """Cashier performance report"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range
     period = request.GET.get('period', 'today')
@@ -1356,7 +2086,7 @@ def cashier_report(request):
     
     # Cashier performance
     cashier_stats = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         created_at__date__gte=date_from,
         created_at__date__lte=date_to
     ).values(
@@ -1374,7 +2104,7 @@ def cashier_report(request):
     # Void items by cashier
     from apps.pos.models import BillItem
     void_stats = BillItem.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__created_at__date__gte=date_from,
         bill__created_at__date__lte=date_to,
         is_void=True
@@ -1408,8 +2138,8 @@ def cashier_report(request):
 @manager_required
 def payment_report(request):
     """Payment method breakdown"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range
     period = request.GET.get('period', 'today')
@@ -1430,7 +2160,7 @@ def payment_report(request):
     
     # Payment method breakdown
     payment_breakdown = Payment.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__status='paid',
         created_at__date__gte=date_from,
         created_at__date__lte=date_to
@@ -1442,7 +2172,7 @@ def payment_report(request):
     # Daily payment trends
     from django.db.models.functions import TruncDate
     daily_payments = Payment.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__status='paid',
         created_at__date__gte=date_from,
         created_at__date__lte=date_to
@@ -1470,8 +2200,8 @@ def payment_report(request):
 @manager_required
 def void_discount_report(request):
     """Void and discount analysis"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range
     period = request.GET.get('period', 'week')
@@ -1489,7 +2219,7 @@ def void_discount_report(request):
     # Void items analysis
     from apps.pos.models import BillItem
     void_items = BillItem.objects.filter(
-        bill__outlet=outlet,
+        bill__brand=Brand,
         bill__created_at__date__gte=date_from,
         is_void=True
     ).select_related('product', 'bill__created_by')
@@ -1517,7 +2247,7 @@ def void_discount_report(request):
     
     # Discount analysis
     bills_with_discount = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         created_at__date__gte=date_from,
         discount_amount__gt=0
     )
@@ -1551,8 +2281,8 @@ def void_discount_report(request):
 @manager_required
 def peak_hours_report(request):
     """Peak hours and time-based analysis"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range
     period = request.GET.get('period', 'week')
@@ -1570,7 +2300,7 @@ def peak_hours_report(request):
     # Hourly sales distribution
     from django.db.models.functions import ExtractHour
     hourly_sales = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=date_from
     ).annotate(
@@ -1583,7 +2313,7 @@ def peak_hours_report(request):
     # Day of week analysis
     from django.db.models.functions import ExtractWeekDay
     daily_sales = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=date_from
     ).annotate(
@@ -1625,8 +2355,8 @@ def export_sales_excel(request):
     from openpyxl.styles import Font, PatternFill, Alignment
     from django.http import HttpResponse
     
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     # Get date range from request
     period = request.GET.get('period', 'today')
@@ -1654,7 +2384,7 @@ def export_sales_excel(request):
     
     # Get bills
     bills = Bill.objects.filter(
-        outlet=outlet,
+        brand=Brand,
         status='paid',
         created_at__date__gte=date_from,
         created_at__date__lte=date_to
@@ -1670,7 +2400,7 @@ def export_sales_excel(request):
     header_font = Font(color="FFFFFF", bold=True)
     
     # Title
-    ws['A1'] = f"Sales Report: {outlet.name}"
+    ws['A1'] = f"Sales Report: {Brand.name}"
     ws['A1'].font = Font(size=14, bold=True)
     ws['A2'] = f"Period: {date_from} to {date_to}"
     
@@ -1791,15 +2521,15 @@ def product_photo_delete(request, product_id, photo_id):
 @manager_required
 def product_detail(request, product_id):
     """View Product Detail"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     product = get_object_or_404(
         Product.objects.select_related('category').prefetch_related(
-            'modifiers__options', 'photos'
+            'product_modifiers__modifier__options', 'photos'
         ),
         id=product_id,
-        category__outlet=outlet
+        category__brand=Brand
     )
     
     context = {
@@ -1812,13 +2542,13 @@ def product_detail(request, product_id):
 @manager_required
 def product_edit(request, product_id):
     """Edit Product"""
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
+    store_config = Store.get_current()
+    Brand = store_config.brand
     
     product = get_object_or_404(
         Product.objects.select_related('category'),
         id=product_id,
-        category__outlet=outlet
+        category__brand=Brand
     )
     
     if request.method == 'POST':
@@ -1837,7 +2567,7 @@ def product_edit(request, product_id):
         # Handle category
         category_id = request.POST.get('category')
         if category_id:
-            category = Category.objects.filter(id=category_id, outlet=outlet).first()
+            category = Category.objects.filter(id=category_id, brand=Brand).first()
             if category:
                 product.category = category
         
@@ -1856,7 +2586,7 @@ def product_edit(request, product_id):
         return redirect('management:products')
     
     # GET request - show form
-    categories = Category.objects.filter(outlet=outlet).order_by('name')
+    categories = Category.objects.filter(brand=Brand).order_by('name')
     
     context = {
         'product': product,
@@ -1874,15 +2604,19 @@ def import_excel_page(request):
 
 @manager_required
 def download_excel_template(request):
-    """Download Excel Template for Product Import"""
+    """Download Excel Template for Product Import - Multi-Sheet (Products + Condiment Groups)"""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
     
     # Create workbook
     wb = openpyxl.Workbook()
+    
+    # ============================================
+    # SHEET 1: PRODUCTS
+    # ============================================
     ws = wb.active
-    ws.title = "Product Import"
+    ws.title = "Products"
     
     # Header styling
     header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
@@ -1903,7 +2637,7 @@ def download_excel_template(request):
         'Nama Product',
         'PLU Product',
         'Printer Kitchen',     # Printer target (kitchen/bar/dessert/none)
-        'Condiment Groups',    # 🆕 Comma-separated group names (e.g., "Coffee Taste,Size,Ice Level")
+        'Condiment Groups',    # 📝 Comma-separated group names (e.g., "Coffee Taste,Size,Ice Level")
         'Price Product',
         'Image Product'
     ]
@@ -1957,83 +2691,169 @@ def download_excel_template(request):
     ws.column_dimensions['G'].width = 13  # Price Product
     ws.column_dimensions['H'].width = 45  # Image Product
     
-    # Add instructions sheet
+    # ============================================
+    # SHEET 2: CONDIMENT GROUPS
+    # ============================================
+    ws_condiments = wb.create_sheet("Condiment Groups")
+    
+    # Header styling (green theme for condiments)
+    condiment_header_fill = PatternFill(start_color="10b981", end_color="10b981", fill_type="solid")
+    condiment_header_font = Font(color="FFFFFF", bold=True, size=11)
+    
+    condiment_headers = ['Group Name', 'Option Name', 'Fee', 'Is Required', 'Max Selections']
+    
+    # Write condiment headers
+    for col, header in enumerate(condiment_headers, 1):
+        cell = ws_condiments.cell(row=1, column=col)
+        cell.value = header
+        cell.fill = condiment_header_fill
+        cell.font = condiment_header_font
+        cell.alignment = header_alignment
+        cell.border = thin_border
+    
+    # Example condiment data
+    condiment_examples = [
+        ['Coffee Taste', 'Bold', 0, 'No', 1],
+        ['Coffee Taste', 'Fruity', 0, 'No', 1],
+        ['Spicy Level', 'No Chili', 0, 'No', 1],
+        ['Spicy Level', 'Medium', 1000, 'No', 1],
+        ['Spicy Level', 'Hot', 2000, 'No', 1],
+        ['Size', 'Regular', 0, 'Yes', 1],
+        ['Size', 'Large', 5000, 'Yes', 1],
+        ['Sugar Level', 'No Sugar', 0, 'No', 1],
+        ['Sugar Level', 'Normal', 0, 'No', 1],
+        ['Ice Level', 'Less Ice', 0, 'No', 1],
+        ['Ice Level', 'Normal', 0, 'No', 1],
+        ['Milk Upgrade', 'Regular Milk', 0, 'No', 1],
+        ['Milk Upgrade', 'Oat Milk', 8000, 'No', 1],
+        ['Extra Topping', 'Telur', 5000, 'No', 3],
+        ['Extra Topping', 'Keju', 8000, 'No', 3],
+    ]
+    
+    # Write condiment example data
+    for row_idx, row_data in enumerate(condiment_examples, 2):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws_condiments.cell(row=row_idx, column=col_idx)
+            cell.value = value
+            cell.border = thin_border
+            if col_idx in [3, 4, 5]:
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+    # Set condiment column widths
+    ws_condiments.column_dimensions['A'].width = 20  # Group Name
+    ws_condiments.column_dimensions['B'].width = 25  # Option Name
+    ws_condiments.column_dimensions['C'].width = 12  # Fee
+    ws_condiments.column_dimensions['D'].width = 15  # Is Required
+    ws_condiments.column_dimensions['E'].width = 18  # Max Selections
+    
+    # ============================================
+    # SHEET 3: INSTRUCTIONS
+    # ============================================
     ws2 = wb.create_sheet("Instructions")
-    ws2['A1'] = "📋 PRODUCT IMPORT TEMPLATE v3.0 - TWO-FILE SYSTEM"
+    ws2['A1'] = "PRODUCT IMPORT TEMPLATE v4.0 - SINGLE-FILE MULTI-SHEET SYSTEM"
     ws2['A1'].font = Font(size=14, bold=True, color="10b981")
     
     instructions = [
         "",
-        "🎯 Column Descriptions:",
+        "SINGLE-FILE MULTI-SHEET IMPORT SYSTEM:",
+        "",
+        "This template has 2 sheets in ONE file:",
+        "  - Sheet 1: Products (your menu items)",
+        "  - Sheet 2: Condiment Groups (modifier groups & options)",
+        "",
+        "The system will automatically:",
+        "  1. Process 'Condiment Groups' sheet FIRST (creates all groups & options)",
+        "  2. Process 'Products' sheet SECOND (links products to groups)",
+        "",
+        "HOW TO USE:",
+        "  Step 1: Fill 'Condiment Groups' sheet with your modifier groups",
+        "  Step 2: Fill 'Products' sheet and reference groups by name (comma-separated)",
+        "  Step 3: Upload ONE file - system handles both sheets automatically!",
+        "",
+        "PRODUCTS SHEET - Column Descriptions:",
         "",
         "1. Category: Main product category (e.g., Beverage, Food)",
         "2. Menu Category: Sub-category for grouping (e.g., Hot Coffee, Ice Coffee)",
         "3. Nama Product: Product name",
         "4. PLU Product: Product PLU/SKU code (unique identifier)",
         "5. Printer Kitchen: Printer target (kitchen/bar/dessert/none) - default: kitchen",
-        "6. Condiment Groups: 🆕 COMMA-SEPARATED group names (e.g., Coffee Taste,Size,Ice Level)",
+        "6. Condiment Groups: COMMA-SEPARATED group names (e.g., Coffee Taste,Size,Ice Level)",
         "7. Price Product: Base product price",
-        "8. Image Product: Path to product image",
-        "11. Image Product: Path to product image (e.g., avril/images/menus/product.jpg)",
+        "8. Image Product: Path to product image (e.g., avril/images/menus/product.jpg)",
         "",
-        "✨ Printer Kitchen Feature:",
+        "CONDIMENT GROUPS SHEET - Column Descriptions:",
         "",
-        "🔄 TWO-FILE IMPORT SYSTEM:",
+        "1. Group Name: Modifier group name (Coffee Taste, Spicy Level, Size)",
+        "2. Option Name: Option within group (Bold, Medium, Large)",
+        "3. Fee: Additional charge (0 = free, positive number = add cost)",
+        "4. Is Required: Yes/No - must customer choose this group?",
+        "5. Max Selections: How many options can be selected (usually 1, use 3+ for multiple toppings)",
         "",
-        "Step 1: Import Condiment Groups FIRST",
-        "  • Go to: Master Data → Import Condiment Groups",
-        "  • Define all your modifier groups with their options",
-        "  • Examples: Coffee Taste (Bold, Fruity), Size (Regular, Large)",
+        "EXAMPLE WORKFLOW:",
         "",
-        "Step 2: Import Products (this file)",
-        "  • Products REFERENCE groups by name",
-        "  • Use comma-separated group names in 'Condiment Groups' column",
-        "  • Example: Coffee Taste,Size,Ice Level",
+        "Condiment Groups sheet:",
+        "  Coffee Taste | Bold   | 0    | No  | 1",
+        "  Coffee Taste | Fruity | 0    | No  | 1",
+        "  Size         | Regular| 0    | Yes | 1",
+        "  Size         | Large  | 5000 | Yes | 1",
         "",
-        "✨ Condiment Groups Column:",
+        "Products sheet:",
+        "  Beverage | Hot Coffee | Americano  | 001 | bar | Coffee Taste,Size | 27000 | ...",
+        "  Beverage | Hot Coffee | Cappuccino | 002 | bar | Coffee Taste,Size | 33000 | ...",
         "",
-        "• Comma-separated list of group names (no spaces after comma)",
-        "• Groups must exist (import them first!)",
-        "• Leave empty if product has no modifiers",
-        "• Examples:",
-        "  - Coffee Taste,Size → Product uses 2 groups",
-        "  - Spicy Level,Extra Topping → Food with 2 groups",
-        "  - (empty) → Product has no modifiers",
+        "CONDIMENT GROUPS COLUMN (in Products sheet):",
         "",
-        "🖨️ Printer Kitchen:",
+        "  - Comma-separated list of group names (NO spaces after comma)",
+        "  - Reference groups defined in 'Condiment Groups' sheet",
+        "  - Leave empty if product has no modifiers",
+        "  - Examples:",
+        "      Coffee Taste,Size (Product uses 2 groups)",
+        "      Spicy Level,Extra Topping (Food with 2 groups)",
+        "      (empty) (Product has no modifiers)",
         "",
-        "• kitchen: Food items (Nasi Goreng, Mie Goreng, Steak)",
-        "• bar: Beverages (Coffee, Juice, Cocktails)",
-        "• dessert: Desserts (Cake, Ice Cream, Pudding)",
-        "• none: Items that don't need kitchen printing",
+        "PRINTER KITCHEN OPTIONS:",
         "",
-        "📝 Important Notes:",
+        "  kitchen: Food items (Nasi Goreng, Mie Goreng, Steak)",
+        "  bar: Beverages (Coffee, Juice, Cocktails)",
+        "  dessert: Desserts (Cake, Ice Cream, Pudding)",
+        "  none: Items that don't need kitchen printing",
         "",
-        "• One row = One product (much cleaner!)",
-        "• Groups are REUSABLE - define once, use everywhere",
-        "• Update group once → affects ALL products using it",
-        "• Images must be placed in media/products/ directory before import",
+        "IMPORTANT NOTES:",
         "",
-        "💡 Benefits of Two-File System:",
+        "  - ONE FILE: All data in one Excel file with multiple sheets",
+        "  - AUTOMATIC: System processes both sheets in correct order",
+        "  - One row = One product (much cleaner!)",
+        "  - Groups are REUSABLE - define once, use everywhere",
+        "  - Update group once affects ALL products using it",
+        "  - Images must be placed in media/products/ directory before import",
         "",
-        "• Cleaner Excel: 1 row per product (vs 10+ rows in old format)",
-        "• No duplication: Define 'Coffee Taste' once, use for all coffees",
-        "• No typos: Reference exact group names",
-        "• Easy updates: Change group options → all products updated",
+        "BENEFITS:",
         "",
-        "⚠️ Common Mistakes:",
+        "  - Simpler workflow: Upload ONE file instead of TWO",
+        "  - No import order confusion: System handles it automatically",
+        "  - Cleaner Excel: 1 row per product (vs 10+ rows in old format)",
+        "  - No duplication: Define 'Coffee Taste' once, use for all coffees",
+        "  - Easy updates: Change group options affects all products",
+        "  - Better organization: All data in one place",
         "",
-        "• Forgot to import groups first → Products won't find them",
-        "• Typo in group name → System won't find the group",
-        "• Spaces after commas → Use: Coffee Taste,Size (not: Coffee Taste, Size)",
+        "COMMON MISTAKES:",
+        "",
+        "  - Don't fill Condiment Groups sheet: Products won't find them",
+        "  - Typo in group name: System won't find the group",
+        "  - Spaces after commas: Use 'Coffee Taste,Size' not 'Coffee Taste, Size'",
+        "  - Wrong sheet names: Must be exactly 'Products' and 'Condiment Groups'",
+        "",
+        "BACKWARD COMPATIBILITY:",
+        "",
+        "  - The old two-file system still works!",
+        "  - You can still import groups and products separately if needed",
+        "  - But single-file is MUCH easier!",
     ]
     
     for idx, instruction in enumerate(instructions, 1):
         ws2[f'A{idx}'] = instruction
-        if instruction.startswith('🎯') or instruction.startswith('✨') or instruction.startswith('📝') or instruction.startswith('🔄') or instruction.startswith('💡') or instruction.startswith('🖨️') or instruction.startswith('⚠️'):
-            ws2[f'A{idx}'].font = Font(bold=True, size=12, color="10b981")
-        elif instruction.startswith('•') or instruction.startswith('Step'):
-            ws2[f'A{idx}'].font = Font(size=10)
+        if instruction and (instruction.isupper() or instruction.endswith(':')):
+            ws2[f'A{idx}'].font = Font(bold=True, size=11, color="10b981")
         else:
             ws2[f'A{idx}'].font = Font(size=10)
     
@@ -2043,7 +2863,7 @@ def download_excel_template(request):
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    response['Content-Disposition'] = 'attachment; filename=Product_Import_Template_v3.xlsx'
+    response['Content-Disposition'] = 'attachment; filename=Product_Import_Template_v4_MultiSheet.xlsx'
     
     wb.save(response)
     return response
@@ -2151,9 +2971,9 @@ def import_condiment_groups(request):
     """Condiment Groups Import Page"""
     from apps.core.models import Modifier
     
-    store_config = StoreConfig.get_current()
-    outlet = store_config.outlet
-    groups_count = Modifier.objects.filter(outlet=outlet).count()
+    store_config = Store.get_current()
+    Brand = store_config.brand
+    groups_count = Modifier.objects.filter(brand=Brand).count()
     
     context = {'groups_count': groups_count}
     return render(request, 'management/import_condiment_groups.html', context)
@@ -2165,7 +2985,7 @@ def import_condiment_groups_process(request):
     from django.contrib import messages
     from django.shortcuts import redirect
     import openpyxl
-    from apps.core.models import Modifier, ModifierOption
+    from apps.core.models import Modifier, ModifierOption, ProductModifier
     
     if request.method != 'POST':
         return redirect('management:import_condiment_groups')
@@ -2181,8 +3001,8 @@ def import_condiment_groups_process(request):
         wb = openpyxl.load_workbook(excel_file)
         sheet = wb.active
         
-        store_config = StoreConfig.get_current()
-        outlet = store_config.outlet
+        store_config = Store.get_current()
+        Brand = store_config.brand
         
         stats = {'groups': 0, 'options': 0, 'updated': 0, 'errors': []}
         
@@ -2232,7 +3052,7 @@ def import_condiment_groups_process(request):
                     
                     modifier, created = Modifier.objects.get_or_create(
                         name=group_name,
-                        outlet=outlet,
+                        brand=Brand,
                         defaults={'is_required': is_req, 'max_selections': max_sel}
                     )
                     
@@ -2297,31 +3117,30 @@ def import_excel_reset(request):
     from apps.core.models import Modifier, ModifierOption
     
     try:
-        store_config = StoreConfig.get_current()
-        outlet = store_config.outlet
+        store_config = Store.get_current()
+        Brand = store_config.brand
         
         # Count before deletion
-        modifier_count = Modifier.objects.filter(outlet=outlet).count()
-        product_count = Product.objects.filter(category__outlet=outlet).count()
-        category_count = Category.objects.filter(outlet=outlet).count()
+        modifier_count = Modifier.objects.filter(brand=Brand).count()
+        product_count = Product.objects.filter(category__brand=Brand).count()
+        category_count = Category.objects.filter(brand=Brand).count()
         
         # Delete in correct order to avoid FK constraints
-        # 1. Clear M2M relationships first
-        for modifier in Modifier.objects.filter(outlet=outlet):
-            modifier.products.clear()
+        # 1. Clear product-modifier relationships first
+        ProductModifier.objects.filter(modifier__brand=Brand).delete()
         
         # 2. Delete modifier options
-        modifier_ids = list(Modifier.objects.filter(outlet=outlet).values_list('id', flat=True))
+        modifier_ids = list(Modifier.objects.filter(brand=Brand).values_list('id', flat=True))
         ModifierOption.objects.filter(modifier_id__in=modifier_ids).delete()
         
         # 3. Delete modifiers
-        Modifier.objects.filter(outlet=outlet).delete()
+        Modifier.objects.filter(brand=Brand).delete()
         
         # 4. Delete products
-        Product.objects.filter(category__outlet=outlet).delete()
+        Product.objects.filter(category__brand=Brand).delete()
         
         # 5. Delete categories
-        Category.objects.filter(outlet=outlet).delete()
+        Category.objects.filter(brand=Brand).delete()
         
         return JsonResponse({
             'success': True,
@@ -2337,7 +3156,7 @@ def import_excel_reset(request):
 
 @manager_required
 def import_excel_process(request):
-    """Process Excel Import"""
+    """Process Excel Import - Multi-Sheet Support (Condiment Groups + Products)"""
     from django.contrib import messages
     from django.shortcuts import redirect
     import openpyxl
@@ -2359,19 +3178,132 @@ def import_excel_process(request):
     try:
         # Load workbook
         wb = openpyxl.load_workbook(excel_file)
-        sheet = wb.active
         
-        store_config = StoreConfig.get_current()
-        outlet = store_config.outlet
+        # Detect file type: Multi-sheet or Single-sheet
+        sheet_names = wb.sheetnames
+        has_condiment_sheet = 'Condiment Groups' in sheet_names
+        has_products_sheet = 'Products' in sheet_names
+        
+        # Determine which sheet to use for products
+        if has_products_sheet:
+            sheet = wb['Products']
+        else:
+            sheet = wb.active  # Fallback to active sheet (backward compatibility)
+        
+        store_config = Store.get_current()
+        Brand = store_config.brand
         
         stats = {
             'categories': 0,
             'products': 0,
             'modifiers': 0,
+            'modifier_groups': 0,
+            'modifier_options': 0,
             'skipped': 0,
             'updated': 0,
             'errors': []
         }
+        
+        # ============================================
+        # STEP 1: PROCESS CONDIMENT GROUPS SHEET (if exists)
+        # ============================================
+        from apps.core.models import Modifier, ModifierOption, ProductModifier
+        
+        if has_condiment_sheet:
+            messages.info(request, '🔄 Processing Condiment Groups sheet...')
+            condiment_sheet = wb['Condiment Groups']
+            
+            # Get condiment headers
+            condiment_headers = [cell.value for cell in condiment_sheet[1]]
+            condiment_col_indices = {}
+            for idx, header in enumerate(condiment_headers):
+                if header:
+                    condiment_col_indices[header.strip()] = idx
+            
+            # Required columns for condiments
+            required_condiment_cols = ['Group Name', 'Option Name', 'Fee']
+            missing_condiment_cols = [col for col in required_condiment_cols if col not in condiment_col_indices]
+            
+            if not missing_condiment_cols:
+                processed_groups = {}
+                
+                for row_idx, row in enumerate(condiment_sheet.iter_rows(min_row=2, values_only=True), start=2):
+                    if not row or not any(row):
+                        continue
+                    
+                    try:
+                        group_name = row[condiment_col_indices['Group Name']]
+                        option_name = row[condiment_col_indices['Option Name']]
+                        fee = row[condiment_col_indices['Fee']]
+                        is_required = row[condiment_col_indices.get('Is Required', -1)] if 'Is Required' in condiment_col_indices else None
+                        max_selections = row[condiment_col_indices.get('Max Selections', -1)] if 'Max Selections' in condiment_col_indices else None
+                        
+                        if not group_name or not option_name:
+                            continue
+                        
+                        group_name = str(group_name).strip()
+                        option_name = str(option_name).strip()
+                        
+                        # Create or get modifier group
+                        if group_name not in processed_groups:
+                            is_req = False
+                            if is_required:
+                                is_req_str = str(is_required).strip().lower()
+                                is_req = is_req_str in ['yes', 'y', 'true', '1']
+                            
+                            max_sel = 1
+                            if max_selections:
+                                try:
+                                    max_sel = int(max_selections)
+                                except:
+                                    max_sel = 1
+                            
+                            modifier, mod_created = Modifier.objects.get_or_create(
+                                name=group_name,
+                                brand=Brand,
+                                defaults={'is_required': is_req, 'max_selections': max_sel}
+                            )
+                            
+                            if mod_created:
+                                stats['modifier_groups'] += 1
+                            elif update_existing:
+                                modifier.is_required = is_req
+                                modifier.max_selections = max_sel
+                                modifier.save()
+                                stats['updated'] += 1
+                            
+                            processed_groups[group_name] = modifier
+                        else:
+                            modifier = processed_groups[group_name]
+                        
+                        # Create or update modifier option
+                        option, opt_created = ModifierOption.objects.get_or_create(
+                            modifier=modifier,
+                            name=option_name,
+                            defaults={'price_adjustment': Decimal(str(fee)) if fee else Decimal('0')}
+                        )
+                        
+                        if opt_created:
+                            stats['modifier_options'] += 1
+                        elif update_existing:
+                            new_fee = Decimal(str(fee)) if fee else Decimal('0')
+                            if option.price_adjustment != new_fee:
+                                option.price_adjustment = new_fee
+                                option.save()
+                                stats['updated'] += 1
+                    
+                    except Exception as e:
+                        stats['errors'].append(f'Condiment Groups Row {row_idx}: {str(e)}')
+                        continue
+                
+                messages.success(request, f'✅ Condiment Groups: {stats["modifier_groups"]} groups, {stats["modifier_options"]} options processed')
+            else:
+                messages.warning(request, f'⚠️ Condiment Groups sheet missing columns: {missing_condiment_cols}. Skipping condiments.')
+        
+        # ============================================
+        # STEP 2: PROCESS PRODUCTS SHEET
+        # ============================================
+        messages.info(request, '🔄 Processing Products sheet...')
         
         # Get header row
         headers = [cell.value for cell in sheet[1]]
@@ -2392,9 +3324,7 @@ def import_excel_process(request):
         # Track modifiers by (product_id, group_name) to avoid duplicates
         processed_modifiers = {}
         
-        # Process rows
-        from apps.core.models import Modifier, ModifierOption
-        
+        # Process product rows
         for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
             if not row or not any(row):
                 continue
@@ -2435,7 +3365,7 @@ def import_excel_process(request):
                 # Create/Get Category
                 category, created = Category.objects.get_or_create(
                     name=category_name,
-                    outlet=outlet,
+                    brand=Brand,
                     defaults={'is_active': True, 'sort_order': 0}
                 )
                 if created:
@@ -2520,10 +3450,14 @@ def import_excel_process(request):
                     for group_name in group_names:
                         try:
                             # Find existing modifier by name
-                            modifier = Modifier.objects.get(name=group_name, outlet=outlet)
+                            modifier = Modifier.objects.get(name=group_name, brand=Brand)
                             # Link product to modifier
-                            if not modifier.products.filter(id=product.id).exists():
-                                modifier.products.add(product)
+                            product_modifier, created = ProductModifier.objects.get_or_create(
+                                product=product,
+                                modifier=modifier,
+                                defaults={'sort_order': 0}
+                            )
+                            if created:
                                 stats['modifiers'] += 1
                         except Modifier.DoesNotExist:
                             # Group not found - add to errors
@@ -2539,7 +3473,7 @@ def import_excel_process(request):
                     if modifier_key not in processed_modifiers:
                         modifier, mod_created = Modifier.objects.get_or_create(
                             name=modifier_group_name,
-                            outlet=outlet,
+                            brand=Brand,
                             defaults={
                                 'is_required': False,
                                 'max_selections': 1
@@ -2550,8 +3484,11 @@ def import_excel_process(request):
                         modifier = processed_modifiers[modifier_key]
                     
                     # Add product to modifier (many-to-many relationship)
-                    if not modifier.products.filter(id=product.id).exists():
-                        modifier.products.add(product)
+                    ProductModifier.objects.get_or_create(
+                        product=product,
+                        modifier=modifier,
+                        defaults={'sort_order': 0}
+                    )
                     
                     # Create modifier option (Note: ModifierOption doesn't have SKU field)
                     option, opt_created = ModifierOption.objects.get_or_create(
@@ -2578,19 +3515,24 @@ def import_excel_process(request):
         
         # Success message
         message_parts = []
+        if stats['modifier_groups'] > 0 or stats['modifier_options'] > 0:
+            message_parts.append(f"📝 {stats['modifier_groups']} groups + {stats['modifier_options']} options")
         if stats['categories'] > 0:
-            message_parts.append(f"{stats['categories']} categories created")
+            message_parts.append(f"{stats['categories']} categories")
         if stats['products'] > 0:
             message_parts.append(f"{stats['products']} products imported")
         if stats['updated'] > 0:
-            message_parts.append(f"{stats['updated']} products updated")
+            message_parts.append(f"{stats['updated']} items updated")
         if stats['modifiers'] > 0:
-            message_parts.append(f"{stats['modifiers']} modifiers created")
+            message_parts.append(f"{stats['modifiers']} product-modifier links")
         if stats['skipped'] > 0:
             message_parts.append(f"{stats['skipped']} products skipped")
         
         if message_parts:
-            messages.success(request, 'Import completed! ' + ', '.join(message_parts))
+            messages.success(request, '✅ Import completed! ' + ' | '.join(message_parts))
+        
+        if has_condiment_sheet:
+            messages.info(request, '💡 Single-file multi-sheet import successful! Both sheets processed automatically.')
         
         if stats['errors']:
             for error in stats['errors'][:10]:  # Show first 10 errors
@@ -2599,11 +3541,13 @@ def import_excel_process(request):
                 messages.warning(request, f'... and {len(stats["errors"]) - 10} more errors')
         
         # Add instruction for image files
-        messages.info(request, f'📁 Remember to copy your image files to: media/products/ directory')
+        messages.info(request, f'?? Remember to copy your image files to: media/products/ directory')
         
         return redirect('management:master_data')
     
     except Exception as e:
         messages.error(request, f'Error processing Excel file: {str(e)}')
         return redirect('management:import_excel')
+
+
 

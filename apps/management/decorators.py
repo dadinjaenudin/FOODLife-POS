@@ -1,4 +1,4 @@
-"""
+﻿"""
 Access control decorators for management interface
 """
 from functools import wraps
@@ -27,9 +27,9 @@ def manager_required(view_func):
         if hasattr(user, 'role') and user.role in allowed_roles:
             return view_func(request, *args, **kwargs)
         
-        # Redirect cashiers to POS
+        # Redirect non-managers back to login with message
         messages.error(request, 'Anda tidak memiliki akses ke Management Interface.')
-        return redirect('pos:main')
+        return redirect('core:login')
     
     return _wrapped_view
 

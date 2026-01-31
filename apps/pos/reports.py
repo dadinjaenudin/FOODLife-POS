@@ -1,4 +1,4 @@
-"""
+﻿"""
 Report utilities for cashier performance and transaction analysis
 """
 from django.db.models import Sum, Count, Q, F, Avg
@@ -99,12 +99,12 @@ def get_cashier_summary(user, start_date=None, end_date=None):
     }
 
 
-def get_all_cashiers_summary(outlet=None, start_date=None, end_date=None):
+def get_all_cashiers_summary(Brand=None, start_date=None, end_date=None):
     """
-    Get summary for all cashiers in outlet
+    Get summary for all cashiers in Brand
     
     Args:
-        outlet: Outlet object (if None, all outlets)
+        Brand: Brand object (if None, all brands)
         start_date: Start datetime
         end_date: End datetime
     
@@ -125,8 +125,8 @@ def get_all_cashiers_summary(outlet=None, start_date=None, end_date=None):
         created_at__gte=start_date,
         created_at__lte=end_date
     )
-    if outlet:
-        bills_query = bills_query.filter(outlet=outlet)
+    if Brand:
+        bills_query = bills_query.filter(Brand=Brand)
     
     cashier_ids.update(bills_query.values_list('created_by_id', flat=True))
     cashier_ids.update(bills_query.values_list('closed_by_id', flat=True).exclude(closed_by_id=None))

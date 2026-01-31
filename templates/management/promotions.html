@@ -10,9 +10,14 @@
             <h1 class="text-3xl font-bold text-gray-800">Promotions Management</h1>
             <p class="text-gray-600 mt-2">Discounts, deals, and special offers</p>
         </div>
-        <a href="{% url 'management:master_data' %}" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors">
-            ← Back to Master Data
-        </a>
+        <div class="flex gap-2">
+            <a href="{% url 'promotions:simulator' %}" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                🧪 Test Simulator
+            </a>
+            <a href="{% url 'management:master_data' %}" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors">
+                ← Back to Master Data
+            </a>
+        </div>
     </div>
 
     <!-- Filters -->
@@ -97,27 +102,34 @@
                 {% for promo in promotions %}
                 <tr class="hover:bg-gray-50">
                     <td class="px-6 py-4">
-                        <div class="text-sm font-medium text-gray-900">{{ promo.name }}</div>
+                        <div class="text-sm font-medium text-gray-900">
+                            <a href="{% url 'management:promotion_detail' promo.id %}" class="text-blue-600 hover:text-blue-800 hover:underline">
+                                {{ promo.name }}
+                            </a>
+                        </div>
                         {% if promo.code %}
                         <div class="text-xs text-gray-500 font-mono">{{ promo.code }}</div>
                         {% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-800">
-                            {{ promo.get_promo_type_display }}
+                            {{ promo.promo_type|title }}
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="text-sm text-gray-900">
-                            {% if promo.discount_percent > 0 %}
-                                {{ promo.discount_percent }}%
-                            {% elif promo.discount_amount > 0 %}
-                                Rp {{ promo.discount_amount|floatformat:0 }}
-                            {% elif promo.combo_price > 0 %}
-                                Rp {{ promo.combo_price|floatformat:0 }}
-                            {% else %}
-                                -
-                            {% endif %}
+                            {% with rules=promo.get_rules %}
+                                {% if rules.discount_percent %}
+                                    {{ rules.discount_percent }}%
+                                    {% if rules.max_discount_amount %}
+                                        (max Rp {{ rules.max_discount_amount|floatformat:0 }})
+                                    {% endif %}
+                                {% elif rules.discount_amount %}
+                                    Rp {{ rules.discount_amount|floatformat:0 }}
+                                {% else %}
+                                    See details
+                                {% endif %}
+                            {% endwith %}
                         </div>
                     </td>
                     <td class="px-6 py-4">

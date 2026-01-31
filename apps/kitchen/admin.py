@@ -1,4 +1,4 @@
-from django.contrib import admin
+﻿from django.contrib import admin
 from .models import KitchenOrder, PrinterConfig, KitchenStation, KitchenPerformance
 
 
@@ -15,15 +15,15 @@ class KitchenOrderAdmin(admin.ModelAdmin):
 
 @admin.register(KitchenStation)
 class KitchenStationAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'outlet', 'target_prep_time', 'warning_threshold', 'is_active']
-    list_filter = ['outlet', 'is_active']
+    list_display = ['name', 'code', 'brand', 'target_prep_time', 'warning_threshold', 'is_active']
+    list_filter = ['brand', 'is_active']
     search_fields = ['name', 'code']
 
 
 @admin.register(KitchenPerformance)
 class KitchenPerformanceAdmin(admin.ModelAdmin):
     list_display = ['station', 'date', 'completed_orders', 'total_orders', 'get_avg_prep_minutes', 'overdue_orders']
-    list_filter = ['station', 'date', 'outlet']
+    list_filter = ['station', 'date', 'brand']
     readonly_fields = ['updated_at']
     
     def get_avg_prep_minutes(self, obj):
@@ -33,5 +33,5 @@ class KitchenPerformanceAdmin(admin.ModelAdmin):
 
 @admin.register(PrinterConfig)
 class PrinterConfigAdmin(admin.ModelAdmin):
-    list_display = ['name', 'outlet', 'station', 'connection_type', 'is_active']
-    list_filter = ['outlet', 'station', 'is_active']
+    list_display = ['name', 'brand', 'station', 'connection_type', 'is_active']
+    list_filter = ['brand', 'station', 'is_active']

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Management command to clear all transaction data for testing
 Usage: python manage.py clear_transactions
 """

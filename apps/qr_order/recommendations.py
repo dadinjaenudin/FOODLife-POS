@@ -1,4 +1,4 @@
-"""
+﻿"""
 Recommendation Engine for QR Order
 Provides product recommendations based on various algorithms
 """
@@ -14,8 +14,8 @@ from apps.core.models import Product
 class RecommendationEngine:
     """Product recommendation system"""
     
-    def __init__(self, outlet_id):
-        self.outlet_id = outlet_id
+    def __init__(self, brand_id):
+        self.brand_id = brand_id
         
     def get_popular_items(self, limit=6, days=30):
         """
@@ -31,7 +31,7 @@ class RecommendationEngine:
         since_date = timezone.now() - timedelta(days=days)
         
         popular_products = BillItem.objects.filter(
-            bill__outlet_id=self.outlet_id,
+            bill__brand_id=self.brand_id,
             bill__created_at__gte=since_date,
             is_void=False
         ).values('product').annotate(
@@ -67,7 +67,7 @@ class RecommendationEngine:
         since_date = timezone.now() - timedelta(days=60)
         
         bills_with_product = Bill.objects.filter(
-            outlet_id=self.outlet_id,
+            brand_id=self.brand_id,
             items__product_id=product_id,
             items__is_void=False,
             created_at__gte=since_date,
@@ -119,7 +119,7 @@ class RecommendationEngine:
         
         # Get popular products in same category
         query = BillItem.objects.filter(
-            bill__outlet_id=self.outlet_id,
+            bill__brand_id=self.brand_id,
             product__category_id=category_id,
             product__is_active=True,
             bill__created_at__gte=since_date,
@@ -163,7 +163,7 @@ class RecommendationEngine:
         
         # Find bills containing any cart products
         bills_with_cart_items = Bill.objects.filter(
-            outlet_id=self.outlet_id,
+            brand_id=self.brand_id,
             items__product_id__in=cart_product_ids,
             items__is_void=False,
             created_at__gte=since_date,
@@ -207,7 +207,7 @@ class RecommendationEngine:
         
         # Recent period orders
         recent_orders = BillItem.objects.filter(
-            bill__outlet_id=self.outlet_id,
+            bill__brand_id=self.brand_id,
             bill__created_at__gte=recent_date,
             is_void=False
         ).values('product').annotate(
@@ -216,7 +216,7 @@ class RecommendationEngine:
         
         # Older period orders
         older_orders = BillItem.objects.filter(
-            bill__outlet_id=self.outlet_id,
+            bill__brand_id=self.brand_id,
             bill__created_at__gte=older_date,
             bill__created_at__lt=recent_date,
             is_void=False

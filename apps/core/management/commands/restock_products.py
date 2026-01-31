@@ -1,5 +1,5 @@
-from django.core.management.base import BaseCommand
-from apps.core.models import Product, Outlet
+﻿from django.core.management.base import BaseCommand
+from apps.core.models import Product, Brand
 
 
 class Command(BaseCommand):

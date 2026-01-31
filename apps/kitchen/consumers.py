@@ -1,11 +1,11 @@
-import json
+﻿import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 
 class KDSConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.outlet_id = self.scope['url_route']['kwargs']['outlet_id']
-        self.room_group_name = f'kds_{self.outlet_id}'
+        self.brand_id = self.scope['url_route']['kwargs']['brand_id']
+        self.room_group_name = f'kds_{self.brand_id}'
         
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -36,8 +36,8 @@ class KDSConsumer(AsyncWebsocketConsumer):
 
 class POSConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.outlet_id = self.scope['url_route']['kwargs']['outlet_id']
-        self.room_group_name = f'pos_{self.outlet_id}'
+        self.brand_id = self.scope['url_route']['kwargs']['brand_id']
+        self.room_group_name = f'pos_{self.brand_id}'
         
         await self.channel_layer.group_add(
             self.room_group_name,

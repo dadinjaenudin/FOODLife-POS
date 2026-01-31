@@ -1,0 +1,402 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Promotion Detail - {{ promotion.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">{{ promotion.name }}</h1>
+            <p class="text-gray-600 mt-2">Code: <span class="font-mono">{{ promotion.code }}</span></p>
+        </div>
+        <a href="{% url 'management:promotions' %}" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors">
+            ← Back to Promotions
+        </a>
+    </div>
+
+    <!-- Status Badges -->
+    <div class="flex gap-2 mb-6">
+        {% if promotion.is_active %}
+            <span class="px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                Active
+            </span>
+        {% else %}
+            <span class="px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">
+                Inactive
+            </span>
+        {% endif %}
+        
+        {% if promotion.is_auto_apply %}
+            <span class="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                Auto Apply
+            </span>
+        {% endif %}
+        
+        {% if promotion.require_voucher %}
+            <span class="px-3 py-1 text-sm font-semibold rounded-full bg-purple-100 text-purple-800">
+                Requires Voucher
+            </span>
+        {% endif %}
+        
+        {% if promotion.member_only %}
+            <span class="px-3 py-1 text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                Members Only
+            </span>
+        {% endif %}
+        
+        {% if promotion.is_stackable %}
+            <span class="px-3 py-1 text-sm font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                Stackable
+            </span>
+        {% endif %}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Info -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Basic Information -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Basic Information</h2>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Promotion Type</label>
+                        <p class="text-gray-900">{{ promotion.promo_type|title }}</p>
+                    </div>
+                    
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Apply To</label>
+                        <p class="text-gray-900">{{ promotion.apply_to|title }}</p>
+                    </div>
+                </div>
+                
+                <!-- Execution Settings -->
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h3 class="text-sm font-bold text-blue-900 mb-3">⚙️ Execution Settings</h3>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div>
+                            <label class="text-sm font-medium text-blue-700">Execution Stage</label>
+                            <p class="text-blue-900 font-semibold">
+                                {% if promotion.execution_stage == 'item_level' %}
+                                    🎯 Item Level
+                                {% elif promotion.execution_stage == 'cart_level' %}
+                                    🛒 Cart Level
+                                {% elif promotion.execution_stage == 'payment_level' %}
+                                    💳 Payment Level
+                                {% else %}
+                                    {{ promotion.execution_stage|title }}
+                                {% endif %}
+                            </p>
+                            <p class="text-xs text-blue-600 mt-1">
+                                {% if promotion.execution_stage == 'item_level' %}
+                                    Auto-calculate when adding items
+                                {% elif promotion.execution_stage == 'cart_level' %}
+                                    Calculate on button click
+                                {% elif promotion.execution_stage == 'payment_level' %}
+                                    Calculate at payment
+                                {% endif %}
+                            </p>
+                        </div>
+                        
+                        <div>
+                            <label class="text-sm font-medium text-blue-700">Auto-Apply</label>
+                            <p class="text-blue-900 font-semibold">
+                                {% if promotion.is_auto_apply %}
+                                    ✅ Yes
+                                {% else %}
+                                    ❌ No (Manual)
+                                {% endif %}
+                            </p>
+                            <p class="text-xs text-blue-600 mt-1">
+                                {% if promotion.is_auto_apply %}
+                                    Applies automatically
+                                {% else %}
+                                    Requires manual action
+                                {% endif %}
+                            </p>
+                        </div>
+                        
+                        <div>
+                            <label class="text-sm font-medium text-blue-700">Execution Priority</label>
+                            <p class="text-blue-900 font-semibold">{{ promotion.execution_priority }}</p>
+                            <p class="text-xs text-blue-600 mt-1">Lower = Higher priority</p>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if promotion.description %}
+                <div class="mt-4">
+                    <label class="text-sm font-medium text-gray-600">Description</label>
+                    <p class="text-gray-900">{{ promotion.description }}</p>
+                </div>
+                {% endif %}
+                
+                {% if promotion.terms_conditions %}
+                <div class="mt-4">
+                    <label class="text-sm font-medium text-gray-600">Terms & Conditions</label>
+                    <p class="text-gray-700 text-sm">{{ promotion.terms_conditions }}</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Rules -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Promotion Rules</h2>
+                
+                <div class="bg-gray-50 rounded p-4">
+                    <pre class="text-sm text-gray-800 whitespace-pre-wrap">{{ rules|safe }}</pre>
+                </div>
+                
+                {% if rules.discount_percent %}
+                <div class="mt-4 p-4 bg-green-50 rounded">
+                    <p class="text-lg font-bold text-green-800">{{ rules.discount_percent }}% Discount</p>
+                    {% if rules.max_discount_amount %}
+                    <p class="text-sm text-green-700">Maximum discount: Rp {{ rules.max_discount_amount|floatformat:0 }}</p>
+                    {% endif %}
+                </div>
+                {% elif rules.discount_amount %}
+                <div class="mt-4 p-4 bg-green-50 rounded">
+                    <p class="text-lg font-bold text-green-800">Rp {{ rules.discount_amount|floatformat:0 }} Discount</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Scope -->
+            {% if scope %}
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Scope & Targeting</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Apply To</label>
+                        <p class="text-gray-900">{{ scope.apply_to|title }}</p>
+                    </div>
+                    
+                    {% if scope.category_names %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Categories</label>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {% for cat_name in scope.category_names %}
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">{{ cat_name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if scope.exclude_category_names %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Excluded Categories</label>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {% for cat_name in scope.exclude_category_names %}
+                            <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">{{ cat_name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if scope.product_names %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Products</label>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {% for prod_name in scope.product_names %}
+                            <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">{{ prod_name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if scope.exclude_product_names %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Excluded Products</label>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {% for prod_name in scope.exclude_product_names %}
+                            <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">{{ prod_name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Raw JSON for reference -->
+                    <details class="mt-4">
+                        <summary class="cursor-pointer text-sm text-gray-600 hover:text-gray-800">Show Raw JSON</summary>
+                        <div class="mt-2 bg-gray-50 rounded p-4">
+                            <pre class="text-xs text-gray-800 whitespace-pre-wrap">{{ scope|safe }}</pre>
+                        </div>
+                    </details>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Targeting -->
+            {% if targeting %}
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Customer Targeting</h2>
+                
+                <div class="bg-gray-50 rounded p-4">
+                    <pre class="text-sm text-gray-800 whitespace-pre-wrap">{{ targeting|safe }}</pre>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Usage History -->
+            {% if recent_usage %}
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Recent Usage</h2>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Transaction</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Original</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for usage in recent_usage %}
+                            <tr>
+                                <td class="px-4 py-2 text-sm text-gray-900">{{ usage.used_at|date:"d M Y H:i" }}</td>
+                                <td class="px-4 py-2 text-sm text-gray-900 font-mono">{{ usage.order_number }}</td>
+                                <td class="px-4 py-2 text-sm text-green-600 font-semibold">Rp {{ usage.discount_amount|floatformat:0 }}</td>
+                                <td class="px-4 py-2 text-sm text-gray-600">Rp {{ usage.original_amount|floatformat:0 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-6">
+            <!-- Validity Period -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Validity Period</h3>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Start Date</label>
+                        <p class="text-gray-900">{{ promotion.start_date|date:"d M Y" }}</p>
+                    </div>
+                    
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">End Date</label>
+                        <p class="text-gray-900">{{ promotion.end_date|date:"d M Y" }}</p>
+                    </div>
+                    
+                    {% if promotion.time_start %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Time Range</label>
+                        <p class="text-gray-900">{{ promotion.time_start }} - {{ promotion.time_end }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if valid_days %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Valid Days</label>
+                        <p class="text-gray-900">{{ valid_days|join:", " }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if promotion.exclude_holidays %}
+                    <div class="p-2 bg-yellow-50 rounded">
+                        <p class="text-sm text-yellow-800">⚠️ Excludes holidays</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Usage Limits -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Usage Limits</h3>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Current Uses</label>
+                        <p class="text-2xl font-bold text-gray-900">{{ promotion.current_uses }}</p>
+                    </div>
+                    
+                    {% if promotion.max_uses %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Maximum Uses</label>
+                        <p class="text-gray-900">{{ promotion.max_uses }}</p>
+                        <div class="mt-2 w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-blue-600 h-2 rounded-full" style="width: {{ promotion.current_uses|floatformat:0 }}%"></div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="p-2 bg-green-50 rounded">
+                        <p class="text-sm text-green-800">✓ Unlimited uses</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if promotion.max_uses_per_customer %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Per Customer</label>
+                        <p class="text-gray-900">{{ promotion.max_uses_per_customer }} times</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if promotion.max_uses_per_day %}
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Per Day</label>
+                        <p class="text-gray-900">{{ promotion.max_uses_per_day }} times</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Usage Statistics -->
+            {% if usage_stats.total_usage %}
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Statistics</h3>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Total Usage</label>
+                        <p class="text-2xl font-bold text-gray-900">{{ usage_stats.total_usage }}</p>
+                    </div>
+                    
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Total Discount Given</label>
+                        <p class="text-xl font-bold text-green-600">Rp {{ usage_stats.total_discount|floatformat:0 }}</p>
+                    </div>
+                    
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Original Amount</label>
+                        <p class="text-gray-900">Rp {{ usage_stats.total_original|floatformat:0 }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Metadata -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Metadata</h3>
+                
+                <div class="space-y-2 text-sm">
+                    <div>
+                        <label class="font-medium text-gray-600">Compiled At</label>
+                        <p class="text-gray-900">{{ promotion.compiled_at|date:"d M Y H:i" }}</p>
+                    </div>
+                    
+                    <div>
+                        <label class="font-medium text-gray-600">Synced At</label>
+                        <p class="text-gray-900">{{ promotion.synced_at|date:"d M Y H:i" }}</p>
+                    </div>
+                    
+                    {% if promotion.last_used_at %}
+                    <div>
+                        <label class="font-medium text-gray-600">Last Used</label>
+                        <p class="text-gray-900">{{ promotion.last_used_at|date:"d M Y H:i" }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

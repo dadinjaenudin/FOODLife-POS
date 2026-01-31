@@ -57,14 +57,14 @@
                 </div>
             </div>
 
-            <!-- Outlet/Brand - Read Only -->
+            <!-- Brand - Read Only -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1">
-                        Outlet Code
+                        Brand Code
                     </label>
                     <input type="text" 
-                           value="{{ outlet.code }}"
+                           value="{{ brand.code }}"
                            disabled
                            class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs bg-gray-50 text-gray-600 cursor-not-allowed">
                     <p class="text-[10px] text-gray-500 mt-0.5">Cannot be changed</p>
@@ -72,10 +72,10 @@
                 
                 <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1">
-                        Outlet Name
+                        Brand Name
                     </label>
                     <input type="text" 
-                           value="{{ outlet.name }}"
+                           value="{{ brand.name }}"
                            disabled
                            class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs bg-gray-50 text-gray-600 cursor-not-allowed">
                     <p class="text-[10px] text-gray-500 mt-0.5">Cannot be changed</p>
@@ -84,30 +84,28 @@
 
             <div class="border-t border-gray-200 my-2"></div>
 
-            <!-- Store Code & Name (Editable) -->
+            <!-- Store Code & Name (Read Only) -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1">
-                        Store ID / Code <span class="text-red-500">*</span>
+                        Store ID / Code
                     </label>
                     <input type="text" 
-                           name="store_code"
                            value="{{ store_config.store_code }}"
-                           required
-                           class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                    <p class="text-[10px] text-gray-500 mt-0.5">Unique store identifier</p>
+                           disabled
+                           class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs bg-gray-50 text-gray-600 cursor-not-allowed">
+                    <p class="text-[10px] text-gray-500 mt-0.5">Cannot be changed</p>
                 </div>
                 
                 <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1">
-                        Store Name <span class="text-red-500">*</span>
+                        Store Name
                     </label>
                     <input type="text" 
-                           name="store_name"
                            value="{{ store_config.store_name }}"
-                           required
-                           class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                    <p class="text-[10px] text-gray-500 mt-0.5">Display name for this location</p>
+                           disabled
+                           class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs bg-gray-50 text-gray-600 cursor-not-allowed">
+                    <p class="text-[10px] text-gray-500 mt-0.5">Cannot be changed</p>
                 </div>
             </div>
 
@@ -234,7 +232,7 @@
                     </label>
                     <input type="number" 
                            name="tax_rate"
-                           value="{{ outlet.tax_rate }}"
+                           value="{{ brand.tax_rate }}"
                            step="0.01"
                            min="0"
                            max="100"
@@ -249,7 +247,7 @@
                     </label>
                     <input type="number" 
                            name="service_charge"
-                           value="{{ outlet.service_charge }}"
+                           value="{{ brand.service_charge }}"
                            step="0.01"
                            min="0"
                            max="100"
@@ -268,7 +266,7 @@
                 </label>
                 <textarea name="receipt_footer"
                           rows="2"
-                          class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent">{{ outlet.receipt_footer }}</textarea>
+                          class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent">{{ brand.receipt_footer }}</textarea>
                 <p class="text-[10px] text-gray-500 mt-0.5">Thank you message on receipts</p>
             </div>
 
@@ -407,8 +405,8 @@ document.getElementById('settings-form').addEventListener('submit', function(e) 
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✅ ' + data.message);
-            setTimeout(() => window.location.reload(), 500);
+            // Silent success - just reload
+            setTimeout(() => window.location.reload(), 300);
         } else {
             alert('❌ Error: ' + (data.error || 'Failed to save settings'));
             submitBtn.disabled = false;
@@ -422,20 +420,16 @@ document.getElementById('settings-form').addEventListener('submit', function(e) 
     });
 });
 
-// HTMX form submission handler (legacy - now using fetch above)
+// HTMX form submission handler - silent update, no alerts
 document.body.addEventListener('htmx:afterRequest', function(event) {
     if (event.detail.target.id === 'settings-form') {
         if (event.detail.successful) {
-            // Show success message
-            const response = JSON.parse(event.detail.xhr.response);
-            alert('✅ ' + response.message);
-            
-            // Optionally reload page to reflect changes
+            // Silent success - reload page to reflect changes
             setTimeout(() => {
                 window.location.reload();
-            }, 1000);
+            }, 500);
         } else {
-            // Show error message
+            // Show error message only on failure
             try {
                 const response = JSON.parse(event.detail.xhr.response);
                 alert('❌ Error: ' + (response.error || 'Failed to save settings'));

@@ -1,70 +1,70 @@
 {% load humanize %}
-<!-- Confirm Void Bill Modal -->
+<!-- Confirm Void Bill Modal - Compact Version -->
 <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn"
      onclick="if(event.target === this) closeModal()">
-    <div class="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl transform animate-slideUp">
-        <!-- Header with Icon -->
-        <div class="bg-gradient-to-br from-red-500 to-red-600 p-6 text-center">
-            <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div class="bg-white rounded-lg w-full max-w-md overflow-hidden shadow-2xl transform animate-slideUp">
+        <!-- Compact Header -->
+        <div class="bg-gradient-to-br from-red-500 to-red-600 px-5 py-3 text-center">
+            <div class="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-2">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                 </svg>
             </div>
-            <h2 class="text-2xl font-bold text-white">Void Bill?</h2>
+            <h2 class="text-lg font-bold text-white">Void Bill?</h2>
         </div>
         
-        <!-- Content -->
-        <div class="p-6">
-            <p class="text-gray-600 text-lg mb-2 text-center">Are you sure you want to void this bill?</p>
+        <!-- Compact Content -->
+        <div class="p-4">
+            <p class="text-gray-600 text-sm mb-3 text-center">Are you sure you want to void this bill?</p>
             
-            <!-- Bill Details -->
-            <div class="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-                <div class="space-y-2">
-                    <div class="flex justify-between">
+            <!-- Compact Bill Details -->
+            <div class="bg-gray-50 rounded-lg p-3 mb-3 text-left">
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-sm">
                         <span class="text-gray-600">Bill Number:</span>
                         <span class="font-semibold text-gray-900">{{ bill.bill_number }}</span>
                     </div>
                     {% if bill.table %}
-                    <div class="flex justify-between">
+                    <div class="flex justify-between text-sm">
                         <span class="text-gray-600">Table:</span>
                         <span class="font-semibold text-blue-600">{{ bill.table.number }}</span>
                     </div>
                     {% endif %}
-                    <div class="flex justify-between">
+                    <div class="flex justify-between text-sm">
                         <span class="text-gray-600">Items:</span>
                         <span class="font-semibold text-gray-900">{{ bill.items.count }} items</span>
                     </div>
-                    <div class="flex justify-between pt-2 border-t">
+                    <div class="flex justify-between pt-1.5 border-t text-sm">
                         <span class="text-gray-900 font-semibold">Total:</span>
-                        <span class="font-bold text-gray-900 text-lg">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                        <span class="font-bold text-gray-900">Rp {{ bill.total|floatformat:0|intcomma }}</span>
                     </div>
                 </div>
             </div>
             
-            <!-- Reason Input -->
-            <div class="mb-6">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Reason for void:</label>
+            <!-- Compact Reason Input -->
+            <div class="mb-3">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">Reason for void:</label>
                 <textarea 
                     id="void-reason"
-                    rows="3"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    rows="2"
+                    class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                     placeholder="Enter reason (optional)..."></textarea>
             </div>
             
-            <p class="text-sm text-red-600 font-semibold text-center mb-4">⚠️ This action cannot be undone</p>
+            <p class="text-xs text-red-600 font-semibold text-center mb-3">⚠️ This action cannot be undone</p>
         </div>
         
-        <!-- Actions -->
-        <div class="flex gap-3 p-6 pt-0">
+        <!-- Compact Actions -->
+        <div class="flex gap-2 px-4 pb-4">
             <button 
                 onclick="closeModal()"
-                class="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all duration-200">
+                class="flex-1 py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-all duration-200">
                 Cancel
             </button>
             <button 
-                class="flex-1 py-3 px-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                class="flex-1 py-2.5 px-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white text-sm font-bold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
                 onclick="voidBill()">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
                 Yes, Void Bill
@@ -92,27 +92,8 @@ function voidBill() {
         return response.text();
     })
     .then(html => {
-        // Update bill panel using outerHTML
-        const billPanel = document.getElementById('bill-panel');
-        if (billPanel) {
-            billPanel.outerHTML = html;
-        }
-        
+        console.log('Void bill successful!');
         closeModal();
-        
-        // Reprocess HTMX
-        setTimeout(function() {
-            const newBillPanel = document.getElementById('bill-panel');
-            if (newBillPanel) {
-                htmx.process(newBillPanel);
-            }
-            
-            // Refresh product grid
-            const productGrid = document.getElementById('product-grid');
-            if (productGrid) {
-                htmx.process(productGrid);
-            }
-        }, 100);
         
         // Show toast
         const toast = document.createElement('div');
@@ -124,11 +105,12 @@ function voidBill() {
             <p class="font-bold">Bill cancelled successfully</p>
         `;
         document.body.appendChild(toast);
+        
+        // Reload page after short delay to refresh product grid
         setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.3s';
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
+            console.log('Reloading page to refresh product grid...');
+            window.location.reload(true);
+        }, 500);
     })
     .catch(error => {
         alert('Error: ' + error.message);

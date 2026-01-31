@@ -1,4 +1,4 @@
-from django.shortcuts import render, get_object_or_404
+﻿from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
@@ -21,7 +21,7 @@ def trigger_client_event(response, event_name, data=None):
 @login_required
 def table_map(request):
     """Table floor plan"""
-    areas = TableArea.objects.filter(outlet=request.user.outlet).prefetch_related('tables')
+    areas = TableArea.objects.filter(brand=request.user.brand).prefetch_related('tables')
     return render(request, 'tables/floor_plan.html', {'areas': areas})
 
 
@@ -29,7 +29,7 @@ def table_map(request):
 def table_status(request):
     """Table status grid - HTMX partial"""
     tables = Table.objects.filter(
-        area__outlet=request.user.outlet
+        area__brand=request.user.brand
     ).select_related('area')
     
     return render(request, 'tables/partials/table_grid.html', {'tables': tables})
@@ -39,7 +39,7 @@ def table_status(request):
 def table_grid(request):
     """Table grid partial - HTMX"""
     tables = Table.objects.filter(
-        area__outlet=request.user.outlet
+        area__brand=request.user.brand
     ).select_related('area')
     
     return render(request, 'tables/partials/table_grid.html', {'tables': tables})
@@ -50,10 +50,32 @@ def table_grid(request):
 def open_table(request, table_id):
     """Open table and create bill OR resume existing bill - Redirect to POS"""
     import logging
+    from django.shortcuts import redirect
+    from django.contrib import messages
     logger = logging.getLogger(__name__)
     
     table = get_object_or_404(Table, id=table_id)
     logger.info(f"Open table {table.number} (ID: {table.id}, Status: {table.status})")
+    
+    # Check if there's already an active bill in session
+    active_bill_id = request.session.get('active_bill_id')
+    if active_bill_id:
+        try:
+            active_bill = Bill.objects.get(id=active_bill_id, status__in=['open', 'hold'])
+            # If user clicks a different table while having active bill, warn them
+            if active_bill.table and active_bill.table.id != table.id:
+                messages.warning(
+                    request, 
+                    f'You already have an active bill for {active_bill.table.number} ({active_bill.bill_number}). '
+                    f'Complete or hold that bill first before opening {table.number}.'
+                )
+                logger.warning(f"User tried to open {table.number} while having active bill for {active_bill.table.number}")
+                # Keep the existing active bill
+                return redirect('pos:main')
+        except Bill.DoesNotExist:
+            # Active bill from session no longer exists, clear it
+            request.session.pop('active_bill_id', None)
+            logger.info("Active bill from session no longer exists, cleared")
     
     # Check if table already has an active bill
     existing_bill = table.get_active_bill()
@@ -77,7 +99,7 @@ def open_table(request, table_id):
         
         with transaction.atomic():
             bill = Bill.objects.create(
-                outlet=request.user.outlet,
+                brand=request.user.brand,
                 table=table,
                 bill_type='dine_in',
                 guest_count=guest_count,
@@ -94,7 +116,6 @@ def open_table(request, table_id):
     logger.info(f"Session active_bill_id: {request.session.get('active_bill_id')}")
     
     # Redirect to POS after table selection
-    from django.shortcuts import redirect
     return redirect('pos:main')
 
 
@@ -107,7 +128,7 @@ def clean_table(request, table_id):
     table.save()
     
     # Render full floor plan with all context
-    areas = TableArea.objects.filter(outlet=request.user.outlet).prefetch_related('tables')
+    areas = TableArea.objects.filter(brand=request.user.brand).prefetch_related('tables')
     response = render(request, 'tables/floor_plan.html', {'areas': areas})
     return trigger_client_event(response, 'tableCleaned')
 
@@ -121,7 +142,7 @@ def close_table(request, table_id):
     table.save()
     
     response = render(request, 'tables/partials/table_grid.html', {
-        'tables': Table.objects.filter(area__outlet=request.user.outlet)
+        'tables': Table.objects.filter(area__brand=request.user.brand)
     })
     return trigger_client_event(response, 'tableClosed')
 
@@ -153,7 +174,7 @@ def move_table(request, bill_id):
     )
     
     response = render(request, 'tables/partials/table_grid.html', {
-        'tables': Table.objects.filter(area__outlet=request.user.outlet)
+        'tables': Table.objects.filter(area__brand=request.user.brand)
     })
     return trigger_client_event(response, 'tableMoved')
 
@@ -173,7 +194,7 @@ def join_tables(request):
     with transaction.atomic():
         group = TableGroup.objects.create(
             main_table=main_table,
-            outlet=request.user.outlet,
+            brand=request.user.brand,
             created_by=request.user,
         )
         
@@ -191,7 +212,7 @@ def join_tables(request):
                     bill.save()
     
     response = render(request, 'tables/partials/table_grid.html', {
-        'tables': Table.objects.filter(area__outlet=request.user.outlet)
+        'tables': Table.objects.filter(area__brand=request.user.brand)
     })
     return trigger_client_event(response, 'tablesJoined')
 
@@ -216,7 +237,7 @@ def split_table(request, group_id):
     group.delete()
     
     response = render(request, 'tables/partials/table_grid.html', {
-        'tables': Table.objects.filter(area__outlet=request.user.outlet)
+        'tables': Table.objects.filter(area__brand=request.user.brand)
     })
     return trigger_client_event(response, 'tablesSplit')
 
@@ -266,7 +287,7 @@ def merge_tables(request):
 @login_required
 def table_qr_codes(request):
     """Generate/view QR codes for all tables"""
-    tables = Table.objects.filter(area__outlet=request.user.outlet)
+    tables = Table.objects.filter(area__brand=request.user.brand)
     
     for table in tables:
         if not table.qr_code:
@@ -348,7 +369,7 @@ def join_tables(request):
                 main_table=primary_table,
                 defaults={
                     'created_by': request.user,
-                    'outlet': request.user.outlet
+                    'brand': request.user.brand
                 }
             )
             

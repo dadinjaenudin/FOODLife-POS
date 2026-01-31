@@ -1,4 +1,4 @@
-"""
+﻿"""
 Business Date & Store Session Management Models
 
 Handles:
@@ -26,7 +26,7 @@ class StoreSession(models.Model):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    store = models.ForeignKey('StoreConfig', on_delete=models.PROTECT, related_name='sessions')
+    store = models.ForeignKey('Store', on_delete=models.PROTECT, related_name='sessions')
     business_date = models.DateField()
     session_number = models.IntegerField(default=1)
     
@@ -313,7 +313,7 @@ class BusinessDateAlert(models.Model):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    store = models.ForeignKey('StoreConfig', on_delete=models.CASCADE, related_name='alerts')
+    store = models.ForeignKey('Store', on_delete=models.CASCADE, related_name='alerts')
     
     alert_type = models.CharField(max_length=30, choices=ALERT_TYPES)
     severity = models.CharField(max_length=20, choices=SEVERITY_LEVELS, default='warning')
@@ -385,3 +385,87 @@ class BusinessDateAlert(models.Model):
                 'difference': str(shift.cash_difference),
             }
         )
+
+
+class CashDrop(models.Model):
+    """
+    Cash Drop / Setoran Kasir - Track cash removal from register to safe
+    For security and reconciliation purposes
+    """
+    REASON_CHOICES = [
+        ('regular', 'Regular Drop'),
+        ('excess', 'Excess Cash'),
+        ('safe_deposit', 'Safe Deposit'),
+        ('bank_deposit', 'Bank Deposit Prep'),
+        ('other', 'Other'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Multi-tenant fields (complete hierarchy)
+    company = models.ForeignKey('Company', on_delete=models.PROTECT, related_name='cash_drops')
+    brand = models.ForeignKey('Brand', on_delete=models.PROTECT, related_name='cash_drops')
+    store = models.ForeignKey('Store', on_delete=models.PROTECT, related_name='cash_drops')
+    
+    # Shift relationship
+    cashier_shift = models.ForeignKey(CashierShift, on_delete=models.PROTECT, related_name='cash_drops')
+    
+    # Transaction details
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES, default='regular')
+    notes = models.TextField(blank=True)
+    
+    # User tracking
+    created_by = models.ForeignKey('User', on_delete=models.PROTECT, related_name='cash_drops_created')
+    approved_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='cash_drops_approved')
+    
+    # Timestamps
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    # Receipt tracking
+    receipt_number = models.CharField(max_length=50, unique=True)
+    receipt_printed = models.BooleanField(default=False)
+    printed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'core_cash_drop'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'brand', 'store']),
+            models.Index(fields=['cashier_shift', 'created_at']),
+            models.Index(fields=['created_by', 'created_at']),
+            models.Index(fields=['receipt_number']),
+        ]
+    
+    def __str__(self):
+        return f"Cash Drop {self.receipt_number} - Rp {self.amount:,.0f}"
+    
+    def save(self, *args, **kwargs):
+        if not self.receipt_number:
+            # Generate receipt number: CD-STORECODE-YYYYMMDD-XXX
+            from django.db.models import Max
+            today = timezone.now().date()
+            store_code = self.store.store_code if self.store else 'UNKN'
+            prefix = f"CD-{store_code}-{today.strftime('%Y%m%d')}"
+            
+            last_drop = CashDrop.objects.filter(
+                receipt_number__startswith=prefix,
+                store=self.store
+            ).aggregate(Max('receipt_number'))
+            
+            if last_drop['receipt_number__max']:
+                last_num = int(last_drop['receipt_number__max'].split('-')[-1])
+                new_num = last_num + 1
+            else:
+                new_num = 1
+            
+            self.receipt_number = f"{prefix}-{new_num:03d}"
+        
+        super().save(*args, **kwargs)
+    
+    def mark_printed(self):
+        """Mark receipt as printed"""
+        self.receipt_printed = True
+        self.printed_at = timezone.now()
+        self.save(update_fields=['receipt_printed', 'printed_at'])
+

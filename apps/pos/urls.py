@@ -1,4 +1,4 @@
-from django.urls import path
+﻿from django.urls import path
 from . import views
 
 app_name = 'pos'
@@ -42,10 +42,16 @@ urlpatterns = [
     
     # Reprint
     path('bill/<int:bill_id>/reprint-receipt/', views.reprint_receipt, name='reprint_receipt'),
+    path('bill/<int:bill_id>/print-preview/', views.print_preview, name='print_preview'),
     path('bill/<int:bill_id>/reprint-kitchen/', views.reprint_kitchen, name='reprint_kitchen'),
     
     # Held bills
     path('held/', views.held_bills, name='held_bills'),
+    
+    # Member
+    path('bill/<int:bill_id>/member-pin/', views.member_pin_modal, name='member_pin_modal'),
+    path('bill/<int:bill_id>/verify-member/', views.verify_member_pin, name='verify_member_pin'),
+    path('bill/<int:bill_id>/refresh/', views.refresh_bill_panel, name='refresh_bill_panel'),
     
     # Quick order
     path('quick-order/', views.quick_order_modal, name='quick_order'),
@@ -53,6 +59,7 @@ urlpatterns = [
     
     # Queue display
     path('queue/', views.queue_display, name='queue_display'),
+    path('queue/<int:bill_id>/complete/', views.mark_queue_completed, name='mark_queue_completed'),
     
     # Session & Shift Management
     path('session/open/', views.session_open, name='session_open'),
@@ -65,6 +72,11 @@ urlpatterns = [
     path('shift/<uuid:shift_id>/print-reconciliation/', views.shift_print_reconciliation, name='shift_print_reconciliation'),
     path('shift/<uuid:shift_id>/print-interim/', views.shift_print_interim, name='shift_print_interim'),
     path('shift/status/', views.shift_status, name='shift_status'),
+    
+    # Cash Drop
+    path('cash-drop/form/', views.cash_drop_form, name='cash_drop_form'),
+    path('cash-drop/create/', views.cash_drop_create, name='cash_drop_create'),
+    path('cash-drop/<uuid:drop_id>/print/', views.cash_drop_print, name='cash_drop_print'),
     
     # Modals
     path('modifier/<int:product_id>/', views.modifier_modal, name='modifier_modal'),

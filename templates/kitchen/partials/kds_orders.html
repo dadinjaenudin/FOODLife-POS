@@ -1,8 +1,21 @@
 {% for order in orders %}
 {% include 'kitchen/partials/kds_order_card.html' %}
 {% empty %}
-<div class="col-span-4 text-center text-gray-500 py-20">
-    <div class="text-6xl mb-4">✓</div>
-    <div class="text-xl">Tidak ada order</div>
+<div class="text-center text-gray-500 py-8">
+    <div class="text-4xl mb-2">✓</div>
+    <div class="text-sm">No orders</div>
 </div>
 {% endfor %}
+
+<script>
+// Update counter badge (use IIFE to avoid const re-declaration error)
+(function() {
+    {% if status_filter == 'new' %}
+        document.getElementById('new-count').textContent = {{ orders.count }};
+    {% elif status_filter == 'preparing' %}
+        document.getElementById('preparing-count').textContent = {{ orders.count }};
+    {% elif status_filter == 'ready' %}
+        document.getElementById('ready-count').textContent = {{ orders.count }};
+    {% endif %}
+})();
+</script>
