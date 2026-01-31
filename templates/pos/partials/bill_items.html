@@ -23,9 +23,15 @@
         </div>
         
         {% if item.modifiers %}
-        <p class="text-[10px] text-gray-500 mt-0.5">
-            {% for mod in item.modifiers %}{{ mod.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
-        </p>
+        <div class="mt-0.5 text-[10px] text-gray-500">
+            <span class="font-semibold text-gray-600">Modifiers:</span>
+            {% for mod in item.modifiers %}
+                <span class="inline-block">
+                    {{ mod.name }}{% if mod.price and mod.price != 0 %}
+                    <span class="text-gray-400">({% if mod.price > 0 %}+{% endif %}Rp {{ mod.price|floatformat:0|intcomma }})</span>{% endif %}{% if not forloop.last %}, {% endif %}
+                </span>
+            {% endfor %}
+        </div>
         {% endif %}
         
         {% if item.notes %}

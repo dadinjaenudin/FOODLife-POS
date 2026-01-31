@@ -101,13 +101,13 @@
                                         <input type="radio" 
                                                name="modifier_{{ modifier.id }}"
                                                value="{{ option.id }}"
-                                               {% if option.id in selected_modifier_ids %}checked{% endif %}
+                                               {% if option.id|stringformat:'s' in selected_modifier_ids %}checked{% endif %}
                                                class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500">
                                         {% else %}
                                         <input type="checkbox" 
                                                name="modifiers"
                                                value="{{ option.id }}"
-                                               {% if option.id in selected_modifier_ids %}checked{% endif %}
+                                               {% if option.id|stringformat:'s' in selected_modifier_ids %}checked{% endif %}
                                                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
                                         {% endif %}
                                         <span class="text-sm font-medium text-gray-800">{{ option.name }}</span>

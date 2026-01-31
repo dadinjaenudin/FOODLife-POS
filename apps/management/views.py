@@ -2,6 +2,7 @@
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
+from django.contrib import messages
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
@@ -34,103 +35,225 @@ def dashboard(request):
     Management Dashboard - Real-time metrics & overview
     """
     store_config = Store.get_current()
-    
-    # Handle case where store not configured yet
+
     if not store_config:
         return render(request, 'management/dashboard.html', {
             'error': 'Store configuration not found. Please run setup wizard first.',
             'store_config': None,
         })
-    
-    # Check if store has any brands
+
     from apps.core.models import StoreBrand
     if not StoreBrand.objects.filter(store=store_config, is_active=True).exists():
         return render(request, 'management/dashboard.html', {
             'error': 'No active brands found for this store. Please run setup wizard to associate brands.',
             'store_config': store_config,
         })
-    
-    # Today's date
+
     today = timezone.now().date()
-    
-    # Get active brands for this store
-    from apps.core.models import StoreBrand
     store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
     brand_ids = store_brands.values_list('brand_id', flat=True)
-    
-    # Get today's stats (all brands in this store)
+
     today_bills = Bill.objects.filter(
         created_at__date=today,
         brand_id__in=brand_ids
     )
-    
     closed_bills = today_bills.filter(status='paid')
-    
+
     today_revenue = closed_bills.aggregate(
         total=Sum('total')
     )['total'] or Decimal('0')
-    
+
     bills_count = {
         'open': today_bills.filter(status='open').count(),
         'closed': closed_bills.count(),
         'held': today_bills.filter(status='hold').count(),
     }
-    
+
     avg_bill_value = closed_bills.aggregate(
         avg=Avg('total')
     )['avg'] or Decimal('0')
-    
-    # Payment methods breakdown
+
     payments = Payment.objects.filter(
         bill__created_at__date=today,
         bill__brand_id__in=brand_ids
     ).values('method').annotate(
         total=Sum('amount')
     )
-    
+
     payment_breakdown = {p['method']: p['total'] for p in payments}
-    
-    # Terminal stats
+
     terminals = POSTerminal.objects.filter(store=store_config, is_active=True)
-    
-    # Online if heartbeat within last 5 minutes
     five_min_ago = timezone.now() - timedelta(minutes=5)
     online_terminals = terminals.filter(last_heartbeat__gte=five_min_ago).count()
     offline_terminals = terminals.filter(
         Q(last_heartbeat__lt=five_min_ago) | Q(last_heartbeat__isnull=True)
     ).count()
-    
-    # Active cashiers (with open bills)
-    active_cashiers = today_bills.filter(status='open').values('created_by__first_name', 'created_by__last_name', 'terminal__terminal_code').distinct()
-    
+
+    active_cashiers = today_bills.filter(status='open').values(
+        'created_by__first_name',
+        'created_by__last_name',
+        'terminal__terminal_code'
+    ).distinct()
+
     context = {
         'store_config': store_config,
-        'current_session': None,  # Will be implemented later
+        'current_session': None,
         'business_date': today,
-        'hours_open': 0,  # Will be implemented with session
-        
-        # Revenue card
+        'hours_open': 0,
         'today_revenue': today_revenue,
         'bills_count': bills_count,
         'avg_bill_value': avg_bill_value,
-        
-        # Terminals card
         'online_terminals': online_terminals,
         'offline_terminals': offline_terminals,
         'total_terminals': terminals.count(),
-        
-        # Cashiers card
-        'active_shifts': [],  # Will be implemented with shift model
+        'active_shifts': [],
         'active_cashiers_count': active_cashiers.count(),
-        
-        # Payment breakdown
         'payment_breakdown': payment_breakdown,
-        
-        # Quick stats
         'last_updated': timezone.now(),
     }
-    
+
     return render(request, 'management/dashboard.html', context)
+@manager_required
+def user_create(request):
+    """Create New User"""
+    store_config = Store.get_current()
+    if not store_config:
+        return render(request, 'management/user_form.html', {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+        })
+
+    if request.method == 'GET':
+        return render(request, 'management/user_form.html', {
+            'is_edit': False,
+        })
+
+    try:
+        username = request.POST.get('username', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        email = request.POST.get('email', '').strip()
+        role = request.POST.get('role', '').strip()
+        password = request.POST.get('password', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not username:
+            messages.error(request, 'Username is required')
+        elif not first_name:
+            messages.error(request, 'First name is required')
+        elif not role:
+            messages.error(request, 'Role is required')
+        elif not password:
+            messages.error(request, 'Password is required')
+        elif len(password) < 6:
+            messages.error(request, 'Password must be at least 6 characters')
+        elif User.objects.filter(username=username).exists():
+            messages.error(request, 'Username already exists')
+        else:
+            Brand = store_config.brand
+            user = User.objects.create(
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                role=role,
+                brand=Brand,
+                company=Brand.company,
+                is_active=is_active,
+            )
+            user.set_password(password)
+            user.save()
+            messages.success(request, f'User {username} created successfully')
+            return redirect('management:users')
+
+    except Exception as e:
+        messages.error(request, str(e))
+
+    return render(request, 'management/user_form.html', {
+        'is_edit': False,
+        'user_obj': {
+            'username': username,
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email,
+            'role': role,
+            'is_active': is_active,
+        }
+    })
+
+
+@manager_required
+def user_edit(request, user_id):
+    """Edit User"""
+    store_config = Store.get_current()
+    if not store_config:
+        return render(request, 'management/user_form.html', {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+        })
+
+    user_obj = get_object_or_404(User, id=user_id)
+
+    if request.method == 'GET':
+        return render(request, 'management/user_form.html', {
+            'is_edit': True,
+            'user_obj': user_obj,
+        })
+
+    username = request.POST.get('username', '').strip()
+    first_name = request.POST.get('first_name', '').strip()
+    last_name = request.POST.get('last_name', '').strip()
+    email = request.POST.get('email', '').strip()
+    role = request.POST.get('role', '').strip()
+    password = request.POST.get('password', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+
+    if not username:
+        messages.error(request, 'Username is required')
+    elif not first_name:
+        messages.error(request, 'First name is required')
+    elif not role:
+        messages.error(request, 'Role is required')
+    elif User.objects.filter(username=username).exclude(id=user_obj.id).exists():
+        messages.error(request, 'Username already exists')
+    else:
+        user_obj.username = username
+        user_obj.first_name = first_name
+        user_obj.last_name = last_name
+        user_obj.email = email
+        user_obj.role = role
+        user_obj.is_active = is_active
+        if password:
+            if len(password) < 6:
+                messages.error(request, 'Password must be at least 6 characters')
+                return render(request, 'management/user_form.html', {
+                    'is_edit': True,
+                    'user_obj': user_obj,
+                })
+            user_obj.set_password(password)
+        user_obj.save()
+        messages.success(request, f'User {username} updated successfully')
+        return redirect('management:users')
+
+    return render(request, 'management/user_form.html', {
+        'is_edit': True,
+        'user_obj': user_obj,
+    })
+
+
+@manager_required
+def user_delete(request, user_id):
+    """Delete User"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    user_obj = get_object_or_404(User, id=user_id)
+    if user_obj.id == request.user.id:
+        messages.error(request, 'You cannot delete your own account')
+        return redirect('management:users')
+
+    username = user_obj.username
+    user_obj.delete()
+    messages.success(request, f'User {username} deleted')
+    return redirect('management:users')
 
 
 @manager_required
@@ -139,11 +262,17 @@ def terminals_list(request):
     Terminal Management Page - List all terminals with status
     """
     store_config = Store.get_current()
+    if not store_config:
+        return render(request, 'management/terminals.html', {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+            'store_config': None,
+            'terminals': [],
+        })
+
+    base_terminals = POSTerminal.objects.filter(store=store_config)
     
     # Get all terminals
-    terminals = POSTerminal.objects.filter(
-        store=store_config
-    ).order_by('-is_active', '-last_heartbeat')
+    terminals = base_terminals.order_by('-is_active', '-last_heartbeat')
     
     # Filter by status
     status_filter = request.GET.get('status', 'all')
@@ -188,6 +317,15 @@ def terminals_list(request):
         else:
             terminal.status = 'inactive' if not terminal.is_active else 'offline'
     
+    total_count = base_terminals.count()
+    active_count = base_terminals.filter(is_active=True).count()
+    inactive_count = base_terminals.filter(is_active=False).count()
+    online_count = base_terminals.filter(last_heartbeat__gte=five_min_ago, is_active=True).count()
+    offline_count = base_terminals.filter(
+        Q(last_heartbeat__lt=five_min_ago) | Q(last_heartbeat__isnull=True),
+        is_active=True
+    ).count()
+
     context = {
         'store_config': store_config,
         'terminals': terminals,
@@ -195,6 +333,11 @@ def terminals_list(request):
         'device_filter': device_filter,
         'search': search,
         'device_types': POSTerminal.DEVICE_TYPE_CHOICES,
+        'total_count': total_count,
+        'active_count': active_count,
+        'inactive_count': inactive_count,
+        'online_count': online_count,
+        'offline_count': offline_count,
     }
     
     return render(request, 'management/terminals.html', context)
@@ -311,6 +454,114 @@ def terminal_delete(request, terminal_id):
     # Return empty response (HTMX will remove the row)
     from django.http import HttpResponse
     return HttpResponse('')
+
+
+@manager_required
+def terminal_create(request):
+    """Create Terminal"""
+    store_config = Store.get_current()
+    if not store_config:
+        return render(request, 'management/terminal_form.html', {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+        })
+
+    from apps.core.models import StoreBrand, Brand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        terminal_code = request.POST.get('terminal_code', '').strip()
+        terminal_name = request.POST.get('terminal_name', '').strip()
+        device_type = request.POST.get('device_type', '').strip()
+        brand_id = request.POST.get('brand')
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not terminal_code:
+            messages.error(request, 'Terminal code is required')
+        elif not terminal_name:
+            messages.error(request, 'Terminal name is required')
+        elif device_type not in dict(POSTerminal.DEVICE_TYPE_CHOICES):
+            messages.error(request, 'Invalid device type')
+        elif POSTerminal.objects.filter(terminal_code=terminal_code).exists():
+            messages.error(request, 'Terminal code already exists')
+        else:
+            if brand_id:
+                brand = get_object_or_404(Brand, id=brand_id)
+            else:
+                brand = store_config.brand
+
+            terminal = POSTerminal.objects.create(
+                store=store_config,
+                brand=brand,
+                terminal_code=terminal_code,
+                terminal_name=terminal_name,
+                device_type=device_type,
+                is_active=is_active,
+                registered_by=request.user,
+            )
+            messages.success(request, f'Terminal {terminal.terminal_code} created')
+            return redirect('management:terminals')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'device_types': POSTerminal.DEVICE_TYPE_CHOICES,
+        'is_edit': False,
+    }
+    return render(request, 'management/terminal_form.html', context)
+
+
+@manager_required
+def terminal_edit(request, terminal_id):
+    """Edit Terminal"""
+    store_config = Store.get_current()
+    if not store_config:
+        return render(request, 'management/terminal_form.html', {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+        })
+
+    terminal = get_object_or_404(POSTerminal, id=terminal_id)
+    from apps.core.models import StoreBrand, Brand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        terminal_code = request.POST.get('terminal_code', '').strip()
+        terminal_name = request.POST.get('terminal_name', '').strip()
+        device_type = request.POST.get('device_type', '').strip()
+        brand_id = request.POST.get('brand')
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not terminal_code:
+            messages.error(request, 'Terminal code is required')
+        elif not terminal_name:
+            messages.error(request, 'Terminal name is required')
+        elif device_type not in dict(POSTerminal.DEVICE_TYPE_CHOICES):
+            messages.error(request, 'Invalid device type')
+        elif POSTerminal.objects.filter(terminal_code=terminal_code).exclude(id=terminal.id).exists():
+            messages.error(request, 'Terminal code already exists')
+        else:
+            if brand_id:
+                brand = get_object_or_404(Brand, id=brand_id)
+            else:
+                brand = store_config.brand
+
+            terminal.terminal_code = terminal_code
+            terminal.terminal_name = terminal_name
+            terminal.device_type = device_type
+            terminal.brand = brand
+            terminal.is_active = is_active
+            terminal.save()
+
+            messages.success(request, f'Terminal {terminal.terminal_code} updated')
+            return redirect('management:terminals')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'device_types': POSTerminal.DEVICE_TYPE_CHOICES,
+        'terminal': terminal,
+        'is_edit': True,
+    }
+    return render(request, 'management/terminal_form.html', context)
 
 
 @manager_required
@@ -507,7 +758,12 @@ def master_data(request):
         {
             'name': 'Promotions',
             'table': 'promotions_promotion',
-            'count': 0,  # Will be counted from promotions_compiled
+            'count': Promotion.objects.filter(
+                brand=Brand,
+                is_active=True,
+            ).filter(
+                Q(store=store_config) | Q(store__isnull=True)
+            ).count(),
             'sync': 'pull',
             'description': 'Active promotions & discounts (compiled from HO)',
             'icon': '🎁',
@@ -1240,6 +1496,22 @@ def products(request):
     return render(request, 'management/products.html', context)
 
 
+@require_POST
+@manager_required
+def products_set_stock_default(request):
+    """Set default stock quantity for all products in current brand"""
+    store_config = Store.get_current()
+    Brand = store_config.brand
+
+    Product.objects.filter(category__brand=Brand).update(
+        track_stock=True,
+        stock_quantity=1000,
+    )
+
+    messages.success(request, 'Stock default set to 1000 for all products')
+    return redirect('management:products')
+
+
 @manager_required
 def tables_list(request):
     """Tables Management"""
@@ -1295,7 +1567,7 @@ def users_list(request):
     Brand = store_config.brand
     
     users = User.objects.filter(
-        brand=Brand
+        Q(brand=Brand) | Q(company=Brand.company) | Q(is_superuser=True)
     ).order_by('role', 'username')
     
     # Filter by role
@@ -1334,74 +1606,6 @@ def users_list(request):
     return render(request, 'management/users.html', context)
 
 
-@csrf_exempt
-@require_POST
-@manager_required
-def user_create(request):
-    """Create New User"""
-    
-    try:
-        # Get form data
-        username = request.POST.get('username', '').strip()
-        first_name = request.POST.get('first_name', '').strip()
-        last_name = request.POST.get('last_name', '').strip()
-        email = request.POST.get('email', '').strip()
-        role = request.POST.get('role', '').strip()
-        password = request.POST.get('password', '').strip()
-        pin = request.POST.get('pin', '').strip()
-        
-        # Validation
-        if not username:
-            return JsonResponse({'error': 'Username is required'}, status=400)
-        
-        if not first_name:
-            return JsonResponse({'error': 'First name is required'}, status=400)
-        
-        if not role:
-            return JsonResponse({'error': 'Role is required'}, status=400)
-        
-        if not password:
-            return JsonResponse({'error': 'Password is required'}, status=400)
-        
-        if len(password) < 6:
-            return JsonResponse({'error': 'Password must be at least 6 characters'}, status=400)
-        
-        # Check if username already exists
-        if User.objects.filter(username=username).exists():
-            return JsonResponse({'error': 'Username already exists'}, status=400)
-        
-        # Validate PIN if provided
-        if pin:
-            if not pin.isdigit() or len(pin) != 6:
-                return JsonResponse({'error': 'PIN must be exactly 6 digits'}, status=400)
-        
-        # Get current Brand
-        store_config = Store.get_current()
-        Brand = store_config.brand
-        
-        # Create user
-        user = User.objects.create(
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            role=role,
-            brand=Brand,
-            company=Brand.company,
-            pin=pin if pin else ''
-        )
-        
-        # Set password
-        user.set_password(password)
-        user.save()
-        
-        return JsonResponse({
-            'success': True,
-            'message': f'User {username} created successfully'
-        })
-        
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
 
 
 @csrf_exempt

@@ -243,28 +243,22 @@
 
         <!-- Category Filter Tabs (Icon-Based with Horizontal Scroll) -->
         <nav class="bg-white border-b px-6 py-1">
+            <!-- Level 1 (Parent) Categories -->
             <div class="flex items-center gap-3">
-                <!-- Category Buttons Container -->
                 <div class="flex-1 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <!-- All Categories (Default Active) -->
-                    <button
-                        class="flex-shrink-0 flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-500 category-btn transition-all duration-200 hover:bg-emerald-100"
-                        hx-get="{% url 'pos:products' %}?category=all" hx-target="#product-grid"
-                        hx-swap="innerHTML swap:200ms settle:300ms">
+                    <a href="{% url 'pos:main' %}"
+                       class="flex-shrink-0 flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if not selected_parent %}bg-emerald-50 border border-emerald-500{% else %}bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400{% endif %} category-btn transition-all duration-200">
                         <div class="w-8 h-8 flex items-center justify-center">
                             <svg class="w-6 h-6 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                             </svg>
                         </div>
                         <span class="text-[11px] font-semibold text-gray-900">All</span>
-                    </button>
+                    </a>
 
-                    <!-- Dynamic Category Buttons -->
-                    {% for category in categories %}
-                    <button
-                        class="flex-shrink-0 flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-white border border-gray-300 category-btn transition-all duration-200 hover:bg-gray-50 hover:border-gray-400"
-                        hx-get="{% url 'pos:products' %}?category={{ category.id }}" hx-target="#product-grid"
-                        hx-swap="innerHTML swap:200ms settle:300ms">
+                    {% for category in parent_categories %}
+                    <a href="{% url 'pos:main' %}?parent={{ category.id }}"
+                       class="flex-shrink-0 flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if selected_parent and selected_parent.id == category.id %}bg-emerald-50 border border-emerald-500{% else %}bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400{% endif %} category-btn transition-all duration-200">
                         <div class="w-8 h-8 flex items-center justify-center">
                             {% if category.icon %}
                             <span class="text-2xl">{{ category.icon }}</span>
@@ -275,11 +269,10 @@
                             {% endif %}
                         </div>
                         <span class="text-[11px] font-semibold text-gray-900">{{ category.name }}</span>
-                    </button>
+                    </a>
                     {% endfor %}
                 </div>
 
-                <!-- Search Input -->
                 <div class="flex-shrink-0 relative pb-2">
                     <input type="text" id="product-search" placeholder="Search menu..."
                         class="w-64 px-3 py-1.5 pr-9 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-emerald-500 transition-colors"
@@ -292,6 +285,30 @@
                     </svg>
                 </div>
             </div>
+
+            <!-- Level 2 (Sub) Categories -->
+            {% if selected_parent %}
+            <div class="flex items-center gap-3 mt-2">
+                <div class="flex-1 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    <button
+                        class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-500 text-xs font-semibold text-gray-900"
+                        hx-get="{% url 'pos:products' %}?parent={{ selected_parent.id }}" hx-target="#product-grid"
+                        hx-swap="innerHTML swap:200ms settle:300ms">
+                        All {{ selected_parent.name }}
+                    </button>
+
+                    {% for category in subcategories %}
+                    <button
+                        class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-semibold text-gray-900 hover:bg-gray-50 hover:border-gray-400"
+                        hx-get="{% url 'pos:products' %}?category={{ category.id }}" hx-target="#product-grid"
+                        hx-swap="innerHTML swap:200ms settle:300ms">
+                        {% if category.icon %}<span class="text-base">{{ category.icon }}</span>{% endif %}
+                        {{ category.name }}
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </nav>
 
         <!-- Product Grid Container (Responsive, scrollable) -->

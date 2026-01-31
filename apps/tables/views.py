@@ -3,6 +3,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Prefetch
 from django.views.decorators.csrf import csrf_exempt
 import json
 
@@ -21,8 +22,44 @@ def trigger_client_event(response, event_name, data=None):
 @login_required
 def table_map(request):
     """Table floor plan"""
-    areas = TableArea.objects.filter(brand=request.user.brand).prefetch_related('tables')
+    areas = TableArea.objects.filter(
+        brand=request.user.brand,
+        is_active=True
+    ).prefetch_related(
+        Prefetch('tables', queryset=Table.objects.filter(is_active=True), to_attr='active_tables')
+    )
+
+    for area in areas:
+        tables = getattr(area, 'active_tables', [])
+        area.table_count = len(tables)
+    
     return render(request, 'tables/floor_plan.html', {'areas': areas})
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_table_position(request):
+    """Update table position (pos_x, pos_y) - AJAX"""
+    try:
+        data = json.loads(request.body)
+        table_id = data.get('table_id')
+        pos_x = data.get('pos_x')
+        pos_y = data.get('pos_y')
+
+        if not table_id:
+            return JsonResponse({'success': False, 'error': 'table_id is required'}, status=400)
+
+        table = get_object_or_404(Table, id=table_id, area__brand=request.user.brand)
+
+        table.pos_x = max(0, int(pos_x)) if pos_x is not None else 0
+        table.pos_y = max(0, int(pos_y)) if pos_y is not None else 0
+        table.save(update_fields=['pos_x', 'pos_y'])
+
+        return JsonResponse({'success': True})
+    except (ValueError, TypeError) as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
 
 
 @login_required

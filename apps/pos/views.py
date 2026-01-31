@@ -6,6 +6,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import transaction, models
 from django.utils import timezone
 from decimal import Decimal
+import uuid
 import json
 
 from .models import Bill, BillItem, Payment, BillLog
@@ -51,14 +52,29 @@ def render_bill_panel(request, bill):
 @ensure_csrf_cookie
 def pos_main(request):
     """Main POS interface"""
+    from apps.core.models import Store
+    store_config = Store.get_current()
+
     brand = request.user.brand
+    if not brand and store_config and store_config.brand:
+        request.user.brand = store_config.brand
+        if not request.user.company and store_config.company:
+            request.user.company = store_config.company
+        request.user.save(update_fields=['brand', 'company'] if request.user.company else ['brand'])
+        brand = request.user.brand
+
     if not brand:
         return render(request, 'pos/no_brand.html')
     
-    from apps.core.models import Store
-    store_config = Store.get_current()
-    
     categories = Category.objects.filter(brand=brand, is_active=True)
+    parent_categories = categories.filter(parent__isnull=True)
+    parent_id = request.GET.get('parent')
+    selected_parent = None
+    if parent_id:
+        selected_parent = parent_categories.filter(id=parent_id).first()
+    if not selected_parent and parent_categories.exists():
+        selected_parent = parent_categories.first()
+    subcategories = categories.filter(parent=selected_parent) if selected_parent else Category.objects.none()
     tables = Table.objects.filter(area__brand = brand)
     
     # Order products by category for better display
@@ -70,6 +86,10 @@ def pos_main(request):
         'category__name',
         'name'
     )
+    if selected_parent:
+        products = products.filter(
+            models.Q(category=selected_parent) | models.Q(category__parent=selected_parent)
+        )
     
     # Check for bill_id from query parameter (e.g., after join tables) or session
     bill_id = request.GET.get('bill_id') or request.session.get('active_bill_id')
@@ -111,6 +131,9 @@ def pos_main(request):
     
     context = {
         'categories': categories,
+        'parent_categories': parent_categories,
+        'subcategories': subcategories,
+        'selected_parent': selected_parent,
         'tables': tables,
         'products': products,
         'bill': bill,
@@ -127,6 +150,7 @@ def product_list(request):
     """Product list partial - HTMX"""
     brand = request.user.brand
     category_id = request.GET.get('category')
+    parent_id = request.GET.get('parent')
     search_query = request.GET.get('search', '').strip()
     
     # Order products by category sort_order and name for better grouping
@@ -139,7 +163,11 @@ def product_list(request):
         'name'
     )
     
-    if category_id and category_id != 'all':
+    if parent_id and parent_id != 'all':
+        products = products.filter(
+            models.Q(category_id=parent_id) | models.Q(category__parent_id=parent_id)
+        )
+    elif category_id and category_id != 'all':
         products = products.filter(category_id=category_id)
     
     # Search filter
@@ -266,31 +294,33 @@ def add_item(request, bill_id):
         logger.info(f"Received product_id: '{product_id}' (type: {type(product_id)})")
         logger.info(f"All POST data: {dict(request.POST)}")
         
-        # Handle product_id conversion
+        # Handle product_id conversion (UUID)
         if product_id:
             original_id = product_id
             try:
-                # Remove thousand separator (dot) and convert to int
-                # Example: "2.265" -> "2265" -> 2265
-                product_id = str(product_id).replace('.', '').replace(',', '')
-                product_id = int(product_id)
-                logger.info(f"Converted '{original_id}' -> {product_id} (int)")
+                product_id = uuid.UUID(str(product_id))
+                logger.info(f"Converted '{original_id}' -> {product_id} (uuid)")
             except (ValueError, TypeError) as e:
                 logger.error(f"Error converting product_id '{original_id}': {e}")
                 return HttpResponse(
-                    f'<div class="p-3 bg-red-100 text-red-700 rounded">Invalid product ID: {original_id}</div>', 
+                    f'<div class="p-3 bg-red-100 text-red-700 rounded">Invalid product ID: {original_id}</div>',
                     status=400
                 )
         else:
             logger.error("No product_id provided in POST data")
             return HttpResponse(
-                '<div class="p-3 bg-red-100 text-red-700 rounded">Product ID is required</div>', 
+                '<div class="p-3 bg-red-100 text-red-700 rounded">Product ID is required</div>',
                 status=400
             )
         
         quantity = int(request.POST.get('quantity', 1))
         notes = request.POST.get('notes', '')
         modifiers = request.POST.getlist('modifiers')
+        for key, value in request.POST.items():
+            if key.startswith('modifier_') and value:
+                modifiers.append(value)
+        if modifiers:
+            modifiers = list(dict.fromkeys(modifiers))
         
         logger.info(f"Looking for Product with id={product_id}")
         logger.info(f"Received modifiers: {modifiers}")
@@ -308,28 +338,37 @@ def add_item(request, bill_id):
                 status=404
             )
         
+        options = ModifierOption.objects.filter(
+            modifier__product_modifiers__product=product,
+            modifier__brand=request.user.brand
+        )
+        options_map = {str(opt.id): opt for opt in options}
+
+        modifier_ids = list(modifiers)
+        if not modifier_ids:
+            for value in request.POST.values():
+                try:
+                    value_uuid = str(uuid.UUID(str(value)))
+                except (ValueError, TypeError):
+                    continue
+                if value_uuid in options_map:
+                    modifier_ids.append(value_uuid)
+        if modifier_ids:
+            modifier_ids = list(dict.fromkeys(modifier_ids))
+
         modifier_price = Decimal('0')
         modifier_data = []
-        for mod_id in modifiers:
-            try:
-                # Convert modifier ID (remove thousand separators and convert to int)
-                mod_id_clean = str(mod_id).replace('.', '').replace(',', '')
-                mod_id_int = int(mod_id_clean)
-                logger.info(f"Converting modifier ID '{mod_id}' -> {mod_id_int}")
-                
-                opt = ModifierOption.objects.get(id=mod_id_int)
-                modifier_price += opt.price_adjustment
-                modifier_data.append({
-                    'id': opt.id,
-                    'name': opt.name,
-                    'price': float(opt.price_adjustment)
-                })
-            except (ValueError, TypeError) as e:
-                logger.error(f"Error converting modifier ID '{mod_id}': {e}")
+        for mod_id in modifier_ids:
+            opt = options_map.get(str(mod_id))
+            if not opt:
+                logger.error(f"ModifierOption with id={mod_id} not found")
                 continue
-            except ModifierOption.DoesNotExist:
-                logger.error(f"ModifierOption with id={mod_id_int} not found")
-                continue
+            modifier_price += opt.price_adjustment
+            modifier_data.append({
+                'id': str(opt.id),
+                'name': opt.name,
+                'price': float(opt.price_adjustment)
+            })
         
         existing_item = BillItem.objects.filter(
             bill=bill,
@@ -510,7 +549,7 @@ def edit_item_modal(request, item_id):
         ).prefetch_related('options')
         
         # Get currently selected modifier option IDs
-        selected_modifier_ids = [mod['id'] for mod in item.modifiers] if item.modifiers else []
+        selected_modifier_ids = [str(mod.get('id')) for mod in item.modifiers] if item.modifiers else []
         
         logger.info(f"Edit item {item_id}: status={item.status}, selected_modifiers={selected_modifier_ids}")
         
@@ -548,6 +587,11 @@ def update_item(request, item_id):
         quantity = int(request.POST.get('quantity', 1))
         notes = request.POST.get('notes', '').strip()
         modifiers = request.POST.getlist('modifiers')
+        for key, value in request.POST.items():
+            if key.startswith('modifier_') and value:
+                modifiers.append(value)
+        if modifiers:
+            modifiers = list(dict.fromkeys(modifiers))
         
         logger.info(f"Parsed: quantity={quantity}, notes={notes}, modifiers={modifiers}")
         
@@ -561,27 +605,33 @@ def update_item(request, item_id):
         
         if modifiers:
             from apps.core.models import ModifierOption
-            
+            import uuid
+
+            options = ModifierOption.objects.filter(
+                modifier__product_modifiers__product=item.product,
+                modifier__brand=request.user.brand
+            )
+            options_map = {str(opt.id): opt for opt in options}
+
             for mod_id in modifiers:
-                try:
-                    # Clean modifier ID (remove separators)
-                    mod_id_clean = str(mod_id).replace('.', '').replace(',', '')
-                    mod_id_int = int(mod_id_clean)
-                    
-                    option = ModifierOption.objects.get(id=mod_id_int)
-                    modifier_total += option.price_adjustment
-                    modifier_data.append({
-                        'id': option.id,
-                        'name': option.name,
-                        'price': float(option.price_adjustment)
-                    })
-                    logger.info(f"Added modifier: {option.name} (${option.price_adjustment})")
-                except ModifierOption.DoesNotExist:
+                opt = options_map.get(str(mod_id))
+                if not opt:
+                    try:
+                        mod_uuid = str(uuid.UUID(str(mod_id)))
+                    except (ValueError, TypeError):
+                        logger.error(f"Invalid modifier ID: {mod_id}")
+                        continue
+                    opt = options_map.get(mod_uuid)
+                if not opt:
                     logger.warning(f"Modifier option {mod_id} not found")
                     continue
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Invalid modifier ID: {mod_id} - {str(e)}")
-                    continue
+                modifier_total += opt.price_adjustment
+                modifier_data.append({
+                    'id': str(opt.id),
+                    'name': opt.name,
+                    'price': float(opt.price_adjustment)
+                })
+                logger.info(f"Added modifier: {opt.name} (${opt.price_adjustment})")
         
         # Calculate new price with modifiers
         item.unit_price = item.product.price

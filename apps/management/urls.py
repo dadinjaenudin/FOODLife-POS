@@ -13,7 +13,9 @@ urlpatterns = [
     
     # Terminals
     path('terminals/', views.terminals_list, name='terminals'),
+    path('terminals/create/', views.terminal_create, name='terminal_create'),
     path('terminals/<uuid:terminal_id>/', views.terminal_detail, name='terminal_detail'),
+    path('terminals/<uuid:terminal_id>/edit/', views.terminal_edit, name='terminal_edit'),
     path('terminals/<uuid:terminal_id>/deactivate/', views.terminal_deactivate, name='terminal_deactivate'),
     path('terminals/<uuid:terminal_id>/reactivate/', views.terminal_reactivate, name='terminal_reactivate'),
     path('terminals/<uuid:terminal_id>/delete/', views.terminal_delete, name='terminal_delete'),
@@ -36,6 +38,7 @@ urlpatterns = [
     path('master-data/products/', views.products, name='products'),
     path('master-data/products/<uuid:product_id>/', views.product_detail, name='product_detail'),
     path('master-data/products/<uuid:product_id>/edit/', views.product_edit, name='product_edit'),
+    path('master-data/products/set-stock-default/', views.products_set_stock_default, name='products_set_stock_default'),
     path('master-data/products/<uuid:product_id>/photos/', views.product_photos, name='product_photos'),
     path('master-data/products/<uuid:product_id>/photos/<uuid:photo_id>/toggle/', views.product_photo_toggle, name='product_photo_toggle'),
     path('master-data/products/<uuid:product_id>/photos/<uuid:photo_id>/delete/', views.product_photo_delete, name='product_photo_delete'),
@@ -43,6 +46,8 @@ urlpatterns = [
     path('master-data/table-areas/', views.table_areas_list, name='table_areas'),
     path('master-data/users/', views.users_list, name='users'),
     path('master-data/users/create/', views.user_create, name='user_create'),
+    path('master-data/users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
+    path('master-data/users/<int:user_id>/delete/', views.user_delete, name='user_delete'),
     path('master-data/users/<int:user_id>/set-password/', views.user_set_password, name='user_set_password'),
     path('master-data/users/<int:user_id>/set-pin/', views.user_set_pin, name='user_set_pin'),
     path('master-data/promotions/', views.promotions_list, name='promotions'),

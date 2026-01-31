@@ -11,12 +11,12 @@
             <p class="text-xs text-gray-600 mt-0.5">Staff accounts and access control</p>
         </div>
         <div class="flex gap-2">
-            <button onclick="openCreateUserModal()" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-xs font-semibold flex items-center gap-1">
+            <a href="{% url 'management:user_create' %}" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-xs font-semibold flex items-center gap-1">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
                 Add User
-            </button>
+            </a>
             <a href="{% url 'management:master_data' %}" class="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
                 ← Back to Master Data
             </a>
@@ -183,7 +183,18 @@
                         {% endif %}
                     </td>
                     <td class="px-3 py-2 whitespace-nowrap text-center">
-                        <div class="flex items-center justify-center space-x-1">
+                        <div class="flex items-center justify-center gap-1">
+                            <a href="{% url 'management:user_edit' user.id %}"
+                               class="inline-flex items-center px-1.5 py-1 bg-green-600 text-white text-[10px] rounded hover:bg-green-700 transition"
+                               title="Edit">
+                                ✏️
+                            </a>
+                            <button type="button"
+                                    onclick="showUserDeleteModal('{{ user.id }}', '{{ user.username }}')"
+                                    class="inline-flex items-center px-1.5 py-1 bg-red-600 text-white text-[10px] rounded hover:bg-red-700 transition"
+                                    title="Delete">
+                                🗑️
+                            </button>
                             <button onclick="openSetPasswordModal({{ user.id }}, '{{ user.username }}')"
                                     class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-semibold rounded transition-colors">
                                 🔑 Password
@@ -286,6 +297,80 @@
         </p>
     </div>
 </div>
+
+<!-- Delete User Modal -->
+<div id="delete-user-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
+        <div class="bg-gradient-to-r from-red-500 to-red-600 rounded-t-2xl p-6">
+            <div class="flex items-center justify-center w-16 h-16 bg-white bg-opacity-20 rounded-full mx-auto mb-4">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white text-center">Delete User</h3>
+        </div>
+        <div class="p-6">
+            <div class="text-center mb-6">
+                <p class="text-gray-700 text-lg mb-2">Are you sure you want to delete</p>
+                <p class="text-2xl font-bold text-gray-900 mb-2" id="delete-user-name">Username</p>
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mt-4">
+                    <div class="flex items-start">
+                        <svg class="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        <div class="text-left">
+                            <p class="text-sm font-semibold text-red-800 mb-1">Permanent Action!</p>
+                            <p class="text-sm text-red-700">This will permanently remove the user.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <form id="deleteUserForm" method="post" action="">
+                {% csrf_token %}
+                <div class="flex gap-3">
+                    <button type="button" onclick="hideUserDeleteModal()"
+                            class="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition font-medium shadow-lg hover:shadow-xl">
+                        Delete Now
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showUserDeleteModal(userId, username) {
+        event.preventDefault();
+        event.stopPropagation();
+        document.getElementById('delete-user-name').textContent = username;
+        const form = document.getElementById('deleteUserForm');
+        form.action = `{% url 'management:user_delete' 0 %}`.replace('/0/', `/${userId}/`);
+        document.getElementById('delete-user-modal').classList.remove('hidden');
+    }
+
+    function hideUserDeleteModal() {
+        document.getElementById('delete-user-modal').classList.add('hidden');
+    }
+
+    document.getElementById('delete-user-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            hideUserDeleteModal();
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('delete-user-modal');
+            if (!modal.classList.contains('hidden')) {
+                hideUserDeleteModal();
+            }
+        }
+    });
+</script>
 
 <!-- Create User Modal -->
 <div id="createUserModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">

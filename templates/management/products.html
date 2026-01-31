@@ -10,10 +10,33 @@
             <h1 class="text-xl font-bold text-gray-800">Products Management</h1>
             <p class="text-xs text-gray-600">Menu items and pricing</p>
         </div>
-        <a href="{% url 'management:master_data' %}" class="px-2.5 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
-            ← Back to Master Data
-        </a>
+        <div class="flex items-center gap-2">
+            <form method="post" action="{% url 'management:products_set_stock_default' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-xs font-semibold"
+                        onclick="return confirm('Set all product stock to 1000?')">
+                    Set Stock = 1000
+                </button>
+            </form>
+            <a href="{% url 'management:master_data' %}" class="px-2.5 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
+                ← Back to Master Data
+            </a>
+        </div>
     </div>
+
+    {% if messages %}
+    <div class="mb-2 space-y-2">
+        {% for message in messages %}
+        <div class="px-3 py-2 rounded-lg text-xs border
+            {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-700
+            {% elif message.tags == 'success' %}bg-green-50 border-green-200 text-green-700
+            {% else %}bg-blue-50 border-blue-200 text-blue-700{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- Filters -->
     <div class="bg-white rounded-lg shadow p-2.5 mb-1.5">

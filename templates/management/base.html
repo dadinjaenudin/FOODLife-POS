@@ -73,6 +73,26 @@
                         </svg>
                         Master Data
                     </a>
+
+                    <a href="{% url 'management:users' %}"
+                       class="flex items-center px-4 py-3 mb-2 text-white rounded-lg {% if 'users' in request.path %}bg-indigo-700{% else %}hover:bg-indigo-700{% endif %} transition">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 15c2.5 0 4.847.655 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3a4 4 0 100 8 4 4 0 000-8z"/>
+                        </svg>
+                        User Management
+                    </a>
+
+                    <div class="px-4 mb-2 text-xs text-indigo-200">
+                        <div class="font-semibold text-indigo-300 mb-1">Select user role:</div>
+                        <ul class="space-y-0.5">
+                            <li>1. Admin (access to management dashboard)</li>
+                            <li>2. Manager (access to management dashboard)</li>
+                            <li>3. Cashier (access to POS)</li>
+                            <li>4. Waiter (access to POS)</li>
+                            <li>5. Kitchen (kitchen display only)</li>
+                        </ul>
+                    </div>
                     
                     <a href="{% url 'management:settings' %}" 
                        class="flex items-center px-4 py-3 mb-2 text-white rounded-lg {% if 'settings' in request.path %}bg-indigo-700{% else %}hover:bg-indigo-700{% endif %} transition">
