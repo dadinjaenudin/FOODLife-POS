@@ -219,30 +219,55 @@ function floorPlanTabs() {
         areas: [],
         
         init() {
-            // Load data from JSON
+            // Delay initialization to ensure DOM is ready and JSON is parsed
+            setTimeout(() => {
+                this.loadAreas();
+                console.log('Areas loaded in Alpine:', this.areas);
+                
+                this.$nextTick(() => {
+                    console.log('DOM ready, rendering floor plans...');
+                    this.renderFloorPlans();
+                    
+                    // Reinitialize drag handlers after render
+                    this.$nextTick(() => {
+                        setTimeout(() => {
+                            initializeDragHandlers();
+                        }, 100);
+                    });
+                });
+            }, 50);
+        },
+        
+        loadAreas() {
             const jsonData = document.getElementById('tables-data');
             if (jsonData) {
-                const data = JSON.parse(jsonData.textContent);
-                this.areas = data.areas;
+                try {
+                    const data = JSON.parse(jsonData.textContent);
+                    this.areas = data.areas;
+                    console.log('✓ Loaded areas:', this.areas.length);
+                } catch (e) {
+                    console.error('Error parsing JSON data:', e);
+                }
+            } else {
+                console.warn('tables-data script not found');
             }
-            
-            // Render tables
-            this.renderFloorPlans();
-            
-            // Reinitialize drag handlers after render
-            this.$nextTick(() => {
-                setTimeout(() => {
-                    initializeDragHandlers();
-                }, 100);
-            });
         },
         
         renderFloorPlans() {
+            if (!this.areas || this.areas.length === 0) {
+                console.warn('No areas to render');
+                return;
+            }
+            
             this.areas.forEach((area, areaIndex) => {
                 const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
-                if (!canvas) return;
+                if (!canvas) {
+                    console.warn(`Canvas not found for area ${area.id}`);
+                    return;
+                }
                 
                 canvas.innerHTML = '';
+                console.log(`Rendering ${area.tables.length} tables for area: ${area.name}`);
                 
                 // Set background if floor image exists
                 if (area.floor_image) {
