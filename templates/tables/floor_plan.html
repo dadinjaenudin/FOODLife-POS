@@ -55,52 +55,6 @@
     <!-- Content -->
     <div class="max-w-full px-3 py-3">
         {% if areas %}
-            <div x-data="floorPlanTabs()" class="w-full">
-                <!-- Tabs Navigation -->
-                <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
-                    <template x-for="(area, index) in {{ areas|safe }}" :key="index">
-                        <button @click="activeTab = index"
-                                :class="activeTab === index ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'"
-                                class="px-4 py-2 border rounded-lg font-semibold text-sm transition whitespace-nowrap flex-shrink-0">
-                            <span x-text="area.name"></span>
-                            <span class="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded">
-                                <span x-text="area.table_count"></span> tables
-                            </span>
-                        </button>
-                    </template>
-                </div>
-
-                <!-- Floor Plans (One per tab) -->
-                <template x-for="(area, index) in {{ areas|safe }}" :key="index">
-                    <div x-show="activeTab === index"
-                         x-transition:enter="transition ease-out duration-200"
-                         x-transition:enter-start="opacity-0"
-                         x-transition:enter-end="opacity-100"
-                         x-transition:leave="transition ease-in duration-150"
-                         x-transition:leave-start="opacity-100"
-                         x-transition:leave-end="opacity-0"
-                         class="w-full">
-                        
-                        <div class="bg-white/90 rounded-lg shadow border border-gray-200">
-                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
-                                <div class="flex justify-between items-center">
-                                    <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
-                                    <span class="text-xs text-gray-600" x-text="'Floor: ' + (area.floor_width || 1200) + 'x' + (area.floor_height || 800) + 'px'"></span>
-                                </div>
-                            </div>
-
-                            <div class="p-3 overflow-auto">
-                                <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
-                                     :style="'width: ' + (area.floor_width || 1200) + 'px; height: ' + (area.floor_height || 800) + 'px;'"
-                                     :data-area-id="area.id">
-                                     <!-- Tables will be rendered here by template -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </div>
-
             <!-- Hidden template for tables JSON (for easier JS access) -->
             <script type="application/json" id="tables-data">
             {
@@ -131,6 +85,52 @@
                 ]
             }
             </script>
+
+            <div x-data="floorPlanTabs()" class="w-full">
+                <!-- Tabs Navigation -->
+                <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
+                    <template x-for="(area, index) in areas" :key="index">
+                        <button @click="activeTab = index"
+                                :class="activeTab === index ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'"
+                                class="px-4 py-2 border rounded-lg font-semibold text-sm transition whitespace-nowrap flex-shrink-0">
+                            <span x-text="area.name"></span>
+                            <span class="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded">
+                                <span x-text="area.table_count"></span> tables
+                            </span>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Floor Plans (One per tab) -->
+                <template x-for="(area, index) in areas" :key="index">
+                    <div x-show="activeTab === index"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         class="w-full">
+                        
+                        <div class="bg-white/90 rounded-lg shadow border border-gray-200">
+                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
+                                <div class="flex justify-between items-center">
+                                    <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
+                                    <span class="text-xs text-gray-600" x-text="'Floor: ' + (area.floor_width || 1200) + 'x' + (area.floor_height || 800) + 'px'"></span>
+                                </div>
+                            </div>
+
+                            <div class="p-3 overflow-auto">
+                                <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
+                                     :style="'width: ' + (area.floor_width || 1200) + 'px; height: ' + (area.floor_height || 800) + 'px;'"
+                                     :data-area-id="area.id">
+                                     <!-- Tables will be rendered here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
         {% else %}
             <div class="backdrop-blur-md bg-white/60 rounded-2xl shadow-xl p-12 text-center">
                 <div class="w-24 h-24 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mb-6">
@@ -216,10 +216,19 @@
 function floorPlanTabs() {
     return {
         activeTab: 0,
+        areas: [],
         
         init() {
-            // Load data on initialization
+            // Load data from JSON
+            const jsonData = document.getElementById('tables-data');
+            if (jsonData) {
+                const data = JSON.parse(jsonData.textContent);
+                this.areas = data.areas;
+            }
+            
+            // Render tables
             this.renderFloorPlans();
+            
             // Reinitialize drag handlers after render
             this.$nextTick(() => {
                 setTimeout(() => {
@@ -229,9 +238,7 @@ function floorPlanTabs() {
         },
         
         renderFloorPlans() {
-            const data = JSON.parse(document.getElementById('tables-data').textContent);
-            
-            data.areas.forEach((area, areaIndex) => {
+            this.areas.forEach((area, areaIndex) => {
                 const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
                 if (!canvas) return;
                 
