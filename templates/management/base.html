@@ -82,17 +82,6 @@
                         </svg>
                         User Management
                     </a>
-
-                    <div class="px-4 mb-2 text-xs text-indigo-200">
-                        <div class="font-semibold text-indigo-300 mb-1">Select user role:</div>
-                        <ul class="space-y-0.5">
-                            <li>1. Admin (access to management dashboard)</li>
-                            <li>2. Manager (access to management dashboard)</li>
-                            <li>3. Cashier (access to POS)</li>
-                            <li>4. Waiter (access to POS)</li>
-                            <li>5. Kitchen (kitchen display only)</li>
-                        </ul>
-                    </div>
                     
                     <a href="{% url 'management:settings' %}" 
                        class="flex items-center px-4 py-3 mb-2 text-white rounded-lg {% if 'settings' in request.path %}bg-indigo-700{% else %}hover:bg-indigo-700{% endif %} transition">

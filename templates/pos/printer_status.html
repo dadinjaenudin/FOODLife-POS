@@ -7,7 +7,7 @@
      style="max-width: 320px;">
     
     <!-- Collapsed View - Status Indicator -->
-    <div class="cursor-pointer" @click="expanded = !expanded">
+    <div class="cursor-pointer" @click="toggleExpand()">
         <div class="flex items-center gap-2 px-3 py-2.5 h-12">
             <!-- Printer Icon with Status Indicator -->
             <div class="relative">
@@ -258,13 +258,10 @@ function printerStatusWidget() {
         },
         
         init() {
-            this.checkStatus();
-            // Poll every 5 seconds
-            this.pollInterval = setInterval(() => {
-                if (!this.loading) {
-                    this.checkStatus();
-                }
-            }, 5000);
+            // Don't auto-check on init to avoid console errors
+            // Only check when user explicitly opens the printer status panel
+            this.status.printer = 'unknown';
+            this.status.agent = 'unknown';
         },
         
         async checkStatus() {
@@ -277,15 +274,32 @@ function printerStatusWidget() {
                     this.status.printerName = data.printer.name;
                     this.status.pid = data.agent.pid;
                     this.lastUpdate = new Date();
+                    
+                    // Start polling only when we successfully connect once
+                    if (!this.pollInterval) {
+                        this.pollInterval = setInterval(() => {
+                            if (!this.loading) {
+                                this.checkStatus();
+                            }
+                        }, 5000);
+                    }
                 } else {
                     this.status.printer = 'offline';
                     this.status.agent = 'stopped';
                 }
             } catch (error) {
-                // Dashboard not accessible
+                // Dashboard not accessible - silently fail
                 this.status.printer = 'offline';
                 this.status.agent = 'stopped';
                 this.lastUpdate = new Date();
+            }
+        },
+        
+        toggleExpand() {
+            this.expanded = !this.expanded;
+            // Check status when panel is opened
+            if (this.expanded && this.status.printer === 'unknown') {
+                this.checkStatus();
             }
         },
         

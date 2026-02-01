@@ -55,37 +55,83 @@
     <!-- Content -->
     <div class="max-w-full px-3 py-3">
         {% if areas %}
-            {% for area in areas %}
-            <div class="mb-4">
-                <div class="bg-white/90 rounded-lg shadow border border-gray-200">
-                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
-                        <div class="flex justify-between items-center">
-                            <h2 class="text-sm font-bold text-gray-900">{{ area.name }}</h2>
-                            <span class="text-xs text-gray-600">{{ area.table_count }} tables</span>
+            <div x-data="floorPlanTabs()" class="w-full">
+                <!-- Tabs Navigation -->
+                <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
+                    <template x-for="(area, index) in {{ areas|safe }}" :key="index">
+                        <button @click="activeTab = index"
+                                :class="activeTab === index ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'"
+                                class="px-4 py-2 border rounded-lg font-semibold text-sm transition whitespace-nowrap flex-shrink-0">
+                            <span x-text="area.name"></span>
+                            <span class="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded">
+                                <span x-text="area.table_count"></span> tables
+                            </span>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Floor Plans (One per tab) -->
+                <template x-for="(area, index) in {{ areas|safe }}" :key="index">
+                    <div x-show="activeTab === index"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         class="w-full">
+                        
+                        <div class="bg-white/90 rounded-lg shadow border border-gray-200">
+                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
+                                <div class="flex justify-between items-center">
+                                    <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
+                                    <span class="text-xs text-gray-600" x-text="'Floor: ' + (area.floor_width || 1200) + 'x' + (area.floor_height || 800) + 'px'"></span>
+                                </div>
+                            </div>
+
+                            <div class="p-3 overflow-auto">
+                                <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
+                                     :style="'width: ' + (area.floor_width || 1200) + 'px; height: ' + (area.floor_height || 800) + 'px;'"
+                                     :data-area-id="area.id">
+                                     <!-- Tables will be rendered here by template -->
+                                </div>
+                            </div>
                         </div>
                     </div>
+                </template>
+            </div>
 
-                    <div class="p-3 overflow-auto">
-                        <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
-                             style="width: {{ area.floor_width|default:1200 }}px; height: {{ area.floor_height|default:800 }}px;{% if area.floor_image %} background-image: url('{{ area.floor_image.url }}'); background-size: cover; background-position: center;{% endif %}">
+            <!-- Hidden template for tables JSON (for easier JS access) -->
+            <script type="application/json" id="tables-data">
+            {
+                "areas": [
+                    {% for area in areas %}
+                    {
+                        "id": "{{ area.id }}",
+                        "name": "{{ area.name }}",
+                        "floor_width": {{ area.floor_width|default:1200 }},
+                        "floor_height": {{ area.floor_height|default:800 }},
+                        "floor_image": "{% if area.floor_image %}{{ area.floor_image.url }}{% endif %}",
+                        "table_count": {{ area.active_tables|length }},
+                        "tables": [
                             {% for table in area.active_tables %}
-                            {% with pos_x=table.pos_x|default:0 pos_y=table.pos_y|default:0 %}
-                            {% if pos_x == 0 and pos_y == 0 %}
-                            <div class="absolute table-card group flex flex-col items-center"
-                                 data-table-id="{{ table.id }}"
-                                 data-table-number="{{ table.number }}"
-                                 data-table-status="{{ table.status }}"
-                                 data-is-joined="{{ table.table_group|yesno:'true,false' }}"
-                                 style="left: {% widthratio forloop.counter0 1 80 %}px; top: {% widthratio forloop.counter0 8 80 %}px; margin-left: 50px; margin-top: 100px;">
-                            {% else %}
-                            <div class="absolute table-card group flex flex-col items-center"
-                                 data-table-id="{{ table.id }}"
-                                 data-table-number="{{ table.number }}"
-                                 data-table-status="{{ table.status }}"
-                                 data-is-joined="{{ table.table_group|yesno:'true,false' }}"
-                                 style="left: {{ pos_x }}px; top: {{ pos_y }}px;">
-                            {% endif %}
-                            {% endwith %}
+                            {
+                                "id": "{{ table.id }}",
+                                "number": "{{ table.number }}",
+                                "capacity": {{ table.capacity }},
+                                "status": "{{ table.status }}",
+                                "pos_x": {{ table.pos_x|default:"null" }},
+                                "pos_y": {{ table.pos_y|default:"null" }},
+                                "is_joined": {{ table.table_group|yesno:"true,false" }}
+                            }{% if not forloop.last %},{% endif %}
+                            {% endfor %}
+                        ]
+                    }{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                ]
+            }
+            </script>
+        {% else %}
                                 {% if table.table_group %}
                                 <div class="absolute -top-1 -left-1 z-20">
                                     <div class="flex h-5 w-5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full items-center justify-center shadow border border-white">
@@ -254,22 +300,298 @@
 </style>
 
 <script>
-// Use var or check existence to prevent redeclaration errors on HTMX swaps
+/**
+ * Alpine.js - Floor Plan Tabs
+ */
+function floorPlanTabs() {
+    return {
+        activeTab: 0,
+        
+        init() {
+            // Load data on initialization
+            this.renderFloorPlans();
+            // Reinitialize drag handlers after render
+            this.$nextTick(() => {
+                setTimeout(() => {
+                    initializeDragHandlers();
+                }, 100);
+            });
+        },
+        
+        renderFloorPlans() {
+            const data = JSON.parse(document.getElementById('tables-data').textContent);
+            
+            data.areas.forEach((area, areaIndex) => {
+                const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
+                if (!canvas) return;
+                
+                canvas.innerHTML = '';
+                
+                // Set background if floor image exists
+                if (area.floor_image) {
+                    canvas.style.backgroundImage = `url('${area.floor_image}')`;
+                    canvas.style.backgroundSize = 'cover';
+                    canvas.style.backgroundPosition = 'center';
+                }
+                
+                // Render tables
+                area.tables.forEach(table => {
+                    const tableEl = createTableElement(table);
+                    
+                    // Use stored position from HO, or default
+                    if (table.pos_x !== null && table.pos_y !== null) {
+                        tableEl.style.left = table.pos_x + 'px';
+                        tableEl.style.top = table.pos_y + 'px';
+                    } else {
+                        // Auto-position if no position stored
+                        const index = area.tables.indexOf(table);
+                        tableEl.style.left = (50 + (index % 8) * 80) + 'px';
+                        tableEl.style.top = (100 + Math.floor(index / 8) * 80) + 'px';
+                    }
+                    
+                    canvas.appendChild(tableEl);
+                });
+            });
+        }
+    };
+}
+
+/**
+ * Create table DOM element
+ */
+function createTableElement(table) {
+    const div = document.createElement('div');
+    div.className = 'absolute table-card group flex flex-col items-center';
+    div.setAttribute('data-table-id', table.id);
+    div.setAttribute('data-table-number', table.number);
+    div.setAttribute('data-table-status', table.status);
+    div.setAttribute('data-is-joined', table.is_joined);
+    
+    const statusColorMap = {
+        'available': 'border-green-300 bg-gradient-to-br from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100',
+        'occupied': 'border-red-300 bg-gradient-to-br from-red-50 to-pink-50 hover:from-red-100 hover:to-pink-100',
+        'reserved': 'border-yellow-300 bg-gradient-to-br from-yellow-50 to-amber-50 cursor-not-allowed opacity-75',
+        'dirty': 'border-gray-300 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100'
+    };
+    
+    const statusTextColorMap = {
+        'available': 'text-green-700',
+        'occupied': 'text-red-700',
+        'reserved': 'text-yellow-700',
+        'dirty': 'text-gray-700'
+    };
+    
+    const statusColorClass = statusColorMap[table.status] || 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50';
+    const statusTextColor = statusTextColorMap[table.status] || 'text-blue-700';
+    
+    let html = '';
+    
+    // Joined indicator
+    if (table.is_joined) {
+        html += `
+            <div class="absolute -top-1 -left-1 z-20">
+                <div class="flex h-5 w-5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full items-center justify-center shadow border border-white">
+                    <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                    </svg>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Selection checkbox
+    html += `
+        <div class="absolute top-1 right-1 z-20 selection-checkbox hidden">
+            <input type="checkbox"
+                   class="table-select-checkbox w-4 h-4 text-blue-600 rounded border border-white shadow cursor-pointer"
+                   data-table-id="${table.id}"
+                   onclick="event.stopPropagation(); handleTableSelection()">
+        </div>
+    `;
+    
+    // Drag handle
+    html += `
+        <div class="drag-handle absolute top-1 left-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
+            <div class="w-4 h-4 bg-white/80 backdrop-blur-sm rounded shadow-sm flex items-center justify-center">
+                <svg class="w-2.5 h-2.5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                </svg>
+            </div>
+        </div>
+    `;
+    
+    // Main button (form or open)
+    if (table.status === 'dirty') {
+        html += `
+            <form method="POST"
+                  action="/tables/${table.id}/clean/"
+                  hx-post="/tables/${table.id}/clean/"
+                  hx-target="body"
+                  hx-swap="outerHTML"
+                  class="table-form">
+                <button type="submit"
+                        class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg
+                        border-gray-300 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100 cursor-pointer flex items-center justify-center">
+                    <span class="text-gray-700 font-bold text-sm">${table.number}</span>
+                </button>
+            </form>
+        `;
+    } else {
+        const disabled = table.status === 'reserved' ? 'disabled' : '';
+        html += `
+            <form method="POST" action="/tables/${table.id}/open/" class="table-form">
+                <button type="submit"
+                        ${disabled}
+                        class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg flex items-center justify-center ${statusColorClass}">
+                    <span class="text-sm font-black ${statusTextColor}">
+                        ${table.number}
+                    </span>
+                </button>
+            </form>
+        `;
+    }
+    
+    // Occupied indicator
+    if (table.status === 'occupied') {
+        html += `
+            <div class="absolute -top-1 -right-1 z-10">
+                <span class="flex h-5 w-5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-5 w-5 bg-gradient-to-br from-red-500 to-red-600 items-center justify-center shadow">
+                        <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"></path>
+                        </svg>
+                    </span>
+                </span>
+            </div>
+        `;
+    }
+    
+    // Capacity
+    html += `<div class="mt-1 text-[10px] text-gray-600 font-semibold">👥 ${table.capacity}</div>`;
+    
+    div.innerHTML = html;
+    return div;
+}
+
+// Initialize drag handlers
+function initializeDragHandlers() {
+    const tableCards = document.querySelectorAll('.table-card');
+    
+    tableCards.forEach(card => {
+        const dragHandle = card.querySelector('.drag-handle');
+        if (dragHandle) {
+            dragHandle.addEventListener('mousedown', startDrag);
+        }
+    });
+}
+
+// Drag functions
+var activeDragCard = null;
+var dragOffset = { x: 0, y: 0 };
+var dragCanvas = null;
+
+function startDrag(e) {
+    if (selectionMode) return;
+    
+    activeDragCard = e.target.closest('.table-card');
+    dragCanvas = activeDragCard.parentElement;
+    
+    const rect = dragCanvas.getBoundingClientRect();
+    const cardRect = activeDragCard.getBoundingClientRect();
+    
+    dragOffset.x = e.clientX - (cardRect.left - rect.left);
+    dragOffset.y = e.clientY - (cardRect.top - rect.top);
+    
+    activeDragCard.style.zIndex = '1000';
+    activeDragCard.style.cursor = 'grabbing';
+    
+    document.addEventListener('mousemove', moveDrag);
+    document.addEventListener('mouseup', endDrag);
+    e.preventDefault();
+}
+
+function moveDrag(e) {
+    if (!activeDragCard || !dragCanvas) return;
+    
+    const rect = dragCanvas.getBoundingClientRect();
+    let x = e.clientX - rect.left - dragOffset.x;
+    let y = e.clientY - rect.top - dragOffset.y;
+    
+    x = Math.max(0, Math.min(x, dragCanvas.offsetWidth - 70));
+    y = Math.max(0, Math.min(y, dragCanvas.offsetHeight - 70));
+    
+    activeDragCard.style.left = x + 'px';
+    activeDragCard.style.top = y + 'px';
+}
+
+function endDrag(e) {
+    if (!activeDragCard) return;
+    
+    const tableId = activeDragCard.getAttribute('data-table-id');
+    const x = parseInt(activeDragCard.style.left) || 0;
+    const y = parseInt(activeDragCard.style.top) || 0;
+    
+    // Save position
+    fetch('{% url "tables:update_table_position" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                          document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] || ''
+        },
+        body: JSON.stringify({
+            table_id: tableId,
+            pos_x: x,
+            pos_y: y
+        })
+    }).catch(err => console.error('Error saving position:', err));
+    
+    activeDragCard.style.zIndex = '';
+    activeDragCard.style.cursor = '';
+    activeDragCard = null;
+    dragCanvas = null;
+    
+    document.removeEventListener('mousemove', moveDrag);
+    document.removeEventListener('mouseup', endDrag);
+}
+</script>
+
+// Use var for global scope to prevent redeclaration errors
 var selectionMode = false;
 var selectedTables = [];
 var longPressTimer = null;
 var LONG_PRESS_DURATION = 500;
 
-var activeDragCard = null;
-var dragOffset = { x: 0, y: 0 };
-var dragCanvas = null;
-
+// Initialize floor plan with tab UI on page load
 document.addEventListener('DOMContentLoaded', function() {
-    const tableCards = document.querySelectorAll('.table-card');
+    // Initialize Alpine.js for tabs
+    if (typeof Alpine !== 'undefined') {
+        Alpine.start();
+    }
+    
+    // Attach event listeners to dynamically created table cards
+    attachTableEventListeners();
+});
 
+// Re-attach listeners when floor plan is dynamically updated
+document.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.classList.contains('floor-plan-canvas')) {
+        attachTableEventListeners();
+    }
+});
+
+function attachTableEventListeners() {
+    const tableCards = document.querySelectorAll('.table-card');
+    
     tableCards.forEach(card => {
         const tableId = card.getAttribute('data-table-id');
         const tableStatus = card.getAttribute('data-table-status');
+
+        // Remove old listeners
+        card.replaceWith(card.cloneNode(true));
+        card = document.querySelector(`[data-table-id="${tableId}"]`);
+        if (!card) return;
 
         card.addEventListener('mousedown', function(e) {
             if (e.button !== 0) return;
@@ -306,54 +628,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
+        // Drag handle
         const dragHandle = card.querySelector('.drag-handle');
         if (dragHandle) {
-            dragHandle.addEventListener('pointerdown', function(e) {
-                if (selectionMode) return;
-                const canvas = card.closest('.floor-plan-canvas');
-                if (!canvas) return;
-
-                activeDragCard = card;
-                dragCanvas = canvas;
-                const rect = card.getBoundingClientRect();
-                dragOffset = {
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top
-                };
-
-                card.classList.add('dragging');
-                card.setPointerCapture(e.pointerId);
-                showNotification('💡 Drag ke posisi yang diinginkan', 'info');
-            });
+            dragHandle.addEventListener('mousedown', startDrag);
         }
     });
-});
-
-document.addEventListener('pointermove', function(e) {
-    if (!activeDragCard || !dragCanvas) return;
-    e.preventDefault();
-
-    const canvasRect = dragCanvas.getBoundingClientRect();
-    const maxX = canvasRect.width - 64;
-    const maxY = canvasRect.height - 64;
-
-    let x = e.clientX - canvasRect.left - dragOffset.x;
-    let y = e.clientY - canvasRect.top - dragOffset.y;
-
-    x = Math.max(0, Math.min(x, maxX));
-    y = Math.max(0, Math.min(y, maxY));
-
-    activeDragCard.style.left = `${Math.round(x)}px`;
-    activeDragCard.style.top = `${Math.round(y)}px`;
-});
-
-document.addEventListener('pointerup', function() {
-    if (!activeDragCard) return;
-    activeDragCard.classList.remove('dragging');
-    saveTablePosition(activeDragCard);
-    activeDragCard = null;
-    dragCanvas = null;
-});
+}
 
 function clearLongPress() {
     if (longPressTimer) {
@@ -368,7 +649,6 @@ function enterSelectionMode() {
     selectionMode = true;
     document.querySelectorAll('.table-card').forEach(card => {
         card.classList.add('selection-mode');
-        card.setAttribute('draggable', 'false');
         const checkbox = card.querySelector('.selection-checkbox');
         if (card.getAttribute('data-table-status') === 'occupied' && checkbox) {
             checkbox.classList.remove('hidden');
@@ -388,7 +668,6 @@ function exitSelectionMode() {
 
     document.querySelectorAll('.table-card').forEach(card => {
         card.classList.remove('selection-mode', 'selected');
-        card.setAttribute('draggable', 'true');
         const checkbox = card.querySelector('.selection-checkbox');
         if (checkbox) {
             checkbox.classList.add('hidden');
