@@ -115,8 +115,16 @@
                         <div class="bg-white/90 rounded-lg shadow border border-gray-200">
                             <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
                                 <div class="flex justify-between items-center">
-                                    <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
-                                    <span class="text-xs text-gray-600" x-text="'Floor: ' + (area.floor_width || 1200) + 'x' + (area.floor_height || 800) + 'px'"></span>
+                                    <div>
+                                        <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
+                                        <p class="text-xs text-gray-600 mt-1">
+                                            📍 Tables: <span x-text="area.table_count" class="font-semibold"></span> | 
+                                            📏 Floor: <span x-text="(area.floor_width || 1200) + 'x' + (area.floor_height || 800) + 'px'" class="font-semibold"></span>
+                                        </p>
+                                    </div>
+                                    <div class="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+                                        💡 Drag to reposition | Changes saved locally
+                                    </div>
                                 </div>
                             </div>
 
@@ -448,6 +456,9 @@ function startDrag(e) {
     activeDragCard.style.zIndex = '1000';
     activeDragCard.style.cursor = 'grabbing';
     
+    // Show warning that position changes are temporary
+    showNotification('⚠️ Position changes are temporary | Sync from HO regularly', 'warning');
+    
     document.addEventListener('mousemove', moveDrag);
     document.addEventListener('mouseup', endDrag);
     e.preventDefault();
@@ -487,7 +498,17 @@ function endDrag(e) {
             pos_x: x,
             pos_y: y
         })
-    }).catch(err => console.error('Error saving position:', err));
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('✅ Position saved locally | Will sync with HO on next update', 'success');
+        }
+    })
+    .catch(err => {
+        console.error('Error saving position:', err);
+        showNotification('⚠️ Error saving position', 'warning');
+    });
     
     activeDragCard.style.zIndex = '';
     activeDragCard.style.cursor = '';
