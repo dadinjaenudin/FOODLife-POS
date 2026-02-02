@@ -3,6 +3,7 @@
 <div class="relative">
     <button 
         hx-post="{% url 'tables:open_table' table.id %}"
+        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
         hx-swap="none"
         hx-trigger="click"
         class="w-full p-6 rounded-lg border-2 transition-all {% if table.status == 'available' %}border-green-500 bg-green-50 hover:bg-green-100{% elif table.status == 'occupied' %}border-red-500 bg-red-50{% elif table.status == 'reserved' %}border-yellow-500 bg-yellow-50{% elif table.status == 'dirty' %}border-gray-400 bg-gray-100{% else %}border-blue-500 bg-blue-50{% endif %}"

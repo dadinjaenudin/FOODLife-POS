@@ -371,6 +371,7 @@ function createTableElement(table) {
     `;
     
     // Main button (form or open)
+    const csrfToken = '{{ csrf_token }}';
     if (table.status === 'dirty') {
         html += `
             <form method="POST"
@@ -378,6 +379,7 @@ function createTableElement(table) {
                   hx-post="/tables/${table.id}/clean/"
                   hx-target="body"
                   hx-swap="outerHTML"
+                  hx-headers='{"X-CSRFToken": "${csrfToken}"}'
                   class="table-form">
                 <button type="submit"
                         class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg
@@ -390,6 +392,7 @@ function createTableElement(table) {
         const disabled = table.status === 'reserved' ? 'disabled' : '';
         html += `
             <form method="POST" action="/tables/${table.id}/open/" class="table-form">
+                <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
                 <button type="submit"
                         ${disabled}
                         class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg flex items-center justify-center ${statusColorClass}">
