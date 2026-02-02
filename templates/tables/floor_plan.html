@@ -456,6 +456,7 @@ function createTableElement(table) {
 let cleanTableId = null;
 
 function confirmCleanTable(tableId, tableNumber) {
+    console.log('Open clean modal for table:', tableId, tableNumber);
     cleanTableId = tableId;
     document.getElementById('modal-table-number').textContent = `Meja ${tableNumber}`;
     document.getElementById('clean-table-modal').classList.remove('hidden');
@@ -467,20 +468,29 @@ function closeCleanModal() {
 }
 
 function confirmClean() {
-    if (!cleanTableId) return;
+    const tableId = cleanTableId;
+    console.log('Confirming clean for table:', tableId);
+    
+    if (!tableId) {
+        console.error('No table ID to clean');
+        return;
+    }
     
     closeCleanModal();
     
-    fetch(`/tables/${cleanTableId}/clean/`, {
+    fetch(`/tables/${tableId}/clean/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': window.CSRF_TOKEN
         }
     })
     .then(response => {
+        console.log('Response status:', response.status);
         if (response.ok) {
             // Reload page after successful clean
             window.location.reload();
+        } else {
+            console.error('Clean failed with status:', response.status);
         }
     })
     .catch(err => console.error('Error cleaning table:', err));
