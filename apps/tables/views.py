@@ -4,7 +4,7 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Prefetch
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 import json
 
 from .models import Table, TableArea, TableGroup
@@ -20,6 +20,7 @@ def trigger_client_event(response, event_name, data=None):
 
 
 @login_required
+@ensure_csrf_cookie
 def table_map(request):
     """Table floor plan"""
     areas = TableArea.objects.filter(
