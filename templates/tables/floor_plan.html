@@ -427,15 +427,23 @@ function createTableElement(table) {
 // Confirm and clean table
 function confirmCleanTable(tableId, tableNumber) {
     if (confirm(`Yakin ingin membersihkan meja ${tableNumber}?`)) {
-        // Create hidden form and submit
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = `/tables/${tableId}/clean/`;
-        form.innerHTML = `
-            <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
-        `;
-        document.body.appendChild(form);
-        form.submit();
+        // Use fetch to clean table via HTMX
+        fetch(`/tables/${tableId}/clean/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': window.CSRF_TOKEN,
+                'HX-Request': 'true'
+            }
+        })
+        .then(response => response.text())
+        .then(html => {
+            // Replace entire page with new floor plan
+            document.documentElement.innerHTML = html;
+            // Re-initialize Alpine.js for new content
+            Alpine.discardObservers();
+            Alpine.initTree(document.documentElement);
+        })
+        .catch(err => console.error('Error cleaning table:', err));
     }
 }
 
