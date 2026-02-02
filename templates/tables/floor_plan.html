@@ -427,23 +427,11 @@ function createTableElement(table) {
 // Confirm and clean table
 function confirmCleanTable(tableId, tableNumber) {
     if (confirm(`Yakin ingin membersihkan meja ${tableNumber}?`)) {
-        // Use fetch to clean table via HTMX
-        fetch(`/tables/${tableId}/clean/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': window.CSRF_TOKEN,
-                'HX-Request': 'true'
-            }
-        })
-        .then(response => response.text())
-        .then(html => {
-            // Replace entire page with new floor plan
-            document.documentElement.innerHTML = html;
-            // Re-initialize Alpine.js for new content
-            Alpine.discardObservers();
-            Alpine.initTree(document.documentElement);
-        })
-        .catch(err => console.error('Error cleaning table:', err));
+        // Use HTMX ajax to clean table
+        htmx.ajax('POST', `/tables/${tableId}/clean/`, {
+            target: 'body',
+            swap: 'outerHTML'
+        });
     }
 }
 

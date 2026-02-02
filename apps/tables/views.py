@@ -158,7 +158,6 @@ def open_table(request, table_id):
 
 
 @login_required
-@require_http_methods(["POST"])
 @login_required
 @require_http_methods(["POST"])
 def clean_table(request, table_id):
