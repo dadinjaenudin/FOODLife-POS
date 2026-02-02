@@ -427,11 +427,19 @@ function createTableElement(table) {
 // Confirm and clean table
 function confirmCleanTable(tableId, tableNumber) {
     if (confirm(`Yakin ingin membersihkan meja ${tableNumber}?`)) {
-        // Use HTMX ajax to clean table
-        htmx.ajax('POST', `/tables/${tableId}/clean/`, {
-            target: 'body',
-            swap: 'outerHTML'
-        });
+        fetch(`/tables/${tableId}/clean/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': window.CSRF_TOKEN
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Reload page after successful clean
+                window.location.reload();
+            }
+        })
+        .catch(err => console.error('Error cleaning table:', err));
     }
 }
 
