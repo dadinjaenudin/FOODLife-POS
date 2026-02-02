@@ -86,6 +86,11 @@
             }
             </script>
 
+            <!-- Global CSRF Token for dynamically created forms -->
+            <script>
+                window.CSRF_TOKEN = '{{ csrf_token }}';
+            </script>
+
             <div x-data="floorPlanTabs()" class="w-full">
                 <!-- Tabs Navigation -->
                 <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
@@ -379,6 +384,7 @@ function createTableElement(table) {
                   hx-target="body"
                   hx-swap="outerHTML"
                   class="table-form">
+                <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
                 <button type="submit"
                         class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg
                         border-gray-300 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100 cursor-pointer flex items-center justify-center">
@@ -390,6 +396,7 @@ function createTableElement(table) {
         const disabled = table.status === 'reserved' ? 'disabled' : '';
         html += `
             <form method="POST" action="/tables/${table.id}/open/" class="table-form">
+                <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
                 <button type="submit"
                         ${disabled}
                         class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg flex items-center justify-center ${statusColorClass}">
