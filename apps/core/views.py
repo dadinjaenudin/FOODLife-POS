@@ -21,6 +21,8 @@ def login_view(request):
         
         if user is not None:
             login(request, user)
+            # Ensure session is saved
+            request.session.save()
             
             # Smart redirect based on user role
             next_url = request.GET.get('next')
@@ -54,7 +56,11 @@ def login_view(request):
 
 
 def logout_view(request):
-    logout(request)
+    """Logout and clear session"""
+    from django.contrib.auth import logout as auth_logout
+    auth_logout(request)
+    # Clear all session data
+    request.session.flush()
     return redirect('core:login')
 
 
@@ -67,6 +73,8 @@ def pin_login(request):
         try:
             user = User.objects.get(pin=pin, is_active=True)
             login(request, user)
+            # Ensure session is saved
+            request.session.save()
             
             return redirect('pos:main')
         except User.DoesNotExist:

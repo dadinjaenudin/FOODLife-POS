@@ -50,6 +50,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware_session.SessionSafeguardMiddleware',  # Session protection
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_htmx.middleware.HtmxMiddleware',
@@ -70,6 +71,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'apps.core.context_processors.terminal_config',
+                'apps.core.context_processors.store_config',
             ],
         },
     },
@@ -165,11 +167,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Session Settings
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Use database backend for reliability
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = False  # False for development (HTTP)
 SESSION_SAVE_EVERY_REQUEST = True  # Ensure session is saved on every request
+SESSION_COOKIE_NAME = 'pos_sessionid'  # Custom name to avoid conflicts
+SESSION_COOKIE_PATH = '/'  # Ensure cookie is valid for all paths
 
 # CSRF Settings
 CSRF_TRUSTED_ORIGINS = [
@@ -207,6 +212,16 @@ PRINT_AGENT_API_KEY = os.environ.get('PRINT_AGENT_API_KEY', 'your-secret-api-key
 HO_API_URL = os.environ.get('HO_API_URL', None)
 HO_API_USERNAME = os.environ.get('HO_API_USERNAME', 'admin')
 HO_API_PASSWORD = os.environ.get('HO_API_PASSWORD', 'admin123')
+
+# Edge MinIO Settings (Object Storage for Product Images)
+EDGE_MINIO_ENDPOINT = os.environ.get('EDGE_MINIO_ENDPOINT', 'localhost:9002')
+EDGE_MINIO_ACCESS_KEY = os.environ.get('EDGE_MINIO_ACCESS_KEY', 'foodlife_admin')
+EDGE_MINIO_SECRET_KEY = os.environ.get('EDGE_MINIO_SECRET_KEY', 'foodlife_secret_2026')
+EDGE_MINIO_SECURE = os.environ.get('EDGE_MINIO_SECURE', 'False') == 'True'
+
+# HO MinIO Settings (to download product images from HO)
+HO_MINIO_ENDPOINT = os.environ.get('HO_MINIO_ENDPOINT', 'host.docker.internal:9000')
+HO_MINIO_SECURE = os.environ.get('HO_MINIO_SECURE', 'False') == 'True'
 
 # REST Framework & JWT Configuration
 REST_FRAMEWORK = {

@@ -2,6 +2,18 @@
 
 {% block title %}Master Data - Management{% endblock %}
 
+{% block extra_css %}
+<style>
+    @keyframes spin-slow {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .animate-spin-slow {
+        animation: spin-slow 3s linear infinite;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="container mx-auto px-3 py-3">
@@ -99,11 +111,11 @@
                                 <h3 class="text-sm font-bold text-gray-800">{{ item.name }}</h3>
                                 <p class="text-[10px] text-gray-500 font-mono">{{ item.table }}</p>
                                 {% if item.table == 'core_company' %}
-                                <p class="text-[10px] text-blue-600 mt-0.5">{{ company.name }}</p>
+                                <p class="text-[10px] text-blue-600 mt-0.5">{{ company.code }} - {{ company.name }}</p>
                                 {% elif item.table == 'core_brand' %}
-                                <p class="text-[10px] text-blue-600 mt-0.5">{{ brand.name }}</p>
+                                <p class="text-[10px] text-blue-600 mt-0.5">{{ brand.code }} - {{ brand.name }}</p>
                                 {% elif item.table == 'core_Store' %}
-                                <p class="text-[10px] text-blue-600 mt-0.5">{{ store_config.store_name }}</p>
+                                <p class="text-[10px] text-blue-600 mt-0.5">{{ store_config.store_code }} - {{ store_config.store_name }}</p>
                                 {% endif %}
                             </div>
                         </div>
@@ -153,6 +165,105 @@
         </div>
     </div>
 
+    <!-- Product Images (MinIO Storage) -->
+    <div class="mb-3">
+        <div class="flex items-center justify-between mb-2">
+            <div>
+                <h2 class="text-base font-bold text-gray-800">Product Images (MinIO Storage)</h2>
+                <p class="text-xs text-gray-600 mt-0.5">Product photos synced from HO MinIO to Edge MinIO</p>
+                <p class="text-[10px] text-purple-600 mt-0.5">
+                    <svg class="w-3 h-3 inline-block mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Bucket policy auto-configured on first sync (public read for browser access)
+                </p>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <!-- Product Images Card -->
+            <div class="bg-white rounded-lg shadow border border-gray-200 hover:shadow-md transition-shadow">
+                <div class="p-3">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="flex items-center flex-1">
+                            <span class="text-2xl mr-2">📸</span>
+                            <div>
+                                <h3 class="text-sm font-bold text-gray-800">Product Images</h3>
+                                <p class="text-[10px] text-gray-500 font-mono">product-images</p>
+                            </div>
+                        </div>
+                        <span class="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold rounded">⬇️ PULL</span>
+                    </div>
+                    
+                    <p class="text-xs text-gray-600 mb-2">Product photos from HO MinIO server</p>
+                    
+                    <!-- MinIO Access Info -->
+                    <div class="mb-2 p-2 bg-gray-50 border border-gray-200 rounded text-[10px]">
+                        <div class="flex items-center mb-1">
+                            <svg class="w-3 h-3 mr-1 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span class="font-semibold text-gray-700">MinIO Console Access:</span>
+                        </div>
+                        <div class="space-y-0.5 ml-4">
+                            <div class="flex items-center">
+                                <span class="text-gray-600 w-16">URL:</span>
+                                <a href="http://localhost:9003" target="_blank" class="text-blue-600 hover:underline font-mono">http://localhost:9003</a>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-gray-600 w-16">Username:</span>
+                                <code class="bg-white px-1 py-0.5 rounded border border-gray-200 font-mono">minioadmin</code>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-gray-600 w-16">Password:</span>
+                                <code class="bg-white px-1 py-0.5 rounded border border-gray-200 font-mono">minioadmin</code>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="text-center">
+                            <div class="text-xl font-bold text-gray-800">{{ edge_images_count|default:0 }}</div>
+                            <div class="text-[10px] text-gray-500">Images</div>
+                        </div>
+                        
+                        <div class="flex gap-1">
+                            <button onclick="syncProductImages()" 
+                                    id="sync-images-btn-card"
+                                    class="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded transition-colors flex items-center"
+                                    title="Sync images from HO MinIO (auto-creates bucket & sets public policy)">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                Sync
+                            </button>
+                            <a href="http://localhost:9003" 
+                               target="_blank"
+                               class="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs font-semibold rounded transition-colors flex items-center"
+                               title="Open Edge MinIO Console">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                </svg>
+                                MinIO
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Progress bar (hidden initially) -->
+        <div id="sync-progress" class="hidden mt-3 bg-white rounded-lg shadow border border-gray-200 p-3">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-medium text-gray-700">Syncing images...</span>
+                <span class="text-xs text-gray-600"><span id="sync-current">0</span> / <span id="sync-total">0</span></span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="sync-progress-bar" class="bg-purple-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Transaction Data (Compact) -->
     <div class="mb-3">
         <h2 class="text-base font-bold text-gray-800 mb-1">Transaction Data (Push to HO)</h2>
@@ -196,6 +307,141 @@
     </div>
 
     {% endif %}
+</div>
+
+<!-- Product Images Sync Confirmation Modal -->
+<div id="sync-images-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-t-2xl p-6">
+            <div class="flex items-center justify-center w-16 h-16 bg-white bg-opacity-20 rounded-full mx-auto mb-4">
+                <svg class="w-10 h-10 text-white animate-spin-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white text-center">Sync from HO</h2>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6">
+            <p class="text-gray-700 text-center mb-6">
+                Sync <strong>Product Images</strong> from HO Server?
+            </p>
+
+            <!-- Operation Details -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div class="flex items-start">
+                    <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <div>
+                        <h4 class="font-bold text-blue-800 text-sm mb-1">Image Sync Operation</h4>
+                        <p class="text-blue-700 text-xs leading-relaxed">
+                            This will download latest product images from HO MinIO and update local Edge database. This may take a few moments.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3">
+                <button onclick="closeSyncImagesModal()" 
+                        class="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Cancel
+                </button>
+                <button onclick="confirmSyncProductImages()" 
+                        class="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Sync Now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Product Images Sync Success Modal -->
+<div id="sync-success-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 transform transition-all">
+        <!-- Modal Header - Green Success -->
+        <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl p-6">
+            <div class="flex items-center justify-center w-16 h-16 bg-white bg-opacity-20 rounded-full mx-auto mb-4">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white text-center">Sync Completed</h2>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6">
+            <p class="text-gray-700 text-center mb-6 font-medium">
+                Successfully synced <strong id="sync-result-message">Product Images</strong>
+            </p>
+
+            <!-- Sync Results Summary -->
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <h4 class="font-bold text-green-800 text-sm mb-3">Sync Results:</h4>
+                
+                <div class="space-y-2">
+                    <!-- Synced -->
+                    <div class="flex items-center justify-between bg-white rounded px-3 py-2">
+                        <div class="flex items-center">
+                            <svg class="w-4 h-4 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                            <span class="text-sm text-gray-700 font-medium">✓ product-images</span>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs">
+                            <span class="text-gray-500">Synced: <strong class="text-green-600" id="result-synced">0</strong></span>
+                            <span class="text-gray-400">→</span>
+                            <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded font-semibold">OK</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Skipped -->
+                    <div class="flex items-center justify-between bg-white rounded px-3 py-2">
+                        <div class="flex items-center">
+                            <svg class="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+                            </svg>
+                            <span class="text-sm text-gray-700">Skipped (already synced)</span>
+                        </div>
+                        <span class="text-xs text-gray-600"><strong id="result-skipped">0</strong> images</span>
+                    </div>
+                    
+                    <!-- Failed -->
+                    <div class="flex items-center justify-between bg-white rounded px-3 py-2" id="result-failed-row">
+                        <div class="flex items-center">
+                            <svg class="w-4 h-4 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                            </svg>
+                            <span class="text-sm text-gray-700">Failed</span>
+                        </div>
+                        <span class="text-xs text-gray-600"><strong class="text-red-600" id="result-failed">0</strong> images</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success Banner -->
+            <div class="bg-green-100 border border-green-300 rounded-lg p-3 mb-6 text-center">
+                <span class="text-green-800 font-semibold text-sm">✓ <span id="success-banner-text">Sync completed successfully!</span></span>
+            </div>
+
+            <!-- Close Button -->
+            <button onclick="closeSyncSuccessModal()" 
+                    class="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                Close & Reload
+            </button>
+        </div>
+    </div>
 </div>
 
 <!-- Sync Confirmation Modal (matching terminal delete pattern) -->
@@ -429,6 +675,126 @@ async function performSync(selectedTables) {
 function closeSyncResults() {
     document.getElementById('sync-results-modal').classList.add('hidden');
     location.reload();
+}
+
+async function syncProductImages() {
+    // Show confirmation modal instead of alert
+    document.getElementById('sync-images-modal').classList.remove('hidden');
+}
+
+function closeSyncImagesModal() {
+    document.getElementById('sync-images-modal').classList.add('hidden');
+}
+
+function closeSyncSuccessModal() {
+    document.getElementById('sync-success-modal').classList.add('hidden');
+    // Reload page to update counts
+    location.reload();
+}
+
+async function confirmSyncProductImages() {
+    // Close modal
+    closeSyncImagesModal();
+    
+    const btn = document.getElementById('sync-images-btn-card');
+    const progressDiv = document.getElementById('sync-progress');
+    const progressBar = document.getElementById('sync-progress-bar');
+    const syncCurrent = document.getElementById('sync-current');
+    const syncTotal = document.getElementById('sync-total');
+    
+    // Disable button and show progress
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+    btn.innerHTML = '<svg class="w-3 h-3 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>Syncing...';
+    progressDiv.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/management/sync-product-images/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Hide progress bar
+            progressDiv.classList.add('hidden');
+            
+            // Populate success modal with results
+            document.getElementById('result-synced').textContent = result.synced_count || 0;
+            document.getElementById('result-skipped').textContent = result.skipped_count || 0;
+            document.getElementById('result-failed').textContent = result.failed_count || 0;
+            
+            // Update success message
+            const totalImages = result.synced_count + result.skipped_count;
+            document.getElementById('sync-result-message').textContent = `${totalImages} image(s)`;
+            
+            // Update banner text based on results
+            if (result.failed_count > 0) {
+                document.getElementById('success-banner-text').textContent = `Sync completed with ${result.failed_count} failed image(s)`;
+            } else if (result.skipped_count > 0 && result.synced_count === 0) {
+                document.getElementById('success-banner-text').textContent = 'All images already synced!';
+            } else {
+                document.getElementById('success-banner-text').textContent = 'Sync completed successfully!';
+            }
+            
+            // Show success modal
+            document.getElementById('sync-success-modal').classList.remove('hidden');
+        } else {
+            showNotification('❌ Sync failed: ' + result.message, 'warning');
+            
+            // Re-enable button
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            btn.innerHTML = '<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>Sync';
+            progressDiv.classList.add('hidden');
+        }
+    } catch (error) {
+        showNotification('❌ Sync error: ' + error.message, 'warning');
+        
+        // Re-enable button
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        btn.innerHTML = '<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>Sync';
+        progressDiv.classList.add('hidden');
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Remove any existing notifications
+    document.querySelectorAll('.toast-notification').forEach(n => n.remove());
+
+    const notification = document.createElement('div');
+    notification.className = `toast-notification fixed top-24 right-6 backdrop-blur-md ${
+        type === 'success' ? 'bg-green-500/90' :
+        type === 'info' ? 'bg-blue-500/90' :
+        'bg-yellow-500/90'
+    } text-white px-6 py-3 rounded-lg shadow-2xl z-50 font-semibold flex items-center gap-2`;
+    notification.innerHTML = `<span>${message}</span>`;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateY(-20px)';
+        notification.style.transition = 'all 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 2500);
+}
+
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+           document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 </script>
 {% endblock %}

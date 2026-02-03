@@ -407,19 +407,54 @@ class ModifierOption(models.Model):
 
 
 class ProductPhoto(models.Model):
-    """Additional product photos for gallery"""
+    """Additional product photos for gallery - synced with HO MinIO"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='photos')
-    image = models.ImageField(upload_to='products/gallery/')
+    
+    # MinIO storage fields
+    object_key = models.CharField(max_length=500, blank=True, help_text='Path di Edge MinIO')
+    filename = models.CharField(max_length=255, blank=True)
+    size = models.IntegerField(null=True, blank=True, help_text='File size in bytes')
+    content_type = models.CharField(max_length=100, blank=True, default='image/jpeg')
+    checksum = models.CharField(max_length=64, blank=True, help_text='MD5 or SHA256 checksum')
+    version = models.IntegerField(default=1, help_text='Version for cache busting')
+    
+    # Display settings
+    is_primary = models.BooleanField(default=False, help_text='Primary/main product image')
+    sort_order = models.IntegerField(default=0, help_text='Display order')
     caption = models.CharField(max_length=200, blank=True)
-    order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+    
+    # Legacy field (deprecated - use object_key)
+    image = models.ImageField(upload_to='products/gallery/', blank=True, null=True)
+    
+    # Sync tracking
+    last_sync_at = models.DateTimeField(null=True, blank=True, help_text='Last synced from HO')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['order', '-uploaded_at']
+        db_table = 'core_productphoto'
+        ordering = ['sort_order', '-created_at']
+        indexes = [
+            models.Index(fields=['product', 'is_primary']),
+            models.Index(fields=['product', 'sort_order']),
+        ]
     
     def __str__(self):
-        return f"{self.product.name} - Photo {self.id}"
+        return f"{self.product.name} - Photo {self.filename or self.id}"
+    
+    def get_url(self):
+        """Get URL for photo - prioritize MinIO object_key"""
+        if self.object_key:
+            # Return MinIO URL (will be implemented in settings)
+            from django.conf import settings
+            minio_url = getattr(settings, 'MINIO_EXTERNAL_URL', 'http://localhost:9002')
+            bucket = getattr(settings, 'MINIO_BUCKET', 'product-images')
+            return f"{minio_url}/{bucket}/{self.object_key}"
+        elif self.image:
+            return self.image.url
+        return None
 
 
 class Member(models.Model):

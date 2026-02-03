@@ -33,24 +33,17 @@ class TerminalMiddleware:
         self.get_response = get_response
     
     def __call__(self, request):
-        print(f"\n=== TERMINAL MIDDLEWARE ===")
-        print(f"Path: {request.path}")
-        
         # Skip exempt URLs
         is_exempt = any(request.path.startswith(url) for url in self.EXEMPT_URLS)
-        print(f"Is exempt: {is_exempt}")
         if is_exempt:
-            print(f"Skipping middleware - exempt URL")
             return self.get_response(request)
         
         # Get terminal ID from header (HTMX requests) or session
         terminal_id = request.headers.get('X-Terminal-ID') or request.session.get('terminal_id')
-        print(f"Terminal ID: {terminal_id}")
         
         if not terminal_id:
             # No terminal ID - redirect to setup
-            logger.warning(f'No terminal ID for path: {request.path}')
-            print(f"REDIRECTING TO terminal_setup - No terminal ID")
+            logger.warning(f'No terminal ID for path: {request.path}, user: {request.user}')
             return redirect('core:terminal_setup')
         
         # Validate terminal exists and is active
@@ -73,9 +66,10 @@ class TerminalMiddleware:
             
         except POSTerminal.DoesNotExist:
             logger.error(f'Invalid terminal ID: {terminal_id}')
-            # Clear only terminal-related session data and redirect to setup
-            request.session.pop('terminal_id', None)
-            request.session.modified = True
+            # Clear only terminal-related session data, preserve user session
+            if 'terminal_id' in request.session:
+                del request.session['terminal_id']
+            # Don't force session.modified = True here, let Django handle it
             return redirect('core:terminal_setup')
         
         response = self.get_response(request)

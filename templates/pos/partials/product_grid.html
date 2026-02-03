@@ -10,7 +10,14 @@
              hx-get="{% url 'pos:add_item_modal' bill.id product.id %}"
              hx-target="#modal-container"
              {% endif %}>
-            {% if product.image %}
+            {% if product.primary_photos|length > 0 %}
+                {% with product.primary_photos.0 as photo %}
+                <img src="{{ minio_endpoint }}/{{ minio_bucket }}/{{ photo.object_key }}?v={{ photo.checksum|slice:':8' }}" 
+                     alt="{{ product.name }}" 
+                     class="w-full h-full object-cover {% if bill and product.stock_quantity %}transition-transform duration-300 hover:scale-105{% endif %}"
+                     onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 flex items-center justify-center\'><div class=\'text-center\'><span class=\'text-4xl opacity-30\'>🍽️</span><p class=\'text-[8px] text-gray-400 mt-1\'>Gambar menu<br>belum tersedia</p></div></div>';">
+                {% endwith %}
+            {% elif product.image %}
             <img src="{{ product.image.url }}" 
                  alt="{{ product.name }}" 
                  class="w-full h-full object-cover {% if bill and product.stock_quantity %}transition-transform duration-300 hover:scale-105{% endif %}">

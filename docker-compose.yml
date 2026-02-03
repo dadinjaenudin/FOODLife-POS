@@ -135,7 +135,32 @@ services:
       - DB_PASSWORD=postgres123
       - REDIS_URL=redis://edge_redis:6379/0
 
+  # MinIO Object Storage untuk Product Images (Edge Storage - fallback/cache)
+  edge_minio:
+    image: minio/minio:latest
+    container_name: fnb_edge_minio
+    ports:
+      - "9002:9000"  # MinIO API (Edge - port 9002)
+      - "9003:9001"  # MinIO Console (Edge - port 9003)
+    environment:
+      MINIO_ROOT_USER: foodlife_admin
+      MINIO_ROOT_PASSWORD: foodlife_secret_2026
+    volumes:
+      - edge_minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    networks:
+      pos_network:
+        aliases:
+          - edgeminio  # Network alias without underscore for MinIO client compatibility
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   edge_postgres_data:
   edge_static_volume:
   edge_media_volume:
+  edge_minio_data:

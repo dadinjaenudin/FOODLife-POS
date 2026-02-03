@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.db.models import Sum, Avg, Q, Count
 from datetime import datetime, timedelta
 from decimal import Decimal
+import logging
 
 from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto
 from apps.core.models_session import StoreSession
@@ -17,6 +18,7 @@ from apps.tables.models import Table, TableArea
 from apps.promotions.models import Promotion
 from .decorators import manager_required, supervisor_required
 
+logger = logging.getLogger(__name__)
 
 def check_store_config(request, template_name):
     """Helper to check if store is configured, return error response if not"""
@@ -708,6 +710,13 @@ def master_data(request):
     Brand = store_config.brand
     company = Brand.company
     
+    # Count product images
+    edge_images_count = ProductPhoto.objects.filter(product__category__brand=Brand).count()
+    last_image_sync = ProductPhoto.objects.filter(
+        product__category__brand=Brand,
+        last_sync_at__isnull=False
+    ).order_by('-last_sync_at').first()
+    
     # Count all master data
     master_data_summary = [
         {
@@ -804,15 +813,86 @@ def master_data(request):
     
     context = {
         'store_config': store_config,
-        'Brand': Brand,
+        'brand': Brand,  # Changed from 'Brand' to 'brand' for consistency with template
         'company': company,
         'master_data_summary': master_data_summary,
         'transaction_data': transaction_data,
         'total_master_tables': len(master_data_summary),
         'total_transaction_tables': len(transaction_data),
+        'edge_images_count': edge_images_count,
+        'ho_images_count': 0,  # Will be fetched from HO API
+        'last_image_sync': last_image_sync.last_sync_at if last_image_sync else None,
     }
     
     return render(request, 'management/master_data.html', context)
+
+
+@csrf_exempt
+@require_POST
+@manager_required
+def sync_product_images(request):
+    """
+    Sync product images from HO MinIO to Edge MinIO
+    """
+    from apps.core.services_photo_sync import ProductPhotoSyncService
+    
+    try:
+        store_config = Store.get_current()
+        if not store_config:
+            return JsonResponse({
+                'success': False,
+                'message': 'Store configuration not found'
+            }, status=400)
+        
+        # Get active StoreBrand to retrieve ho_store_id
+        from apps.core.models import StoreBrand
+        store_brand = StoreBrand.objects.filter(store=store_config, is_active=True).first()
+        if not store_brand:
+            return JsonResponse({
+                'success': False,
+                'message': 'No active brand found for this store'
+            }, status=400)
+        
+        brand = store_brand.brand
+        company = brand.company
+        ho_store_id = str(store_brand.ho_store_id)  # Use HO store ID, not Edge store ID
+        
+        # Initialize sync service
+        sync_service = ProductPhotoSyncService()
+        
+        # Sync photos
+        logger.info(f"Starting photo sync for company={company.id}, brand={brand.id}, ho_store_id={ho_store_id}")
+        result = sync_service.sync_photos(
+            company_id=str(company.id),
+            brand_id=str(brand.id),
+            store_id=ho_store_id,  # Send HO store ID to HO API
+            limit=50  # Sync 50 photos at a time
+        )
+        
+        if result['success']:
+            return JsonResponse({
+                'success': True,
+                'message': f"Synced {result['synced_count']} images successfully",
+                'synced_count': result['synced_count'],
+                'skipped_count': result['skipped_count'],
+                'failed_count': result['failed_count'],
+                'total_size': result['total_size'],
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': result.get('error', 'Unknown error'),
+                'synced_count': result.get('synced_count', 0),
+                'skipped_count': result.get('skipped_count', 0),
+                'failed_count': result.get('failed_count', 0),
+            }, status=500)
+        
+    except Exception as e:
+        logger.error(f"Error syncing product images: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
 
 
 @csrf_exempt
@@ -1435,13 +1515,23 @@ def categories(request):
 @manager_required
 def products(request):
     """Products Management"""
+    from django.conf import settings
+    from django.db.models import Prefetch
+    
     store_config = Store.get_current()
     Brand = store_config.brand
     
-    # Get all products
+    # Get all products with prefetch photos
     products_list = Product.objects.filter(
         category__brand=Brand
-    ).select_related('category').prefetch_related('product_modifiers__modifier', 'photos').order_by('category__name', 'name')
+    ).select_related('category').prefetch_related(
+        'product_modifiers__modifier',
+        Prefetch(
+            'photos',  # Use 'photos' related_name from ProductPhoto model
+            queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
+            to_attr='primary_photos'
+        )
+    ).order_by('category__name', 'name')
     
     # Filter by category
     category_filter = request.GET.get('category', '')
@@ -1481,6 +1571,10 @@ def products(request):
     except EmptyPage:
         products_page = paginator.page(paginator.num_pages)
     
+    # Get MinIO settings (browser-accessible URL)
+    minio_endpoint = 'http://localhost:9002'  # External browser access
+    minio_bucket = 'product-images'
+    
     context = {
         'products': products_page,
         'categories': categories_list,
@@ -1491,6 +1585,8 @@ def products(request):
         'search': search,
         'status_filter': status_filter,
         'paginator': paginator,
+        'minio_endpoint': minio_endpoint,
+        'minio_bucket': minio_bucket,
     }
     
     return render(request, 'management/products.html', context)
@@ -2736,13 +2832,20 @@ def product_detail(request, product_id):
         category__brand=Brand
     )
     
+    # MinIO settings for product images
+    minio_endpoint = 'http://localhost:9002'
+    minio_bucket = 'product-images'
+    
     context = {
         'product': product,
+        'minio_endpoint': minio_endpoint,
+        'minio_bucket': minio_bucket,
     }
     
     return render(request, 'management/product_detail.html', context)
 
 
+@manager_required
 @manager_required
 def product_edit(request, product_id):
     """Edit Product"""
@@ -2756,38 +2859,62 @@ def product_edit(request, product_id):
     )
     
     if request.method == 'POST':
-        # Update product
-        product.name = request.POST.get('name', product.name)
-        product.sku = request.POST.get('sku', product.sku)
-        product.description = request.POST.get('description', '')
-        product.price = Decimal(request.POST.get('price', product.price))
-        product.cost = Decimal(request.POST.get('cost', 0))
-        product.stock_quantity = int(request.POST.get('stock_quantity', product.stock_quantity))
-        product.low_stock_alert = int(request.POST.get('low_stock_alert', product.low_stock_alert))
-        product.printer_target = request.POST.get('printer_target', product.printer_target)
-        product.is_active = request.POST.get('is_active') == 'on'
-        product.track_stock = request.POST.get('track_stock') == 'on'
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Product edit POST request for {product_id}")
+        logger.info(f"POST data: {request.POST}")
         
-        # Handle category
-        category_id = request.POST.get('category')
-        if category_id:
-            category = Category.objects.filter(id=category_id, brand=Brand).first()
-            if category:
-                product.category = category
-        
-        # Handle image upload
-        if 'image' in request.FILES:
-            # Delete old image if exists
-            if product.image:
-                product.image.delete(save=False)
-            product.image = request.FILES['image']
-        
-        product.save()
-        
-        from django.contrib import messages
-        from django.shortcuts import redirect
-        messages.success(request, f'Product "{product.name}" updated successfully!')
-        return redirect('management:products')
+        try:
+            # Update product
+            name = request.POST.get('name', product.name)
+            logger.info(f"Name: {name}")
+            
+            product.name = name
+            product.sku = request.POST.get('sku', product.sku)
+            product.description = request.POST.get('description', '')
+            product.price = Decimal(request.POST.get('price', product.price))
+            product.cost = Decimal(request.POST.get('cost', 0))
+            product.stock_quantity = int(request.POST.get('stock_quantity', product.stock_quantity))
+            product.low_stock_alert = int(request.POST.get('low_stock_alert', product.low_stock_alert))
+            product.printer_target = request.POST.get('printer_target', product.printer_target)
+            product.is_active = request.POST.get('is_active') == 'on'
+            product.track_stock = request.POST.get('track_stock') == 'on'
+            
+            logger.info(f"Updated fields successfully")
+            
+            # Handle category
+            category_id = request.POST.get('category')
+            logger.info(f"Category ID: {category_id}")
+            if category_id:
+                try:
+                    category = Category.objects.get(id=category_id, brand=Brand)
+                    product.category = category
+                    logger.info(f"Category updated to {category.name}")
+                except Category.DoesNotExist:
+                    logger.warning(f"Category {category_id} not found")
+                    pass
+            
+            # Handle image upload
+            if 'image' in request.FILES:
+                # Delete old image if exists
+                if product.image:
+                    product.image.delete(save=False)
+                product.image = request.FILES['image']
+                logger.info(f"Image uploaded")
+            
+            product.save()
+            logger.info(f"Product saved successfully")
+            
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            messages.success(request, f'Product "{product.name}" updated successfully!')
+            return redirect('management:products')
+        except Exception as e:
+            import traceback
+            logger.error(f"Error updating product: {str(e)}")
+            logger.error(traceback.format_exc())
+            from django.http import HttpResponse
+            return HttpResponse(f'Error: {str(e)}', status=400)
     
     # GET request - show form
     categories = Category.objects.filter(brand=Brand).order_by('name')

@@ -52,7 +52,9 @@ def render_bill_panel(request, bill):
 @ensure_csrf_cookie
 def pos_main(request):
     """Main POS interface"""
-    from apps.core.models import Store
+    from apps.core.models import Store, ProductPhoto
+    from django.db.models import Prefetch
+    
     store_config = Store.get_current()
 
     brand = request.user.brand
@@ -81,7 +83,14 @@ def pos_main(request):
     products = Product.objects.filter(
         category__brand = brand, 
         is_active=True
-    ).select_related('category', 'category__parent').prefetch_related('product_modifiers__modifier').order_by(
+    ).select_related('category', 'category__parent').prefetch_related(
+        'product_modifiers__modifier',
+        Prefetch(
+            'photos',
+            queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
+            to_attr='primary_photos'
+        )
+    ).order_by(
         'category__sort_order',
         'category__name',
         'name'
@@ -129,6 +138,10 @@ def pos_main(request):
     
     held_count = Bill.objects.filter(brand=brand, status='hold').count()
     
+    # MinIO settings for product images
+    minio_endpoint = 'http://localhost:9002'
+    minio_bucket = 'product-images'
+    
     context = {
         'categories': categories,
         'parent_categories': parent_categories,
@@ -141,6 +154,8 @@ def pos_main(request):
         'has_sent_items': has_sent_items,
         'held_count': held_count,
         'store_config': store_config,
+        'minio_endpoint': minio_endpoint,
+        'minio_bucket': minio_bucket,
     }
     return render(request, 'pos/main.html', context)
 
@@ -148,6 +163,9 @@ def pos_main(request):
 @login_required
 def product_list(request):
     """Product list partial - HTMX"""
+    from apps.core.models import ProductPhoto
+    from django.db.models import Prefetch
+    
     brand = request.user.brand
     category_id = request.GET.get('category')
     parent_id = request.GET.get('parent')
@@ -157,7 +175,14 @@ def product_list(request):
     products = Product.objects.filter(
         category__brand = brand, 
         is_active=True
-    ).select_related('category', 'category__parent').prefetch_related('product_modifiers__modifier').order_by(
+    ).select_related('category', 'category__parent').prefetch_related(
+        'product_modifiers__modifier',
+        Prefetch(
+            'photos',
+            queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
+            to_attr='primary_photos'
+        )
+    ).order_by(
         'category__sort_order', 
         'category__name', 
         'name'
@@ -180,10 +205,19 @@ def product_list(request):
     if bill_id:
         bill = Bill.objects.filter(id=bill_id, status='open').first()
     
+    # MinIO settings
+    minio_endpoint = 'http://localhost:9002'
+    minio_bucket = 'product-images'
+    
     is_modal = request.GET.get('modal') == '1'
     template = 'pos/partials/product_grid_mini.html' if is_modal else 'pos/partials/product_grid.html'
     
-    return render(request, template, {'products': products, 'bill': bill})
+    return render(request, template, {
+        'products': products, 
+        'bill': bill,
+        'minio_endpoint': minio_endpoint,
+        'minio_bucket': minio_bucket,
+    })
 
 
 @login_required

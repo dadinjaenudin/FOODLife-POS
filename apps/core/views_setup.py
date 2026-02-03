@@ -441,7 +441,9 @@ def setup_reset(request):
         if confirm == 'reset':
             # Delete in proper order (respects FK constraints)
             from apps.core.models import Category, Product, Modifier
+            from apps.pos.models import Bill, BillItem, Payment
             
+            # Count before deletion
             terminal_count = POSTerminal.objects.count()
             store_count = Store.objects.count()
             product_count = Product.objects.count()
@@ -449,6 +451,14 @@ def setup_reset(request):
             modifier_count = Modifier.objects.count()
             brand_count = Brand.objects.count()
             company_count = Company.objects.count()
+            bill_count = Bill.objects.count()
+            bill_item_count = BillItem.objects.count()
+            payment_count = Payment.objects.count()
+            
+            # Step 0: Delete POS transactions (they reference Products, Store, Brand, Company with PROTECT)
+            BillItem.objects.all().delete()
+            Payment.objects.all().delete()
+            Bill.objects.all().delete()
             
             # Step 1: Delete terminals (depends on Store)
             POSTerminal.objects.all().delete()
@@ -470,7 +480,8 @@ def setup_reset(request):
             messages.success(request, 
                 f'✅ Complete reset successful! Deleted: {company_count} companies, '
                 f'{brand_count} brands, {store_count} stores, {terminal_count} terminals, '
-                f'{product_count} products, {category_count} categories, {modifier_count} modifiers. '
+                f'{product_count} products, {category_count} categories, {modifier_count} modifiers, '
+                f'{bill_count} bills, {bill_item_count} bill items, {payment_count} payments. '
                 f'Start fresh from /setup/')
         else:
             messages.error(request, 'Confirmation failed. Type "reset" (lowercase) to confirm.')

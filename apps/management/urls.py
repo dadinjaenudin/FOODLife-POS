@@ -27,6 +27,7 @@ urlpatterns = [
     # Master Data
     path('master-data/', views.master_data, name='master_data'),
     path('master-data/sync-from-ho/', views.sync_from_ho, name='sync_from_ho'),
+    path('sync-product-images/', views.sync_product_images, name='sync_product_images'),
     path('master-data/import-excel/', views.import_excel_page, name='import_excel'),
     path('master-data/import-excel/template/', views.download_excel_template, name='download_excel_template'),
     path('master-data/import-excel/reset/', views.import_excel_reset, name='import_excel_reset'),
