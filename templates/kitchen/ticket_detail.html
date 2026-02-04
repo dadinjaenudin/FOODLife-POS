@@ -1,0 +1,247 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Ticket #{{ ticket.id }}{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-50">
+    <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center space-x-3">
+                            <a href="{% url 'kitchen:tickets' %}" class="text-gray-600 hover:text-gray-900">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                                </svg>
+                            </a>
+                            <div>
+                                <h1 class="text-2xl font-bold text-gray-900">Ticket #{{ ticket.id }}</h1>
+                                <p class="text-sm text-gray-600 mt-1">{{ ticket.printer_target|upper }} - Bill {{ ticket.bill.bill_number }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Ticket Details -->
+        <main class="p-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left Column - Ticket Info -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Status Card -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Ticket Status</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-600">Current Status</p>
+                                <p class="mt-1">
+                                    {% if ticket.status == 'new' %}
+                                    <span class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium text-sm">NEW</span>
+                                    {% elif ticket.status == 'printing' %}
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium text-sm">PRINTING</span>
+                                    {% elif ticket.status == 'printed' %}
+                                    <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium text-sm">PRINTED</span>
+                                    {% elif ticket.status == 'failed' %}
+                                    <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium text-sm">FAILED</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Station</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.printer_target|upper }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Created At</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.created_at|date:"d M Y H:i:s" }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Print Attempts</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.print_attempts }} / {{ ticket.max_retries }}</p>
+                            </div>
+                            {% if ticket.printer_ip %}
+                            <div>
+                                <p class="text-sm text-gray-600">Printer IP</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.printer_ip }}</p>
+                            </div>
+                            {% endif %}
+                            {% if ticket.printed_at %}
+                            <div>
+                                <p class="text-sm text-gray-600">Printed At</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.printed_at|date:"d M Y H:i:s" }}</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if ticket.error_message %}
+                        <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p class="text-sm font-medium text-red-800">Error Message:</p>
+                            <p class="text-sm text-red-700 mt-1">{{ ticket.error_message }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Items List -->
+                    <div class="bg-white rounded-lg shadow overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h2 class="text-lg font-semibold text-gray-900">Order Items</h2>
+                        </div>
+                        <div class="divide-y divide-gray-200">
+                            {% for item in ticket.items.all %}
+                            <div class="px-6 py-4">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <p class="font-medium text-gray-900">{{ item.bill_item.product.name }}</p>
+                                        {% if item.bill_item.notes %}
+                                        <p class="text-sm text-gray-600 mt-1">{{ item.bill_item.notes }}</p>
+                                        {% endif %}
+                                        {% if item.bill_item.modifiers %}
+                                        <div class="mt-2 space-y-1">
+                                            {% for modifier in item.bill_item.modifiers %}
+                                            <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                                {{ modifier.name }}
+                                            </span>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="ml-4">
+                                        <span class="text-lg font-bold text-gray-900">×{{ item.quantity }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            {% empty %}
+                            <div class="px-6 py-8 text-center text-gray-500">
+                                No items
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Activity Log -->
+                    <div class="bg-white rounded-lg shadow overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h2 class="text-lg font-semibold text-gray-900">Activity Log</h2>
+                        </div>
+                        <div class="p-6">
+                            <div class="flow-root">
+                                <ul class="-mb-8">
+                                    {% for log in logs %}
+                                    <li>
+                                        <div class="relative pb-8">
+                                            {% if not forloop.last %}
+                                            <span class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>
+                                            {% endif %}
+                                            <div class="relative flex space-x-3">
+                                                <div>
+                                                    {% if log.action == 'created' %}
+                                                    <span class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center ring-8 ring-white">
+                                                        <svg class="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd"/>
+                                                        </svg>
+                                                    </span>
+                                                    {% elif log.action == 'print_success' or log.new_status == 'printed' %}
+                                                    <span class="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center ring-8 ring-white">
+                                                        <svg class="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                                        </svg>
+                                                    </span>
+                                                    {% elif log.action == 'print_failed' or log.new_status == 'failed' %}
+                                                    <span class="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center ring-8 ring-white">
+                                                        <svg class="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                                        </svg>
+                                                    </span>
+                                                    {% else %}
+                                                    <span class="h-8 w-8 rounded-full bg-gray-400 flex items-center justify-center ring-8 ring-white">
+                                                        <svg class="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                                                        </svg>
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
+                                                <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
+                                                    <div>
+                                                        <p class="text-sm text-gray-900">
+                                                            <span class="font-medium">{{ log.action }}</span>
+                                                            {% if log.old_status %}
+                                                            <span class="text-gray-500">{{ log.old_status }} → {{ log.new_status }}</span>
+                                                            {% else %}
+                                                            <span class="text-gray-500">{{ log.new_status }}</span>
+                                                            {% endif %}
+                                                        </p>
+                                                        <p class="text-sm text-gray-500">by {{ log.actor }}</p>
+                                                        {% if log.error_message %}
+                                                        <p class="text-sm text-red-600 mt-1">{{ log.error_message }}</p>
+                                                        {% endif %}
+                                                        {% if log.duration_ms %}
+                                                        <p class="text-xs text-gray-500 mt-1">Duration: {{ log.duration_ms }}ms</p>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="text-right text-sm whitespace-nowrap text-gray-500">
+                                                        {{ log.timestamp|date:"d M Y" }}<br>
+                                                        {{ log.timestamp|date:"H:i:s" }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                    {% empty %}
+                                    <li class="text-center text-gray-500 py-8">No activity logs</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column - Bill Info -->
+                <div class="space-y-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Bill Information</h2>
+                        <div class="space-y-3">
+                            <div>
+                                <p class="text-sm text-gray-600">Bill Number</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.bill.bill_number }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Type</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.bill.get_bill_type_display }}</p>
+                            </div>
+                            {% if ticket.bill.table %}
+                            <div>
+                                <p class="text-sm text-gray-600">Table</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.bill.table.name }}</p>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <p class="text-sm text-gray-600">Status</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.bill.get_status_display }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Created</p>
+                                <p class="mt-1 font-medium text-gray-900">{{ ticket.bill.created_at|date:"d M Y H:i" }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if ticket.is_reprint %}
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                        <h3 class="text-sm font-semibold text-yellow-800 mb-2">📄 Reprint</h3>
+                        <p class="text-sm text-yellow-700">
+                            This is a reprint of ticket #{{ ticket.original_ticket.id }}
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

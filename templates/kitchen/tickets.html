@@ -1,0 +1,134 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Kitchen Tickets{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-50">
+    <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">🎫 Kitchen Tickets</h1>
+                        <p class="text-sm text-gray-600 mt-1">View and manage all kitchen print tickets</p>
+                    </div>
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <div class="bg-white border-b border-gray-200 px-8 py-4">
+            <form method="get" class="flex flex-wrap gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select name="status" class="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500" onchange="this.form.submit()">
+                        <option value="">All Status</option>
+                        <option value="new" {% if status_filter == 'new' %}selected{% endif %}>New</option>
+                        <option value="printing" {% if status_filter == 'printing' %}selected{% endif %}>Printing</option>
+                        <option value="printed" {% if status_filter == 'printed' %}selected{% endif %}>Printed</option>
+                        <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Station</label>
+                    <select name="station" class="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500" onchange="this.form.submit()">
+                        <option value="">All Stations</option>
+                        {% for station in stations %}
+                        <option value="{{ station }}" {% if station_filter == station %}selected{% endif %}>{{ station|upper }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if status_filter or station_filter %}
+                <div class="flex items-end">
+                    <a href="{% url 'kitchen:tickets' %}" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                        Clear Filters
+                    </a>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+
+        <!-- Tickets Table -->
+        <main class="p-8">
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bill</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Station</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Printer</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for ticket in tickets %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    <a href="{% url 'kitchen:ticket_detail' ticket.id %}" class="text-indigo-600 hover:text-indigo-900">
+                                        #{{ ticket.id }}
+                                    </a>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ ticket.bill.bill_number }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium text-xs">
+                                        {{ ticket.printer_target|upper }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    {% if ticket.status == 'new' %}
+                                    <span class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium text-xs">NEW</span>
+                                    {% elif ticket.status == 'printing' %}
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium text-xs">PRINTING</span>
+                                    {% elif ticket.status == 'printed' %}
+                                    <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium text-xs">PRINTED</span>
+                                    {% elif ticket.status == 'failed' %}
+                                    <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium text-xs">FAILED</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ ticket.items.count }} items
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {% if ticket.printer_ip %}
+                                    {{ ticket.printer_ip }}
+                                    {% else %}
+                                    <span class="text-gray-400">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ ticket.created_at|date:"d M Y H:i" }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <a href="{% url 'kitchen:ticket_detail' ticket.id %}" class="text-indigo-600 hover:text-indigo-900">
+                                        View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="8" class="px-6 py-8 text-center text-gray-500">
+                                    No tickets found
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

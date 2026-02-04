@@ -1,0 +1,138 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Printer Status{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-50">
+    <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">🖨️ Printer Status</h1>
+                        <p class="text-sm text-gray-600 mt-1">Monitor printer health and configuration</p>
+                    </div>
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Printers List -->
+        <main class="p-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {% for data in printer_data %}
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <!-- Printer Header -->
+                    <div class="px-6 py-4 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                {% if data.latest_health and data.latest_health.is_online %}
+                                <div class="w-4 h-4 bg-green-400 rounded-full animate-pulse"></div>
+                                <div>
+                                    <h3 class="text-lg font-bold">{{ data.printer.station_code|upper }}</h3>
+                                    <p class="text-sm text-indigo-100">{{ data.printer.printer_name }}</p>
+                                </div>
+                                {% else %}
+                                <div class="w-4 h-4 bg-red-400 rounded-full"></div>
+                                <div>
+                                    <h3 class="text-lg font-bold">{{ data.printer.station_code|upper }}</h3>
+                                    <p class="text-sm text-indigo-100">{{ data.printer.printer_name }}</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <span class="px-3 py-1 bg-white/20 rounded-full text-sm">
+                                Priority {{ data.printer.priority }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Printer Details -->
+                    <div class="p-6 space-y-4">
+                        <!-- Connection Info -->
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <span class="text-sm font-medium text-gray-700">IP Address</span>
+                            <span class="text-sm text-gray-900 font-mono">{{ data.printer.printer_ip }}:{{ data.printer.printer_port }}</span>
+                        </div>
+
+                        <!-- Status -->
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <span class="text-sm font-medium text-gray-700">Status</span>
+                            {% if data.latest_health %}
+                                {% if data.latest_health.is_online %}
+                                <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Online</span>
+                                {% else %}
+                                <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">Offline</span>
+                                {% endif %}
+                            {% else %}
+                            <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">Unknown</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+                            <div class="text-center p-3 bg-blue-50 rounded-lg">
+                                <p class="text-2xl font-bold text-blue-600">{{ data.printer.total_prints }}</p>
+                                <p class="text-xs text-gray-600 mt-1">Total Prints</p>
+                            </div>
+                            <div class="text-center p-3 bg-red-50 rounded-lg">
+                                <p class="text-2xl font-bold text-red-600">{{ data.printer.failed_prints }}</p>
+                                <p class="text-xs text-gray-600 mt-1">Failed</p>
+                            </div>
+                        </div>
+
+                        <!-- Uptime -->
+                        <div class="pt-4 border-t border-gray-200">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-medium text-gray-700">Uptime (last 10 checks)</span>
+                                <span class="text-sm font-bold text-gray-900">{{ data.uptime|floatformat:1 }}%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="{% if data.uptime >= 80 %}bg-green-500{% elif data.uptime >= 50 %}bg-yellow-500{% else %}bg-red-500{% endif %} h-2 rounded-full" style="width: {{ data.uptime }}%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Last Check -->
+                        {% if data.latest_health %}
+                        <div class="pt-4 border-t border-gray-200 text-xs text-gray-500">
+                            <p>Last checked: {{ data.latest_health.checked_at|date:"d M Y H:i:s" }}</p>
+                            {% if data.latest_health.response_time_ms %}
+                            <p>Response time: {{ data.latest_health.response_time_ms }}ms</p>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Recent Checks -->
+                        {% if data.recent_checks %}
+                        <div class="pt-4 border-t border-gray-200">
+                            <p class="text-sm font-medium text-gray-700 mb-2">Recent Health Checks</p>
+                            <div class="flex space-x-1">
+                                {% for check in data.recent_checks %}
+                                <div class="{% if check.is_online %}bg-green-400{% else %}bg-red-400{% endif %} w-2 h-8 rounded" 
+                                     title="{{ check.checked_at|date:'d M Y H:i' }} - {% if check.is_online %}Online{% else %}Offline{% endif %}">
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">Last 10 checks (newest on right)</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="col-span-2 bg-white rounded-lg shadow p-12 text-center">
+                    <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">No Printers Configured</h3>
+                    <p class="text-gray-600">Add printers in the admin panel to start monitoring</p>
+                </div>
+                {% endfor %}
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

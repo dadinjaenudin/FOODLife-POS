@@ -426,6 +426,7 @@ def add_item(request, bill_id):
                 modifier_price=modifier_price,
                 notes=notes,
                 modifiers=modifier_data,
+                printer_target=product.printer_target,  # Set printer target from product
                 created_by=request.user,
             )
         
@@ -988,7 +989,10 @@ def refresh_bill_panel(request, bill_id):
 @login_required
 @require_http_methods(["POST"])
 def send_to_kitchen(request, bill_id):
-    """Send pending items to kitchen - HTMX"""
+    """Send pending items to kitchen - HTMX
+    
+    Uses new KitchenTicket system - creates tickets for printer polling
+    """
     bill = get_object_or_404(Bill, id=bill_id)
     
     # CRITICAL: Only get items that are pending (not yet sent)
@@ -1001,39 +1005,44 @@ def send_to_kitchen(request, bill_id):
         return response
     
     try:
-        from collections import defaultdict
-        from apps.kitchen.services import print_kitchen_order, create_kitchen_order
-        
-        # Group items by station
-        grouped = defaultdict(list)
-        for item in pending_items:
-            grouped[item.product.printer_target].append(item)
+        from apps.kitchen.services import create_kitchen_tickets
         
         print(f"DEBUG: Sending {pending_items.count()} pending items to kitchen")
         
-        # IMPORTANT: Update status BEFORE creating kitchen orders to prevent race condition
+        # IMPORTANT: Update status BEFORE creating kitchen tickets to prevent race condition
         pending_items.update(status='sent')
         
-        for station, items in grouped.items():
-            if station != 'none':
-                # Use get_or_create pattern to prevent duplicates
-                kitchen_order = create_kitchen_order(bill, station, items)
-                print(f"DEBUG: KitchenOrder {kitchen_order.id} for station {station}, bill {bill.bill_number}, created: {kitchen_order.status}")
-                
-                try:
-                    print_kitchen_order(bill, station, items)
-                except Exception as e:
-                    print(f"Print error (will continue): {e}")
+        # Create kitchen tickets (automatically groups by printer_target)
+        tickets = create_kitchen_tickets(bill)
+        
+        print(f"DEBUG: Created {len(tickets)} kitchen ticket(s) for bill #{bill.bill_number}")
+        for ticket in tickets:
+            print(f"  - Ticket #{ticket.id}: {ticket.printer_target.upper()} ({ticket.items.count()} items)")
         
         BillLog.objects.create(
             bill=bill, 
             action='send_kitchen', 
             user=request.user,
-            details={'items_count': len(pending_items)}
+            details={
+                'items_count': pending_items.count(),
+                'tickets_count': len(tickets),
+                'tickets': [t.id for t in tickets]
+            }
         )
         
         response = render_bill_panel(request, bill)
+        
+        # Show success notification
+        notification = {
+            "showNotification": {
+                "message": f"✓ Berhasil kirim {pending_items.count()} item ke {len(tickets)} station",
+                "type": "success"
+            }
+        }
+        response['HX-Trigger'] = str(notification).replace("'", '"')
+        
         return trigger_client_event(response, 'sentToKitchen')
+        
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1323,6 +1332,7 @@ def split_bill(request, bill_id):
                     notes=item.notes,
                     modifiers=item.modifiers,
                     status=item.status,
+                    printer_target=item.product.printer_target,
                     created_by=request.user
                 )
                 
@@ -1773,6 +1783,7 @@ def quick_order_create(request):
                 quantity=item_data['quantity'],
                 unit_price=product.price,
                 notes=item_data.get('notes', ''),
+                printer_target=product.printer_target,
                 created_by=request.user,
                 status='pending',
             )

@@ -1,0 +1,203 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Manage Printers{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-50">
+    <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">🖨️ Manage Station Printers</h1>
+                        <p class="text-sm text-gray-600 mt-1">Configure kitchen printer stations and IP addresses</p>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <a href="{% url 'kitchen:printer_create' %}" 
+                           class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            <span>Add Printer</span>
+                        </a>
+                        <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Messages -->
+        {% if messages %}
+        <div class="px-8 py-4">
+            {% for message in messages %}
+            <div class="p-4 mb-4 rounded-lg {% if message.tags == 'success' %}bg-green-100 text-green-700{% elif message.tags == 'error' %}bg-red-100 text-red-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Printers Table -->
+        <main class="p-8">
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Station</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Printer Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Port</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stats</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for printer in printers %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <button onclick="toggleActive({{ printer.id }})" 
+                                            id="status-{{ printer.id }}"
+                                            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 {% if printer.is_active %}bg-green-600{% else %}bg-gray-200{% endif %}">
+                                        <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {% if printer.is_active %}translate-x-5{% else %}translate-x-0{% endif %}"></span>
+                                    </button>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium text-sm">
+                                        {{ printer.station_code|upper }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">{{ printer.printer_name }}</div>
+                                    <div class="text-xs text-gray-500">{{ printer.paper_width_mm }}mm paper</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="text-sm font-mono text-gray-900">{{ printer.printer_ip }}</span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ printer.printer_port }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+                                        Priority {{ printer.priority }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ printer.brand.name }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <div class="text-gray-900">{{ printer.total_prints }} prints</div>
+                                    {% if printer.failed_prints > 0 %}
+                                    <div class="text-red-600 text-xs">{{ printer.failed_prints }} failed</div>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <div class="flex items-center justify-end space-x-2">
+                                        <a href="{% url 'kitchen:printer_edit' printer.id %}" 
+                                           class="text-indigo-600 hover:text-indigo-900 px-3 py-1 rounded hover:bg-indigo-50">
+                                            Edit
+                                        </a>
+                                        <a href="{% url 'kitchen:printer_delete' printer.id %}" 
+                                           class="text-red-600 hover:text-red-900 px-3 py-1 rounded hover:bg-red-50">
+                                            Delete
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="px-6 py-12 text-center">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                    </svg>
+                                    <h3 class="mt-2 text-sm font-medium text-gray-900">No printers configured</h3>
+                                    <p class="mt-1 text-sm text-gray-500">Get started by adding a new printer.</p>
+                                    <div class="mt-6">
+                                        <a href="{% url 'kitchen:printer_create' %}" 
+                                           class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                                            <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                            </svg>
+                                            Add Printer
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Info Box -->
+            <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <h3 class="text-sm font-semibold text-blue-900 mb-3">📝 Configuration Notes:</h3>
+                <ul class="text-sm text-blue-800 space-y-2">
+                    <li><strong>Station Code:</strong> Must match the printer_target field in products (e.g., 'kitchen', 'bar', 'dessert')</li>
+                    <li><strong>Priority:</strong> 1 = Primary, 2 = Backup. Lower number has higher priority</li>
+                    <li><strong>IP Address:</strong> Static IP of the ESC/POS thermal printer</li>
+                    <li><strong>Port:</strong> Usually 9100 for network printers</li>
+                    <li><strong>Active/Inactive:</strong> Toggle to enable/disable printer without deleting configuration</li>
+                </ul>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script>
+function toggleActive(printerId) {
+    fetch(`/kitchen/printers/${printerId}/toggle/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const button = document.getElementById(`status-${printerId}`);
+            const span = button.querySelector('span');
+            
+            if (data.is_active) {
+                button.classList.remove('bg-gray-200');
+                button.classList.add('bg-green-600');
+                span.classList.add('translate-x-5');
+                span.classList.remove('translate-x-0');
+            } else {
+                button.classList.remove('bg-green-600');
+                button.classList.add('bg-gray-200');
+                span.classList.remove('translate-x-5');
+                span.classList.add('translate-x-0');
+            }
+            
+            // Show toast notification
+            showToast(data.message, 'success');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to toggle printer status', 'error');
+    });
+}
+
+function showToast(message, type) {
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white z-50`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+</script>
+{% endblock %}

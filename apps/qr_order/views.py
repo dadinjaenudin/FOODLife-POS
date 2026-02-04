@@ -135,6 +135,7 @@ def guest_add_item_custom(request, brand_id, table_id):
         quantity=quantity,
         unit_price=unit_price,
         notes=final_notes,
+        printer_target=product.printer_target,
         created_by=system_user,
         status='pending',
     )
@@ -253,6 +254,7 @@ def guest_add_item(request, brand_id, table_id):
             quantity=quantity,
             unit_price=product.price,
             notes=notes,
+            printer_target=product.printer_target,
             created_by=system_user,
             status='pending',
         )

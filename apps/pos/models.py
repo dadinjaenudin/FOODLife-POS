@@ -189,6 +189,13 @@ class BillItem(models.Model):
     notes = models.TextField(blank=True)
     modifiers = models.JSONField(default=list, blank=True)
     
+    # Kitchen printer routing
+    printer_target = models.CharField(
+        max_length=50, 
+        blank=True, 
+        help_text='Kitchen station code for printer routing (e.g., BAR, KITCHEN, DESSERT)'
+    )
+    
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     is_void = models.BooleanField(default=False)
     void_reason = models.TextField(blank=True)

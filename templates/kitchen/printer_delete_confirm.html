@@ -1,0 +1,121 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Delete Printer{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-50">
+    <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <a href="{% url 'kitchen:printer_manage' %}" class="text-gray-600 hover:text-gray-900">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                            </svg>
+                        </a>
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">Delete Printer</h1>
+                            <p class="text-sm text-gray-600 mt-1">Confirm deletion of station printer</p>
+                        </div>
+                    </div>
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Confirmation -->
+        <main class="p-8">
+            <div class="max-w-2xl mx-auto">
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <!-- Warning Header -->
+                    <div class="bg-red-50 border-b border-red-200 px-6 py-4">
+                        <div class="flex items-center space-x-3">
+                            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <div>
+                                <h2 class="text-lg font-semibold text-red-900">Confirm Deletion</h2>
+                                <p class="text-sm text-red-700">This action cannot be undone</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Printer Details -->
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-700">You are about to delete the following printer configuration:</p>
+                        
+                        <div class="bg-gray-50 rounded-lg p-6 space-y-3">
+                            <div class="flex justify-between">
+                                <span class="text-sm font-medium text-gray-600">Printer Name:</span>
+                                <span class="text-sm font-bold text-gray-900">{{ printer.printer_name }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm font-medium text-gray-600">Station:</span>
+                                <span class="text-sm font-bold text-gray-900">{{ printer.station_code|upper }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm font-medium text-gray-600">IP Address:</span>
+                                <span class="text-sm font-mono text-gray-900">{{ printer.printer_ip }}:{{ printer.printer_port }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm font-medium text-gray-600">Brand:</span>
+                                <span class="text-sm text-gray-900">{{ printer.brand.name }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm font-medium text-gray-600">Priority:</span>
+                                <span class="text-sm text-gray-900">{{ printer.priority }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm font-medium text-gray-600">Total Prints:</span>
+                                <span class="text-sm text-gray-900">{{ printer.total_prints }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Warning Message -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div class="flex items-start space-x-3">
+                                <svg class="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <div>
+                                    <h4 class="text-sm font-semibold text-yellow-900">Important Notice:</h4>
+                                    <ul class="mt-2 text-sm text-yellow-800 space-y-1">
+                                        <li>• Pending tickets for this station will not be affected</li>
+                                        <li>• Historical print records will remain in the system</li>
+                                        <li>• New orders to this station will fail until a printer is configured</li>
+                                        <li>• Consider deactivating instead if this is temporary</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+                        <a href="{% url 'kitchen:printer_manage' %}" 
+                           class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-white">
+                            Cancel
+                        </a>
+                        <form method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" 
+                                    class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                                <span>Yes, Delete Printer</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

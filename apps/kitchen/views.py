@@ -1,13 +1,14 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Avg, Count, Q
 from decimal import Decimal
 import json
 
-from .models import KitchenOrder, PrinterConfig, KitchenPerformance, KitchenStation
+from .models import KitchenOrder, PrinterConfig, KitchenPerformance, KitchenStation, StationPrinter
 
 
 def trigger_client_event(response, event_name, data=None):
@@ -337,4 +338,335 @@ def check_overdue_orders(request, station='kitchen'):
         return JsonResponse({'notifications': notifications})
     
     return JsonResponse({'notifications': []})
+
+
+# ============================================================================
+# KITCHEN PRINTER MONITORING VIEWS
+# ============================================================================
+
+@login_required
+def kitchen_dashboard(request):
+    """Kitchen Printer System Dashboard - Overview of all metrics"""
+    from .models import KitchenTicket, StationPrinter, KitchenTicketLog, PrinterHealthCheck
+    from django.db.models import Count, Q, Avg
+    from datetime import timedelta
+    
+    # Get counts
+    total_tickets = KitchenTicket.objects.count()
+    new_tickets = KitchenTicket.objects.filter(status='new').count()
+    printing_tickets = KitchenTicket.objects.filter(status='printing').count()
+    printed_tickets = KitchenTicket.objects.filter(status='printed').count()
+    failed_tickets = KitchenTicket.objects.filter(status='failed').count()
+    
+    # Today's stats
+    today = timezone.now().date()
+    today_tickets = KitchenTicket.objects.filter(created_at__date=today)
+    today_total = today_tickets.count()
+    today_printed = today_tickets.filter(status='printed').count()
+    today_failed = today_tickets.filter(status='failed').count()
+    
+    # Success rate
+    if today_total > 0:
+        success_rate = (today_printed / today_total) * 100
+    else:
+        success_rate = 0
+    
+    # Printers status
+    printers = StationPrinter.objects.all().order_by('station_code', 'priority')
+    printer_stats = []
+    
+    for printer in printers:
+        # Get latest health check
+        latest_health = printer.health_checks.order_by('-checked_at').first()
+        
+        success_rate_printer = 0
+        if printer.total_prints > 0:
+            success_rate_printer = ((printer.total_prints - printer.failed_prints) / printer.total_prints) * 100
+        
+        printer_stats.append({
+            'printer': printer,
+            'latest_health': latest_health,
+            'success_rate': success_rate_printer
+        })
+    
+    # Recent activity (last 10 tickets)
+    recent_tickets = KitchenTicket.objects.select_related('bill').order_by('-created_at')[:10]
+    
+    # Tickets by station
+    tickets_by_station = KitchenTicket.objects.values('printer_target').annotate(
+        total=Count('id'),
+        new=Count('id', filter=Q(status='new')),
+        printed=Count('id', filter=Q(status='printed')),
+        failed=Count('id', filter=Q(status='failed'))
+    ).order_by('-total')
+    
+    context = {
+        'total_tickets': total_tickets,
+        'new_tickets': new_tickets,
+        'printing_tickets': printing_tickets,
+        'printed_tickets': printed_tickets,
+        'failed_tickets': failed_tickets,
+        'today_total': today_total,
+        'today_printed': today_printed,
+        'today_failed': today_failed,
+        'success_rate': success_rate,
+        'printer_stats': printer_stats,
+        'recent_tickets': recent_tickets,
+        'tickets_by_station': tickets_by_station,
+    }
+    
+    return render(request, 'kitchen/dashboard.html', context)
+
+
+@login_required
+def kitchen_tickets(request):
+    """Kitchen Tickets List - View and manage all tickets"""
+    from .models import KitchenTicket
+    
+    # Filters
+    status_filter = request.GET.get('status', '')
+    station_filter = request.GET.get('station', '')
+    
+    tickets = KitchenTicket.objects.select_related('bill').prefetch_related('items__bill_item__product')
+    
+    if status_filter:
+        tickets = tickets.filter(status=status_filter)
+    if station_filter:
+        tickets = tickets.filter(printer_target=station_filter)
+    
+    tickets = tickets.order_by('-created_at')[:100]
+    
+    # Get unique stations for filter
+    stations = KitchenTicket.objects.values_list('printer_target', flat=True).distinct()
+    
+    context = {
+        'tickets': tickets,
+        'stations': stations,
+        'status_filter': status_filter,
+        'station_filter': station_filter,
+    }
+    
+    return render(request, 'kitchen/tickets.html', context)
+
+
+@login_required
+def kitchen_printers(request):
+    """Printer Status - Monitor printer health and configuration"""
+    from .models import StationPrinter, PrinterHealthCheck
+    
+    printers = StationPrinter.objects.all().order_by('station_code', 'priority')
+    
+    printer_data = []
+    for printer in printers:
+        # Get latest health check
+        latest_health = printer.health_checks.order_by('-checked_at').first()
+        
+        # Get recent health checks (last 10)
+        recent_checks = printer.health_checks.order_by('-checked_at')[:10]
+        
+        # Calculate uptime percentage
+        if recent_checks.count() > 0:
+            online_count = sum(1 for check in recent_checks if check.is_online)
+            uptime = (online_count / recent_checks.count()) * 100
+        else:
+            uptime = 0
+        
+        printer_data.append({
+            'printer': printer,
+            'latest_health': latest_health,
+            'recent_checks': recent_checks,
+            'uptime': uptime,
+        })
+    
+    context = {
+        'printer_data': printer_data,
+    }
+    
+    return render(request, 'kitchen/printers.html', context)
+
+
+@login_required
+def kitchen_logs(request):
+    """Audit Logs - View all ticket state changes"""
+    from .models import KitchenTicketLog
+    
+    # Filters
+    action_filter = request.GET.get('action', '')
+    ticket_id = request.GET.get('ticket_id', '')
+    
+    logs = KitchenTicketLog.objects.select_related('ticket', 'ticket__bill')
+    
+    if action_filter:
+        logs = logs.filter(action=action_filter)
+    if ticket_id:
+        logs = logs.filter(ticket_id=ticket_id)
+    
+    logs = logs.order_by('-timestamp')[:200]
+    
+    # Get unique actions for filter
+    actions = KitchenTicketLog.objects.values_list('action', flat=True).distinct()
+    
+    context = {
+        'logs': logs,
+        'actions': actions,
+        'action_filter': action_filter,
+        'ticket_id': ticket_id,
+    }
+    
+    return render(request, 'kitchen/logs.html', context)
+
+
+@login_required
+def kitchen_ticket_detail(request, ticket_id):
+    """Ticket Detail - View ticket details and history"""
+    from .models import KitchenTicket, KitchenTicketLog
+    
+    ticket = get_object_or_404(
+        KitchenTicket.objects.select_related('bill').prefetch_related('items__bill_item__product'),
+        id=ticket_id
+    )
+    
+    # Get logs for this ticket
+    logs = KitchenTicketLog.objects.filter(ticket=ticket).order_by('-timestamp')
+    
+    context = {
+        'ticket': ticket,
+        'logs': logs,
+    }
+    
+    return render(request, 'kitchen/ticket_detail.html', context)
+
+
+# ============================================================================
+# STATION PRINTER CRUD
+# ============================================================================
+
+@login_required
+def printer_list_manage(request):
+    """Station Printer Management - List all printers with CRUD"""
+    from apps.core.models import Brand
+    
+    # Filter by brand if user has brand assigned
+    if hasattr(request.user, 'brand') and request.user.brand:
+        printers = StationPrinter.objects.filter(brand=request.user.brand)
+    else:
+        printers = StationPrinter.objects.all()
+    
+    printers = printers.select_related('brand').order_by('station_code', 'priority')
+    
+    # Get brands for dropdown
+    brands = Brand.objects.all()
+    
+    context = {
+        'printers': printers,
+        'brands': brands,
+    }
+    
+    return render(request, 'kitchen/printer_manage.html', context)
+
+
+@login_required
+def printer_create(request):
+    """Create new station printer"""
+    from apps.core.models import Brand
+    
+    if request.method == 'POST':
+        try:
+            brand_id = request.POST.get('brand')
+            brand = get_object_or_404(Brand, id=brand_id)
+            
+            printer = StationPrinter.objects.create(
+                brand=brand,
+                station_code=request.POST.get('station_code').lower().strip(),
+                printer_name=request.POST.get('printer_name'),
+                printer_ip=request.POST.get('printer_ip'),
+                printer_port=int(request.POST.get('printer_port', 9100)),
+                priority=int(request.POST.get('priority', 1)),
+                is_active=request.POST.get('is_active') == 'on',
+                paper_width_mm=int(request.POST.get('paper_width_mm', 80)),
+                chars_per_line=int(request.POST.get('chars_per_line', 32)),
+            )
+            
+            messages.success(request, f'✓ Printer "{printer.printer_name}" berhasil ditambahkan!')
+            return redirect('kitchen:printer_manage')
+            
+        except Exception as e:
+            messages.error(request, f'Error: {str(e)}')
+            return redirect('kitchen:printer_manage')
+    
+    # GET request - show form
+    brands = Brand.objects.all()
+    context = {
+        'brands': brands,
+    }
+    return render(request, 'kitchen/printer_form.html', context)
+
+
+@login_required
+def printer_edit(request, printer_id):
+    """Edit station printer"""
+    from apps.core.models import Brand
+    
+    printer = get_object_or_404(StationPrinter, id=printer_id)
+    
+    if request.method == 'POST':
+        try:
+            brand_id = request.POST.get('brand')
+            printer.brand = get_object_or_404(Brand, id=brand_id)
+            printer.station_code = request.POST.get('station_code').lower().strip()
+            printer.printer_name = request.POST.get('printer_name')
+            printer.printer_ip = request.POST.get('printer_ip')
+            printer.printer_port = int(request.POST.get('printer_port', 9100))
+            printer.priority = int(request.POST.get('priority', 1))
+            printer.is_active = request.POST.get('is_active') == 'on'
+            printer.paper_width_mm = int(request.POST.get('paper_width_mm', 80))
+            printer.chars_per_line = int(request.POST.get('chars_per_line', 32))
+            printer.save()
+            
+            messages.success(request, f'✓ Printer "{printer.printer_name}" berhasil diupdate!')
+            return redirect('kitchen:printer_manage')
+            
+        except Exception as e:
+            messages.error(request, f'Error: {str(e)}')
+    
+    # GET request - show form
+    brands = Brand.objects.all()
+    context = {
+        'printer': printer,
+        'brands': brands,
+    }
+    return render(request, 'kitchen/printer_form.html', context)
+
+
+@login_required
+def printer_delete(request, printer_id):
+    """Delete station printer"""
+    printer = get_object_or_404(StationPrinter, id=printer_id)
+    
+    if request.method == 'POST':
+        printer_name = printer.printer_name
+        printer.delete()
+        messages.success(request, f'✓ Printer "{printer_name}" berhasil dihapus!')
+        return redirect('kitchen:printer_manage')
+    
+    context = {
+        'printer': printer,
+    }
+    return render(request, 'kitchen/printer_delete_confirm.html', context)
+
+
+@login_required
+def printer_toggle_active(request, printer_id):
+    """Toggle printer active status (AJAX)"""
+    printer = get_object_or_404(StationPrinter, id=printer_id)
+    printer.is_active = not printer.is_active
+    printer.save()
+    
+    return JsonResponse({
+        'success': True,
+        'is_active': printer.is_active,
+        'message': f'Printer {"activated" if printer.is_active else "deactivated"}'
+    })
+
+
 

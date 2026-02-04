@@ -1,5 +1,10 @@
 ﻿"""Kitchen services for printing and KDS operations"""
-from .models import KitchenOrder, PrinterConfig
+from django.db import transaction
+from django.utils import timezone
+from .models import KitchenOrder, PrinterConfig, KitchenTicket, KitchenTicketItem, KitchenTicketLog
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_printer(config):
@@ -86,3 +91,176 @@ def create_kitchen_order(bill, station, items):
         kitchen_order.save()
     
     return kitchen_order
+
+
+# ============================================================================
+# KITCHEN PRINTER SERVICE FUNCTIONS
+# ============================================================================
+
+@transaction.atomic
+def create_kitchen_tickets(bill):
+    """
+    Create kitchen tickets from bill
+    Groups items by printer_target and creates one ticket per station
+    
+    Args:
+        bill: Bill instance
+        
+    Returns:
+        list: List of created KitchenTicket instances
+        
+    Example:
+        Bill with 6 items:
+        - 2 items → BAR
+        - 3 items → KITCHEN
+        - 1 item → DESSERT
+        
+        Creates 3 tickets (one per station)
+    """
+    logger.info(f"Creating kitchen tickets for bill #{bill.bill_number}")
+    
+    # Group items by printer_target
+    items_by_station = {}
+    
+    for item in bill.items.filter(is_void=False).exclude(printer_target='').exclude(printer_target='none'):
+        # Use printer_target, fallback to 'kitchen' if empty
+        station = item.printer_target or 'kitchen'
+        
+        if station not in items_by_station:
+            items_by_station[station] = []
+        
+        items_by_station[station].append(item)
+    
+    if not items_by_station:
+        logger.warning(f"No items to print for bill #{bill.bill_number}")
+        return []
+    
+    tickets = []
+    
+    # Create 1 ticket per station
+    for station_code, items in items_by_station.items():
+        logger.info(f"Creating ticket for station '{station_code}' with {len(items)} items")
+        
+        ticket = KitchenTicket.objects.create(
+            bill=bill,
+            printer_target=station_code,
+            status='new'
+        )
+        
+        # Add items to ticket
+        for item in items:
+            KitchenTicketItem.objects.create(
+                kitchen_ticket=ticket,
+                bill_item=item,
+                quantity=item.quantity
+            )
+        
+        # Log creation
+        KitchenTicketLog.log_action(
+            ticket=ticket,
+            action='created',
+            actor='system',
+            old_status='',
+            new_status='new',
+            metadata={
+                'items_count': len(items),
+                'bill_number': bill.bill_number,
+                'bill_type': bill.bill_type,
+                'table': str(bill.table) if bill.table else None,
+            }
+        )
+        
+        tickets.append(ticket)
+        logger.info(f"✓ Created ticket #{ticket.id} for {station_code.upper()}")
+    
+    logger.info(f"Successfully created {len(tickets)} ticket(s) for bill #{bill.bill_number}")
+    
+    return tickets
+
+
+def get_bill_kitchen_status(bill):
+    """
+    Get kitchen ticket status summary for a bill
+    
+    Returns:
+        dict: {
+            'has_tickets': bool,
+            'total_tickets': int,
+            'new_tickets': int,
+            'printing_tickets': int,
+            'printed_tickets': int,
+            'failed_tickets': int,
+            'all_printed': bool,
+            'has_failures': bool,
+        }
+    """
+    tickets = bill.kitchen_tickets.all()
+    
+    status_count = {
+        'new': 0,
+        'printing': 0,
+        'printed': 0,
+        'failed': 0,
+    }
+    
+    for ticket in tickets:
+        status_count[ticket.status] = status_count.get(ticket.status, 0) + 1
+    
+    total = len(tickets)
+    
+    return {
+        'has_tickets': total > 0,
+        'total_tickets': total,
+        'new_tickets': status_count['new'],
+        'printing_tickets': status_count['printing'],
+        'printed_tickets': status_count['printed'],
+        'failed_tickets': status_count['failed'],
+        'all_printed': total > 0 and status_count['printed'] == total,
+        'has_failures': status_count['failed'] > 0,
+    }
+
+
+def reprint_kitchen_ticket(ticket, actor):
+    """
+    Create a reprint of a kitchen ticket
+    
+    Args:
+        ticket: Original KitchenTicket instance
+        actor: Who requested reprint (e.g., 'admin:username')
+        
+    Returns:
+        KitchenTicket: New ticket instance (reprint)
+    """
+    with transaction.atomic():
+        new_ticket = KitchenTicket.objects.create(
+            bill=ticket.bill,
+            printer_target=ticket.printer_target,
+            status='new',
+            is_reprint=True,
+            original_ticket=ticket
+        )
+        
+        # Copy items
+        for item in ticket.items.all():
+            KitchenTicketItem.objects.create(
+                kitchen_ticket=new_ticket,
+                bill_item=item.bill_item,
+                quantity=item.quantity
+            )
+        
+        # Log reprint
+        KitchenTicketLog.log_action(
+            ticket=new_ticket,
+            action='created',
+            actor=actor,
+            old_status='',
+            new_status='new',
+            metadata={
+                'reprint_of': ticket.id,
+                'original_status': ticket.status,
+            }
+        )
+        
+        logger.info(f"Created reprint ticket #{new_ticket.id} from #{ticket.id} by {actor}")
+        
+        return new_ticket

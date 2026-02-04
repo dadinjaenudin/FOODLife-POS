@@ -1,0 +1,207 @@
+{% extends 'management/base.html' %}
+
+{% block title %}{% if printer %}Edit Printer{% else %}Add Printer{% endif %}{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-50">
+    <div class="flex-1 overflow-auto">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <a href="{% url 'kitchen:printer_manage' %}" class="text-gray-600 hover:text-gray-900">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                            </svg>
+                        </a>
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">
+                                {% if printer %}Edit Printer{% else %}Add New Printer{% endif %}
+                            </h1>
+                            <p class="text-sm text-gray-600 mt-1">Configure station printer settings</p>
+                        </div>
+                    </div>
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Form -->
+        <main class="p-8">
+            <div class="max-w-3xl mx-auto">
+                <form method="post" class="bg-white rounded-lg shadow p-8 space-y-6">
+                    {% csrf_token %}
+
+                    <!-- Brand Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Brand <span class="text-red-500">*</span>
+                        </label>
+                        <select name="brand" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                            <option value="">-- Select Brand --</option>
+                            {% for brand in brands %}
+                            <option value="{{ brand.id }}" {% if printer and printer.brand.id == brand.id %}selected{% endif %}>
+                                {{ brand.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Select the brand/outlet for this printer</p>
+                    </div>
+
+                    <!-- Station Code -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Station Code <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               name="station_code" 
+                               value="{% if printer %}{{ printer.station_code }}{% endif %}"
+                               placeholder="e.g., kitchen, bar, dessert" 
+                               required
+                               class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                        <p class="mt-1 text-xs text-gray-500">Must match printer_target in product settings (lowercase)</p>
+                    </div>
+
+                    <!-- Printer Name -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Printer Name <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               name="printer_name" 
+                               value="{% if printer %}{{ printer.printer_name }}{% endif %}"
+                               placeholder="e.g., Main Kitchen Printer" 
+                               required
+                               class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                        <p class="mt-1 text-xs text-gray-500">Friendly name for identification</p>
+                    </div>
+
+                    <!-- IP Address -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            IP Address <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               name="printer_ip" 
+                               value="{% if printer %}{{ printer.printer_ip }}{% endif %}"
+                               placeholder="192.168.1.100" 
+                               required
+                               pattern="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$"
+                               class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                        <p class="mt-1 text-xs text-gray-500">Static IP address of the printer</p>
+                    </div>
+
+                    <!-- Port -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Port <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               name="printer_port" 
+                               value="{% if printer %}{{ printer.printer_port|stringformat:'d' }}{% else %}9100{% endif %}"
+                               placeholder="9100" 
+                               required
+                               pattern="[0-9]+"
+                               inputmode="numeric"
+                               oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                               onload="this.value = this.value.replace(/[^0-9]/g, '')"
+                               class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                        <p class="mt-1 text-xs text-gray-500">Angka bulat saja (contoh: 9100), biasanya 9100 untuk ESC/POS network printers</p>
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const portInput = document.querySelector('input[name="printer_port"]');
+                                if (portInput) {
+                                    portInput.value = portInput.value.replace(/[^0-9]/g, '');
+                                }
+                            });
+                        </script>
+                    </div>
+
+                    <!-- Priority -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Priority <span class="text-red-500">*</span>
+                        </label>
+                        <select name="priority" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                            <option value="1" {% if printer and printer.priority == 1 %}selected{% endif %}>1 - Primary</option>
+                            <option value="2" {% if printer and printer.priority == 2 %}selected{% endif %}>2 - Backup</option>
+                            <option value="3" {% if printer and printer.priority == 3 %}selected{% endif %}>3 - Tertiary</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Lower number = higher priority. 1 is primary, 2+ are backups</p>
+                    </div>
+
+                    <!-- Paper Width -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Paper Width (mm) <span class="text-red-500">*</span>
+                        </label>
+                        <select name="paper_width_mm" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                            <option value="58" {% if printer and printer.paper_width_mm == 58 %}selected{% endif %}>58mm</option>
+                            <option value="80" {% if printer and printer.paper_width_mm == 80 or not printer %}selected{% endif %}>80mm (Standard)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Thermal paper width</p>
+                    </div>
+
+                    <!-- Characters per Line -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Characters per Line <span class="text-red-500">*</span>
+                        </label>
+                        <input type="number" 
+                               name="chars_per_line" 
+                               value="{% if printer %}{{ printer.chars_per_line }}{% else %}32{% endif %}"
+                               required
+                               min="24"
+                               max="48"
+                               class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                        <p class="mt-1 text-xs text-gray-500">32 for 80mm paper, 24 for 58mm paper</p>
+                    </div>
+
+                    <!-- Active Status -->
+                    <div class="flex items-center">
+                        <input type="checkbox" 
+                               name="is_active" 
+                               id="is_active"
+                               {% if not printer or printer.is_active %}checked{% endif %}
+                               class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_active" class="ml-2 block text-sm text-gray-900">
+                            Active (printer is enabled and ready to print)
+                        </label>
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">
+                        <a href="{% url 'kitchen:printer_manage' %}" 
+                           class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </a>
+                        <button type="submit" 
+                                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>{% if printer %}Update Printer{% else %}Create Printer{% endif %}</span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Help Box -->
+                <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                    <h3 class="text-sm font-semibold text-blue-900 mb-3">💡 Quick Tips:</h3>
+                    <ul class="text-sm text-blue-800 space-y-2">
+                        <li><strong>Testing Connection:</strong> Use <code>ping [IP]</code> to verify printer is reachable</li>
+                        <li><strong>Station Code:</strong> Must be lowercase and match product.printer_target exactly</li>
+                        <li><strong>Multiple Printers:</strong> Use priority 2+ for backup printers with same station_code</li>
+                        <li><strong>Default Settings:</strong> Port 9100, 80mm paper, 32 chars/line work for most thermal printers</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
