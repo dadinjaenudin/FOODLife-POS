@@ -1,0 +1,14 @@
+# PostgreSQL driver
+psycopg2-binary==2.9.9
+
+# ESC/POS printing
+python-escpos==3.0a9
+
+# HTTP server for health check
+flask==3.0.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Utilities
+pytz==2024.1

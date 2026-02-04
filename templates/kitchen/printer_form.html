@@ -67,6 +67,40 @@
                         <p class="mt-1 text-xs text-gray-500">Must match printer_target in product settings (lowercase)</p>
                     </div>
 
+                    <!-- Printer Brand (ESC/POS) -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Printer Brand (ESC/POS) <span class="text-red-500">*</span>
+                        </label>
+                        <select name="printer_brand" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                            <option value="">-- Select Printer Brand --</option>
+                            {% if printer_brands %}
+                                {% for pb in printer_brands %}
+                                <option value="{{ pb.code }}" {% if printer and printer.printer_brand == pb.code %}selected{% endif %}>
+                                    {{ pb.name }} ({{ pb.profile_class }})
+                                </option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="HRPT" {% if not printer or printer.printer_brand == 'HRPT' %}selected{% endif %}>HRPT TP808 (HRPTProfile)</option>
+                                <option value="EPSON" {% if printer and printer.printer_brand == 'EPSON' %}selected{% endif %}>Epson TM-Series (EpsonProfile)</option>
+                                <option value="XPRINTER" {% if printer and printer.printer_brand == 'XPRINTER' %}selected{% endif %}>XPrinter (EpsonProfile)</option>
+                            {% endif %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">ESC/POS printer brand profile for command formatting</p>
+                    </div>
+
+                    <!-- Printer Type (Connection) -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Connection Type <span class="text-red-500">*</span>
+                        </label>
+                        <select name="printer_type" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                            <option value="network" {% if not printer or printer.printer_type == 'network' %}selected{% endif %}>Network (RAW TCP/IP)</option>
+                            <option value="win32" {% if printer and printer.printer_type == 'win32' %}selected{% endif %}>Windows Driver (Win32Raw)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Network for IP printers, Win32 for Windows shared printers</p>
+                    </div>
+
                     <!-- Printer Name -->
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -160,6 +194,21 @@
                                max="48"
                                class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
                         <p class="mt-1 text-xs text-gray-500">32 for 80mm paper, 24 for 58mm paper</p>
+                    </div>
+
+                    <!-- Timeout Seconds -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Timeout (seconds) <span class="text-red-500">*</span>
+                        </label>
+                        <input type="number" 
+                               name="timeout_seconds" 
+                               value="{% if printer %}{{ printer.timeout_seconds }}{% else %}5{% endif %}"
+                               required
+                               min="1"
+                               max="30"
+                               class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500">
+                        <p class="mt-1 text-xs text-gray-500">Connection timeout for printer (default: 5 seconds)</p>
                     </div>
 
                     <!-- Active Status -->

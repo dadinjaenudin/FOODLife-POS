@@ -3,6 +3,35 @@ from django.utils import timezone
 from datetime import timedelta
 
 
+class PrinterBrand(models.Model):
+    """
+    Printer brand/model reference for ESC/POS command profiles
+    """
+    code = models.CharField(
+        max_length=20, 
+        unique=True,
+        help_text='Brand code: HRPT, EPSON, XPRINTER'
+    )
+    name = models.CharField(max_length=100, help_text='Display name')
+    profile_class = models.CharField(
+        max_length=50,
+        help_text='Python class name: HRPTProfile, EpsonProfile'
+    )
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Printer Brand'
+        verbose_name_plural = 'Printer Brands'
+    
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
 class KitchenOrder(models.Model):
     """Aggregated view for KDS"""
     STATUS_CHOICES = [
@@ -203,8 +232,28 @@ class StationPrinter(models.Model):
         help_text='Station code: kitchen, bar, dessert, etc.'
     )
     printer_name = models.CharField(max_length=100, help_text='Friendly name for this printer')
-    printer_ip = models.GenericIPAddressField(help_text='IP address of ESC/POS printer')
+    printer_ip = models.CharField(max_length=255, help_text='IP address or hostname of ESC/POS printer')
     printer_port = models.IntegerField(default=9100, help_text='Printer port (usually 9100)')
+    
+    # Printer brand and connection type (NEW FIELDS)
+    printer_brand = models.CharField(
+        max_length=20,
+        default='HRPT',
+        help_text='Printer brand code: HRPT, EPSON, XPRINTER'
+    )
+    printer_type = models.CharField(
+        max_length=20,
+        default='network',
+        choices=[
+            ('network', 'Network (RAW TCP/IP)'),
+            ('win32', 'Windows Driver (Win32Raw)'),
+        ],
+        help_text='Connection type: network or win32'
+    )
+    timeout_seconds = models.IntegerField(
+        default=5,
+        help_text='Network timeout in seconds'
+    )
     
     priority = models.IntegerField(
         default=1, 
@@ -231,6 +280,8 @@ class StationPrinter(models.Model):
         indexes = [
             models.Index(fields=['station_code', 'is_active', 'priority']),
             models.Index(fields=['brand', 'station_code']),
+            models.Index(fields=['printer_brand']),  # NEW INDEX
+            models.Index(fields=['printer_type']),   # NEW INDEX
         ]
     
     def __str__(self):
@@ -270,7 +321,7 @@ class KitchenTicket(models.Model):
     max_retries = models.IntegerField(default=3, help_text='Max retry attempts')
     
     # Printer used
-    printer_ip = models.GenericIPAddressField(null=True, blank=True, help_text='Printer that processed this ticket')
+    printer_ip = models.CharField(max_length=255, null=True, blank=True, help_text='Printer that processed this ticket')
     
     # Error tracking
     error_message = models.TextField(blank=True)
@@ -390,7 +441,7 @@ class KitchenTicketLog(models.Model):
     )
     
     # Technical details
-    printer_ip = models.GenericIPAddressField(null=True, blank=True)
+    printer_ip = models.CharField(max_length=255, null=True, blank=True)
     error_code = models.CharField(max_length=50, blank=True)
     error_message = models.TextField(blank=True)
     duration_ms = models.IntegerField(

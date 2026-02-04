@@ -34,4 +34,13 @@ urlpatterns = [
     path('printers/<int:printer_id>/edit/', views.printer_edit, name='printer_edit'),
     path('printers/<int:printer_id>/delete/', views.printer_delete, name='printer_delete'),
     path('printers/<int:printer_id>/toggle/', views.printer_toggle_active, name='printer_toggle'),
+    path('printers/<int:printer_id>/test/', views.printer_test_print, name='printer_test'),
+    path('printers/setup-defaults/', views.printer_setup_defaults, name='printer_setup_defaults'),
+    
+    # Printer Brands CRUD
+    path('brands/', views.brand_list, name='brand_list'),
+    path('brands/create/', views.brand_create, name='brand_create'),
+    path('brands/<int:brand_id>/edit/', views.brand_edit, name='brand_edit'),
+    path('brands/<int:brand_id>/delete/', views.brand_delete, name='brand_delete'),
+    path('brands/<int:brand_id>/toggle/', views.brand_toggle_active, name='brand_toggle'),
 ]

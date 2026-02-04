@@ -1,7 +1,7 @@
 ﻿from django.contrib import admin
 from .models import (
     KitchenOrder, PrinterConfig, KitchenStation, KitchenPerformance,
-    KitchenTicket, KitchenTicketItem, StationPrinter,
+    KitchenTicket, KitchenTicketItem, StationPrinter, PrinterBrand,
     KitchenTicketLog, PrinterHealthCheck
 )
 
@@ -107,10 +107,11 @@ class KitchenTicketAdmin(admin.ModelAdmin):
 @admin.register(StationPrinter)
 class StationPrinterAdmin(admin.ModelAdmin):
     list_display = [
-        'station_code', 'printer_name', 'printer_ip', 'printer_port',
-        'priority', 'is_active', 'get_success_rate', 'total_prints', 'failed_prints'
+        'station_code', 'printer_name', 'printer_brand', 'printer_type', 
+        'printer_ip', 'printer_port', 'priority', 'is_active', 
+        'get_success_rate', 'total_prints', 'failed_prints'
     ]
-    list_filter = ['brand', 'station_code', 'is_active', 'priority']
+    list_filter = ['brand', 'station_code', 'printer_brand', 'printer_type', 'is_active', 'priority']
     search_fields = ['station_code', 'printer_name', 'printer_ip']
     readonly_fields = [
         'last_print_at', 'last_error_at', 'last_error_message',
@@ -120,6 +121,10 @@ class StationPrinterAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Station & Printer Info', {
             'fields': ('brand', 'station_code', 'printer_name')
+        }),
+        ('Printer Brand & Type', {
+            'fields': ('printer_brand', 'printer_type', 'timeout_seconds'),
+            'description': 'Printer ESC/POS profile and connection settings'
         }),
         ('Network Configuration', {
             'fields': ('printer_ip', 'printer_port', 'is_active', 'priority')
@@ -168,6 +173,35 @@ class StationPrinterAdmin(admin.ModelAdmin):
             f"Checked {checked_count} printer(s). {online_count} online, {checked_count - online_count} offline."
         )
     run_health_check.short_description = "🔍 Run Health Check"
+
+
+@admin.register(PrinterBrand)
+class PrinterBrandAdmin(admin.ModelAdmin):
+    """Admin for Printer Brand reference table"""
+    list_display = ['code', 'name', 'profile_class', 'is_active', 'created_at']
+    list_filter = ['is_active', 'profile_class']
+    search_fields = ['code', 'name', 'profile_class']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Brand Information', {
+            'fields': ('code', 'name', 'is_active')
+        }),
+        ('Technical Details', {
+            'fields': ('profile_class', 'description'),
+            'description': 'ESC/POS command profile class name used by Kitchen Printer Agent'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion of system brands if they're referenced
+        if obj and obj.station_printers.exists():
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 @admin.register(KitchenTicketLog)

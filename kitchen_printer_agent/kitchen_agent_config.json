@@ -1,0 +1,36 @@
+{
+  "_comment": "Kitchen Printer Agent Configuration - Multiple Stations Support",
+  
+  "agent": {
+    "name": "Kitchen-Agent-1",
+    "version": "1.0.0",
+    "station_codes": ["kitchen"],
+    "heartbeat_interval": 30
+  },
+  
+  "database": {
+    "host": "localhost",
+    "port": 5433,
+    "database": "fnb_edge_db",
+    "user": "postgres",
+    "password": "postgres123"
+  },
+  
+  "polling": {
+    "interval_seconds": 2,
+    "max_tickets_per_poll": 10,
+    "retry_failed_tickets": true
+  },
+  
+  "printer": {
+    "_comment": "Printer config is now fetched from database (kitchen_stationprinter table)",
+    "default_timeout": 5,
+    "fallback_brand": "HRPT"
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "log_file": "kitchen_agent.log",
+    "max_size_mb": 10
+  }
+}

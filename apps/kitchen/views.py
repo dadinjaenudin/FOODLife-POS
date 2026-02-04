@@ -569,6 +569,7 @@ def printer_list_manage(request):
 def printer_create(request):
     """Create new station printer"""
     from apps.core.models import Brand
+    from .models import PrinterBrand
     
     if request.method == 'POST':
         try:
@@ -585,6 +586,9 @@ def printer_create(request):
                 is_active=request.POST.get('is_active') == 'on',
                 paper_width_mm=int(request.POST.get('paper_width_mm', 80)),
                 chars_per_line=int(request.POST.get('chars_per_line', 32)),
+                printer_brand=request.POST.get('printer_brand', 'HRPT'),
+                printer_type=request.POST.get('printer_type', 'network'),
+                timeout_seconds=int(request.POST.get('timeout_seconds', 5)),
             )
             
             messages.success(request, f'✓ Printer "{printer.printer_name}" berhasil ditambahkan!')
@@ -596,8 +600,11 @@ def printer_create(request):
     
     # GET request - show form
     brands = Brand.objects.all()
+    printer_brands = PrinterBrand.objects.filter(is_active=True).order_by('name')
+    
     context = {
         'brands': brands,
+        'printer_brands': printer_brands,
     }
     return render(request, 'kitchen/printer_form.html', context)
 
@@ -606,6 +613,7 @@ def printer_create(request):
 def printer_edit(request, printer_id):
     """Edit station printer"""
     from apps.core.models import Brand
+    from .models import PrinterBrand
     
     printer = get_object_or_404(StationPrinter, id=printer_id)
     
@@ -621,6 +629,9 @@ def printer_edit(request, printer_id):
             printer.is_active = request.POST.get('is_active') == 'on'
             printer.paper_width_mm = int(request.POST.get('paper_width_mm', 80))
             printer.chars_per_line = int(request.POST.get('chars_per_line', 32))
+            printer.printer_brand = request.POST.get('printer_brand', 'HRPT')
+            printer.printer_type = request.POST.get('printer_type', 'network')
+            printer.timeout_seconds = int(request.POST.get('timeout_seconds', 5))
             printer.save()
             
             messages.success(request, f'✓ Printer "{printer.printer_name}" berhasil diupdate!')
@@ -631,9 +642,12 @@ def printer_edit(request, printer_id):
     
     # GET request - show form
     brands = Brand.objects.all()
+    printer_brands = PrinterBrand.objects.filter(is_active=True).order_by('name')
+    
     context = {
         'printer': printer,
         'brands': brands,
+        'printer_brands': printer_brands,
     }
     return render(request, 'kitchen/printer_form.html', context)
 
@@ -669,4 +683,258 @@ def printer_toggle_active(request, printer_id):
     })
 
 
+@require_http_methods(["POST"])
+def printer_test_print(request, printer_id):
+    """Test printer connection and send test print using python-escpos"""
+    from datetime import datetime
+    from .printer_helper import NetworkPrinterHelper
+    
+    printer = get_object_or_404(StationPrinter, id=printer_id)
+    
+    try:
+        # Initialize network printer helper
+        helper = NetworkPrinterHelper(
+            ip=str(printer.printer_ip),
+            port=printer.printer_port,
+            timeout=5
+        )
+        
+        # Send test print
+        success = helper.print_test()
+        
+        if success:
+            # Update printer stats
+            printer.last_print_at = datetime.now()
+            printer.total_prints += 1
+            printer.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'✓ Test print sent successfully to {printer.printer_name}'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': f'Failed to print to {printer.printer_name}'
+            })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        })
 
+
+@require_http_methods(["POST"])
+def printer_setup_defaults(request):
+    """Setup default station printers (kitchen, bar, dessert)"""
+    from apps.core.models import Brand
+    
+    try:
+        # Get first available brand
+        brand = Brand.objects.first()
+        if not brand:
+            return JsonResponse({
+                'success': False,
+                'message': 'No Brand found. Please create a Brand first in the system.'
+            })
+        
+        printers_data = [
+            {
+                'brand': brand,
+                'station_code': 'kitchen',
+                'printer_name': 'Main Kitchen Printer',
+                'printer_ip': '192.168.1.100',
+                'printer_port': 9100,
+                'priority': 1,
+                'is_active': True,
+                'paper_width_mm': 80,
+                'chars_per_line': 32,
+                'printer_brand': 'HRPT',
+                'printer_type': 'network',
+                'timeout_seconds': 5,
+            },
+            {
+                'brand': brand,
+                'station_code': 'bar',
+                'printer_name': 'Bar Station Printer',
+                'printer_ip': '192.168.1.101',
+                'printer_port': 9100,
+                'priority': 1,
+                'is_active': True,
+                'paper_width_mm': 80,
+                'chars_per_line': 32,
+                'printer_brand': 'HRPT',
+                'printer_type': 'network',
+                'timeout_seconds': 5,
+            },
+            {
+                'brand': brand,
+                'station_code': 'dessert',
+                'printer_name': 'Dessert Station Printer',
+                'printer_ip': '192.168.1.102',
+                'printer_port': 9100,
+                'priority': 1,
+                'is_active': True,
+                'paper_width_mm': 80,
+                'chars_per_line': 32,
+                'printer_brand': 'HRPT',
+                'printer_type': 'network',
+                'timeout_seconds': 5,
+            },
+        ]
+        
+        created_count = 0
+        existing_count = 0
+        
+        for printer_data in printers_data:
+            printer, created = StationPrinter.objects.get_or_create(
+                brand=printer_data['brand'],
+                station_code=printer_data['station_code'],
+                defaults=printer_data
+            )
+            if created:
+                created_count += 1
+            else:
+                existing_count += 1
+        
+        if created_count > 0:
+            message = f'✓ Successfully created {created_count} default printer(s)'
+            if existing_count > 0:
+                message += f' ({existing_count} already existed)'
+        else:
+            message = 'All default printers already exist'
+        
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'created': created_count,
+            'existing': existing_count
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        })
+
+
+# ============================================================================
+# PRINTER BRANDS CRUD
+# ============================================================================
+
+@login_required
+def brand_list(request):
+    """List all printer brands"""
+    from .models import PrinterBrand
+    
+    brands = PrinterBrand.objects.all().order_by('name')
+    
+    # Count printers using each brand
+    for brand in brands:
+        brand.printer_count = StationPrinter.objects.filter(printer_brand=brand.code).count()
+    
+    context = {
+        'brands': brands,
+    }
+    
+    return render(request, 'kitchen/brand_list.html', context)
+
+
+@login_required
+def brand_create(request):
+    """Create new printer brand"""
+    from .models import PrinterBrand
+    
+    if request.method == 'POST':
+        try:
+            brand = PrinterBrand.objects.create(
+                code=request.POST.get('code').upper().strip(),
+                name=request.POST.get('name').strip(),
+                profile_class=request.POST.get('profile_class').strip(),
+                description=request.POST.get('description', '').strip(),
+                is_active=request.POST.get('is_active') == 'on',
+            )
+            
+            messages.success(request, f'✓ Printer brand "{brand.name}" berhasil ditambahkan!')
+            return redirect('kitchen:brand_list')
+            
+        except Exception as e:
+            messages.error(request, f'Error: {str(e)}')
+            return redirect('kitchen:brand_list')
+    
+    # GET request - show form
+    context = {}
+    return render(request, 'kitchen/brand_form.html', context)
+
+
+@login_required
+def brand_edit(request, brand_id):
+    """Edit printer brand"""
+    from .models import PrinterBrand
+    
+    brand = get_object_or_404(PrinterBrand, id=brand_id)
+    
+    if request.method == 'POST':
+        try:
+            brand.code = request.POST.get('code').upper().strip()
+            brand.name = request.POST.get('name').strip()
+            brand.profile_class = request.POST.get('profile_class').strip()
+            brand.description = request.POST.get('description', '').strip()
+            brand.is_active = request.POST.get('is_active') == 'on'
+            brand.save()
+            
+            messages.success(request, f'✓ Printer brand "{brand.name}" berhasil diupdate!')
+            return redirect('kitchen:brand_list')
+            
+        except Exception as e:
+            messages.error(request, f'Error: {str(e)}')
+    
+    # GET request - show form
+    context = {
+        'brand': brand,
+    }
+    return render(request, 'kitchen/brand_form.html', context)
+
+
+@login_required
+def brand_delete(request, brand_id):
+    """Delete printer brand"""
+    from .models import PrinterBrand
+    
+    brand = get_object_or_404(PrinterBrand, id=brand_id)
+    
+    # Check if brand is in use
+    printer_count = StationPrinter.objects.filter(printer_brand=brand.code).count()
+    
+    if request.method == 'POST':
+        if printer_count > 0:
+            messages.error(request, f'Cannot delete "{brand.name}" - {printer_count} printer(s) are using this brand!')
+            return redirect('kitchen:brand_list')
+        
+        brand_name = brand.name
+        brand.delete()
+        messages.success(request, f'✓ Printer brand "{brand_name}" berhasil dihapus!')
+        return redirect('kitchen:brand_list')
+    
+    context = {
+        'brand': brand,
+        'printer_count': printer_count,
+    }
+    return render(request, 'kitchen/brand_delete_confirm.html', context)
+
+
+@login_required
+def brand_toggle_active(request, brand_id):
+    """Toggle brand active status (AJAX)"""
+    from .models import PrinterBrand
+    
+    brand = get_object_or_404(PrinterBrand, id=brand_id)
+    brand.is_active = not brand.is_active
+    brand.save()
+    
+    return JsonResponse({
+        'success': True,
+        'is_active': brand.is_active,
+        'message': f'Brand {"activated" if brand.is_active else "deactivated"}'
+    })

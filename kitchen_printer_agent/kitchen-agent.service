@@ -1,0 +1,22 @@
+[Unit]
+Description=Kitchen Printer Agent
+After=network.target postgresql.service docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/foodlife/kitchen_printer_agent
+EnvironmentFile=/opt/foodlife/.env
+ExecStart=/opt/foodlife/kitchen_printer_agent/KitchenAgent
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
