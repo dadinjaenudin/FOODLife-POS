@@ -159,38 +159,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Kitchen Printer Service - ESC/POS Print Service
-  kitchen_printer_service:
-    build:
-      context: ./kitchen_printer_service
-      dockerfile: Dockerfile
-    container_name: fnb_kitchen_printer_service
-    ports:
-      - "9100:9100"  # Health check endpoint
-    environment:
-      - DB_HOST=edge_db
-      - DB_PORT=5432
-      - DB_NAME=fnb_edge_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres123
-      - POLL_INTERVAL=2
-      - MAX_TICKETS_PER_POLL=10
-      - MAX_PRINT_RETRIES=3
-      - RETRY_DELAY_SECONDS=5
-      - HEALTH_CHECK_PORT=9100
-      - LOG_LEVEL=INFO
-    depends_on:
-      edge_db:
-        condition: service_healthy
-    networks:
-      - pos_network
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
 volumes:
   edge_postgres_data:
   edge_static_volume:
