@@ -276,6 +276,34 @@ class HOAPIClient:
         logger.info("[HO API] Fetched %s stores", len(stores))
         return stores
     
+    def get_store_brands(self, company_id: str, store_id: str) -> List[Dict[str, Any]]:
+        """
+        Fetch store-brand relationships from HO Server
+        Supports multiple brands per store
+        
+        Endpoint: POST /api/v1/sync/store-brands/
+        
+        Args:
+            company_id: Company ID
+            store_id: Store ID
+            
+        Returns:
+            List of store-brand relationship dictionaries with brand details
+        """
+        logger.info("[HO API] Fetching store-brands for company_id=%s store_id=%s", company_id, store_id)
+        
+        payload = {
+            'company_id': company_id,
+            'store_id': store_id
+        }
+        
+        data = self._make_request('POST', '/api/v1/sync/store-brands/', json=payload)
+        
+        store_brands = data.get('store_brands') or data.get('results', [])
+        
+        logger.info("[HO API] Fetched %s store-brand relationships", len(store_brands))
+        return store_brands
+    
     def get_brands(self, company_id: Optional[str] = None, store_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Fetch brands from HO Server

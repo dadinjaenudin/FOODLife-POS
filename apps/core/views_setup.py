@@ -156,23 +156,36 @@ def setup_store_config_multi_brand(request):
             if not ho_store_data:
                 raise Exception(f'Store not found in HO Server')
             
-            # Get brand_id from HO store
-            brand_id = ho_store_data.get('brand_id')
-            if not brand_id:
-                raise Exception('Brand ID not found in HO store data')
+            # Step 3: Fetch store-brand relationships from HO (multiple brands per store)
+            logger.info(f"[SETUP] Fetching store-brands for store {ho_store_id} from HO...")
+            store_brands_data = client.get_store_brands(company_id=company_id, store_id=ho_store_id)
             
-            # Step 3: Fetch and sync Brand
-            logger.info(f"[SETUP] Fetching brand {brand_id} from HO...")
-            brands = client.get_brands(company_id=company_id, store_id=ho_store_id)
-            brand_data = next((b for b in brands if b['id'] == brand_id), None)
+            if not store_brands_data or len(store_brands_data) == 0:
+                raise Exception('No brands found for this store in HO Server')
             
-            if not brand_data:
-                raise Exception('Brand not found in HO Server')
+            logger.info(f"[SETUP] Found {len(store_brands_data)} brand(s) for this store")
             
-            brand, created = sync_brand_from_remote(brand_data)
-            logger.info(f"[SETUP] ✓ Brand synced: {brand.name} (created={created})")
+            # Step 4: Sync all brands for this store
+            synced_brands = []
+            for store_brand_rel in store_brands_data:
+                brand_data = store_brand_rel.get('brand')
+                if not brand_data:
+                    logger.warning(f"[SETUP] Skipping store-brand relationship - missing brand data")
+                    continue
+                
+                brand, created = sync_brand_from_remote(brand_data)
+                if brand:
+                    synced_brands.append({
+                        'brand': brand,
+                        'created': created,
+                        'is_active': store_brand_rel.get('is_active', True)
+                    })
+                    logger.info(f"[SETUP] ✓ Brand synced: {brand.name} (created={created})")
             
-            # Step 4: Create Edge Store
+            if not synced_brands:
+                raise Exception('Failed to sync any brands for this store')
+            
+            # Step 5: Create Edge Store
             edge_store = Store.objects.create(
                 company=company,
                 store_code=ho_store_data['store_code'],
@@ -184,17 +197,19 @@ def setup_store_config_multi_brand(request):
             )
             logger.info(f"[SETUP] ✓ Store created: {edge_store.store_name}")
             
-            # Link brand to store via StoreBrand junction table
+            # Step 6: Link all brands to store via StoreBrand junction table
             from .models import StoreBrand
-            StoreBrand.objects.create(
-                store=edge_store,
-                brand=brand,
-                ho_store_id=ho_store_id,
-                is_active=True
-            )
-            logger.info(f"[SETUP] ✓ Brand linked to store")
+            for brand_info in synced_brands:
+                StoreBrand.objects.create(
+                    store=edge_store,
+                    brand=brand_info['brand'],
+                    ho_store_id=ho_store_id,
+                    is_active=brand_info['is_active']
+                )
+                logger.info(f"[SETUP] ✓ Brand '{brand_info['brand'].name}' linked to store")
             
-            logger.info(f"[SETUP] ✓ Setup complete - Company and Store configured")
+            brand_names = ', '.join([b['brand'].name for b in synced_brands])
+            logger.info(f"[SETUP] ✓ Setup complete - Store configured with {len(synced_brands)} brand(s): {brand_names}")
             logger.info(f"[SETUP] Note: Master data sync should be done from /management/master-data/")
             
             # Return success response
@@ -205,6 +220,8 @@ def setup_store_config_multi_brand(request):
                     'store_name': edge_store.store_name,
                     'store_code': edge_store.store_code,
                     'company_name': company.name,
+                    'brand_count': len(synced_brands),
+                    'brand_names': brand_names,
                     'next_step': 'Silakan sync master data dari menu Management > Master Data'
                 })
             
@@ -212,7 +229,8 @@ def setup_store_config_multi_brand(request):
                 request,
                 f'✅ Edge Server Setup Complete!\n\n'
                 f'Company: {company.name} ({company.code})\n'
-                f'Store: {edge_store.store_name} ({edge_store.store_code})\n\n'
+                f'Store: {edge_store.store_name} ({edge_store.store_code})\n'
+                f'Brands: {brand_names}\n\n'
                 f'Next Step:\n'
                 f'Silakan login dan sync master data dari menu:\n'
                 f'Management > Master Data'

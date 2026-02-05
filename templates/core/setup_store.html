@@ -312,6 +312,7 @@
                                         <div class="text-left">
                                             <p class="mb-2"><strong>Company:</strong> ${data.company_name}</p>
                                             <p class="mb-2"><strong>Store:</strong> ${data.store_name} (${data.store_code})</p>
+                                            ${data.brand_count ? `<p class="mb-2"><strong>Brands:</strong> ${data.brand_names} (${data.brand_count} brand${data.brand_count > 1 ? 's' : ''})</p>` : ''}
                                             <hr class="my-3">
                                             <p class="mb-2"><strong>Langkah Selanjutnya:</strong></p>
                                             <p class="text-sm text-gray-600 mb-2">
