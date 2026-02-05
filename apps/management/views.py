@@ -91,6 +91,36 @@ def dashboard(request):
         Q(last_heartbeat__lt=five_min_ago) | Q(last_heartbeat__isnull=True)
     ).count()
 
+    # Printer health widget (kitchen)
+    from apps.kitchen.models import StationPrinter, PrinterHealthCheck
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
+
+    printers = StationPrinter.objects.filter(brand_id__in=brand_ids, is_active=True).order_by('station_code')
+    printer_status_list = []
+    online_printers = 0
+    offline_printers = 0
+    unknown_printers = 0
+
+    for printer in printers:
+        latest_health = printer.health_checks.order_by('-checked_at').first()
+        if latest_health is None:
+            status = 'unknown'
+            unknown_printers += 1
+        elif latest_health.is_online:
+            status = 'online'
+            online_printers += 1
+        else:
+            status = 'offline'
+            offline_printers += 1
+
+        printer_status_list.append({
+            'printer': printer,
+            'status': status,
+            'last_checked': latest_health.checked_at if latest_health else None,
+        })
+
     active_cashiers = today_bills.filter(status='open').values(
         'created_by__first_name',
         'created_by__last_name',
@@ -108,6 +138,13 @@ def dashboard(request):
         'online_terminals': online_terminals,
         'offline_terminals': offline_terminals,
         'total_terminals': terminals.count(),
+        'printer_status_list': printer_status_list,
+        'printer_status_counts': {
+            'total': printers.count(),
+            'online': online_printers,
+            'offline': offline_printers,
+            'unknown': unknown_printers,
+        },
         'active_shifts': [],
         'active_cashiers_count': active_cashiers.count(),
         'payment_breakdown': payment_breakdown,

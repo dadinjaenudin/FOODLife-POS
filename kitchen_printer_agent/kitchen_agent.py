@@ -114,7 +114,8 @@ class Config:
                 "name": "Kitchen-Agent-1",
                 "version": "1.0.0",
                 "station_ids": [1, 2, 3],
-                "heartbeat_interval": 30
+                 "heartbeat_interval": 30,
+                 "brand_ids": [],
             },
             
             "database": {
@@ -129,6 +130,10 @@ class Config:
                 "interval_seconds": 2,
                 "max_tickets_per_poll": 10,
                 "retry_failed_tickets": True
+            },
+            "health_check": {
+                "interval_seconds": 60,
+                "timeout_seconds": 5
             },
             
             "printer": {
@@ -483,8 +488,53 @@ class DatabaseManager:
             import traceback
             self.logger.error(traceback.format_exc())
             return None
+
+    def get_active_printers(self, station_codes, brand_ids=None):
+        """Fetch active printers for station codes"""
+        try:
+            cursor = self.conn.cursor()
+            query = """
+                SELECT id, station_code, printer_ip, printer_port
+                FROM kitchen_stationprinter
+                WHERE station_code = ANY(%s) AND is_active = true
+            """
+            params = [station_codes]
+            if brand_ids:
+                query += " AND brand_id = ANY(%s)"
+                params.append(brand_ids)
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            cursor.close()
+            return [
+                {
+                    'id': r[0],
+                    'station_code': r[1],
+                    'printer_ip': r[2],
+                    'printer_port': r[3] or 9100
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            self.logger.error(f"Failed to fetch active printers: {e}")
+            return []
+
+    def insert_printer_health(self, printer_id, is_online, response_time_ms=None, error_message=''):
+        """Insert printer health check record"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO kitchen_printerhealthcheck
+                (printer_id, checked_at, is_online, response_time_ms, paper_status, error_code, error_message, temperature_ok, cutter_ok)
+                VALUES (%s, NOW(), %s, %s, 'unknown', '', %s, NULL, NULL)
+                """,
+                (printer_id, is_online, response_time_ms, error_message)
+            )
+            cursor.close()
+        except Exception as e:
+            self.logger.error(f"Failed to insert printer health: {e}")
     
-    def fetch_pending_tickets(self, station_codes, max_tickets=10):
+    def fetch_pending_tickets(self, station_codes, max_tickets=10, brand_ids=None):
         """Fetch pending kitchen tickets for stations
         
         Real DB structure:
@@ -514,11 +564,16 @@ class DatabaseManager:
                 WHERE kt.printer_target = ANY(%s)
                   AND kt.status IN ('pending', 'new', 'failed')
                   AND kt.print_attempts < kt.max_retries
-                ORDER BY kt.created_at ASC
-                LIMIT %s
             """
-            
-            cursor.execute(query, (station_codes, max_tickets))
+
+            params = [station_codes]
+            if brand_ids:
+                query += " AND kt.brand_id = ANY(%s)"
+                params.append(brand_ids)
+
+            query += " ORDER BY kt.created_at ASC LIMIT %s"
+            params.append(max_tickets)
+            cursor.execute(query, tuple(params))
             tickets = cursor.fetchall()
             
             result = []
@@ -696,14 +751,18 @@ class KitchenAgent:
         self.agent_name = self.config.get('agent', 'name', default='Kitchen-Agent-1')
         # Station codes not IDs (e.g., ['kitchen', 'bar', 'dessert'])
         self.station_codes = self.config.get('agent', 'station_codes', default=['kitchen'])
+        self.brand_ids = self.config.get('agent', 'brand_ids', default=[])
         self.poll_interval = self.config.get('polling', 'interval_seconds', default=2)
         self.max_tickets = self.config.get('polling', 'max_tickets_per_poll', default=10)
         self.heartbeat_interval = self.config.get('agent', 'heartbeat_interval', default=30)
+        self.health_check_interval = self.config.get('health_check', 'interval_seconds', default=60)
+        self.health_check_timeout = self.config.get('health_check', 'timeout_seconds', default=5)
         
         # Statistics
         self.start_time = time.time()
         self.tickets_processed = 0
         self.last_heartbeat = 0
+        self.last_health_check = 0
         
         self.running = False
         self.logger.info("Kitchen Agent initialized")
@@ -735,8 +794,10 @@ class KitchenAgent:
             self.logger.info("=" * 60)
             self.logger.info(f"Agent Name: {self.agent_name}")
             self.logger.info(f"Station Codes: {self.station_codes}")
+            self.logger.info(f"Brand IDs: {self.brand_ids if self.brand_ids else 'ALL'}")
             self.logger.info(f"Poll Interval: {self.poll_interval}s")
             self.logger.info(f"Heartbeat Interval: {self.heartbeat_interval}s")
+            self.logger.info(f"Health Check Interval: {self.health_check_interval}s")
             self.logger.info("=" * 60)
             
             print("[DEBUG] Logger setup complete, entering loop")
@@ -746,6 +807,7 @@ class KitchenAgent:
                 print("[DEBUG] Loop iteration")
                 self.process_tickets()
                 self.send_heartbeat()
+                self.check_printers_health()
                 time.sleep(self.poll_interval)
         
         except KeyboardInterrupt:
@@ -767,7 +829,7 @@ class KitchenAgent:
         """Process pending tickets for all stations"""
         try:
             # Fetch tickets for all monitored stations
-            tickets = self.db.fetch_pending_tickets(self.station_codes, self.max_tickets)
+            tickets = self.db.fetch_pending_tickets(self.station_codes, self.max_tickets, self.brand_ids)
             
             if tickets:
                 self.logger.info(f"Found {len(tickets)} pending ticket(s)")
@@ -848,6 +910,52 @@ class KitchenAgent:
         except Exception as e:
             # Don't fail agent if heartbeat fails
             pass
+
+    def check_printers_health(self):
+        """Check printer connectivity and store health checks"""
+        current_time = time.time()
+        if current_time - self.last_health_check < self.health_check_interval:
+            return
+
+        try:
+            printers = self.db.get_active_printers(self.station_codes, self.brand_ids)
+            if not printers:
+                self.last_health_check = current_time
+                return
+
+            for printer in printers:
+                start_time = time.time()
+                is_online = False
+                response_time_ms = None
+                error_message = ''
+
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(self.health_check_timeout)
+                    result = sock.connect_ex((str(printer['printer_ip']), int(printer['printer_port'])))
+                    sock.close()
+
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    if result == 0:
+                        is_online = True
+                    else:
+                        error_message = f'Connection failed with code {result}'
+                except Exception as e:
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    error_message = str(e)
+
+                self.db.insert_printer_health(
+                    printer_id=printer['id'],
+                    is_online=is_online,
+                    response_time_ms=response_time_ms,
+                    error_message=error_message
+                )
+
+            self.last_health_check = current_time
+
+        except Exception:
+            # Don't fail agent if health check fails
+            self.last_health_check = current_time
     
     def stop(self):
         """Stop the agent"""

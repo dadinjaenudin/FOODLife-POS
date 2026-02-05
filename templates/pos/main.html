@@ -385,6 +385,173 @@
                 <div></div>
             </div>
         </footer>
+
+        <!-- Kitchen Printer Status Widget (POS Footer Area) -->
+           <div id="kitchen-printer-widget"
+               class="fixed bottom-0 right-[44rem] z-40 bg-white border-t-2 border-l-2 border-gray-200 rounded-tl-xl shadow-lg"
+               style="max-width: 360px;">
+              <div class="flex items-center gap-2 px-3 py-2.5 h-12">
+                <div class="relative">
+                    <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                    </svg>
+                    <span id="kitchen-printer-dot" class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-gray-400"></span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs font-semibold text-gray-900" id="kitchen-printer-title">Kitchen Printer</div>
+                    <div class="text-[10px] text-gray-500" id="kitchen-printer-subtitle">Loading...</div>
+                </div>
+                <button id="kitchen-printer-toggle" class="ml-1 text-gray-400 hover:text-gray-600" aria-label="Toggle">
+                    <svg id="kitchen-printer-chevron" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="kitchen-printer-body" class="border-t border-gray-200 px-3 py-2 text-[11px] text-gray-500">
+                <div id="kitchen-printer-list" class="space-y-1.5"></div>
+                <div class="mt-2 flex items-center justify-between">
+                    <button id="kitchen-agent-start" class="px-2 py-1 text-[10px] bg-green-600 text-white rounded-md hover:bg-green-700">
+                        Start Agent
+                    </button>
+                    <button id="kitchen-agent-stop" class="px-2 py-1 text-[10px] bg-red-600 text-white rounded-md hover:bg-red-700">
+                        Stop Agent
+                    </button>
+                    <span id="kitchen-agent-msg" class="text-[10px] text-gray-400 truncate max-w-[80px]"></span>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function () {
+                const endpoint = '{% url "pos:kitchen_printer_status" %}';
+                const dot = document.getElementById('kitchen-printer-dot');
+                const subtitle = document.getElementById('kitchen-printer-subtitle');
+                const counts = document.getElementById('kitchen-printer-counts');
+                const last = document.getElementById('kitchen-printer-last');
+                const list = document.getElementById('kitchen-printer-list');
+                const body = document.getElementById('kitchen-printer-body');
+                const toggleBtn = document.getElementById('kitchen-printer-toggle');
+                const chevron = document.getElementById('kitchen-printer-chevron');
+                let agentStatus = 'unknown';
+                const btnStart = document.getElementById('kitchen-agent-start');
+                const btnStop = document.getElementById('kitchen-agent-stop');
+                const agentMsg = document.getElementById('kitchen-agent-msg');
+
+                function setCollapsed(collapsed) {
+                    if (!body || !chevron) return;
+                    body.style.display = collapsed ? 'none' : 'flex';
+                    chevron.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';
+                }
+
+                function setDot(status) {
+                    if (!dot) return;
+                    dot.classList.remove('bg-green-500', 'bg-red-500', 'bg-yellow-500', 'bg-gray-400');
+                    if (status === 'online') dot.classList.add('bg-green-500');
+                    else if (status === 'offline') dot.classList.add('bg-red-500');
+                    else if (status === 'degraded') dot.classList.add('bg-yellow-500');
+                    else dot.classList.add('bg-gray-400');
+                }
+
+                async function refresh() {
+                    try {
+                        const res = await fetch(endpoint, { credentials: 'same-origin' });
+                        const data = await res.json();
+
+                        try {
+                            const agentRes = await fetch('{% url "pos:kitchen_agent_status" %}', { credentials: 'same-origin' });
+                            const agentData = await agentRes.json();
+                            agentStatus = agentData.status || 'unknown';
+                        } catch (e) {
+                            agentStatus = 'unknown';
+                        }
+
+                        setDot(data.overall);
+                        if (subtitle) {
+                            const printerText = data.overall === 'online'
+                                ? 'Online'
+                                : data.overall === 'offline'
+                                    ? 'Offline'
+                                    : data.overall === 'degraded'
+                                        ? 'Degraded'
+                                        : 'Unknown';
+                            const agentText = agentStatus === 'running' ? 'Agent: On' : agentStatus === 'stopped' ? 'Agent: Off' : 'Agent: ?';
+                            subtitle.textContent = `${printerText} • ${agentText}`;
+                        }
+                        if (btnStart && btnStop) {
+                            btnStart.disabled = agentStatus === 'running';
+                            btnStop.disabled = agentStatus !== 'running';
+                            btnStart.classList.toggle('opacity-50', btnStart.disabled);
+                            btnStop.classList.toggle('opacity-50', btnStop.disabled);
+                        }
+                        if (counts) counts.textContent = '';
+                        if (last) last.textContent = '';
+                        if (list) {
+                            list.innerHTML = '';
+                            (data.printers || []).forEach((p) => {
+                                const row = document.createElement('div');
+                                const dotClass = p.status === 'online' ? 'bg-green-500' : p.status === 'offline' ? 'bg-red-500' : 'bg-gray-400';
+                                const badgeClass = p.status === 'online'
+                                    ? 'bg-green-100 text-green-700'
+                                    : p.status === 'offline'
+                                        ? 'bg-red-100 text-red-700'
+                                        : 'bg-gray-100 text-gray-600';
+                                row.className = 'flex items-center justify-between px-2 py-1 rounded-md bg-gray-50';
+                                row.innerHTML = `
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="h-2 w-2 rounded-full ${dotClass}"></span>
+                                        <span class="text-[11px] font-semibold text-gray-800">${(p.station_code || '').toUpperCase()}</span>
+                                        <span class="text-[10px] text-gray-500 truncate max-w-[140px]">${p.printer_name || ''}</span>
+                                    </div>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeClass}">${p.status}</span>
+                                `;
+                                list.appendChild(row);
+                            });
+                        }
+                    } catch (e) {
+                        setDot('unknown');
+                        if (subtitle) subtitle.textContent = 'Unknown';
+                    }
+                }
+
+                async function callAgent(endpointUrl, successMsg) {
+                    try {
+                        if (agentMsg) agentMsg.textContent = '...';
+                        const res = await fetch(endpointUrl, {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                            credentials: 'same-origin'
+                        });
+                        const data = await res.json();
+                        if (agentMsg) agentMsg.textContent = data.message || successMsg;
+                        refresh();
+                    } catch (e) {
+                        if (agentMsg) agentMsg.textContent = 'Failed';
+                    }
+                }
+
+                if (btnStart) {
+                    btnStart.addEventListener('click', function () {
+                        callAgent('{% url "pos:kitchen_agent_start" %}', 'Started');
+                    });
+                }
+                if (btnStop) {
+                    btnStop.addEventListener('click', function () {
+                        callAgent('{% url "pos:kitchen_agent_stop" %}', 'Stopped');
+                    });
+                }
+
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', function () {
+                        const collapsed = body && body.style.display !== 'none' ? true : false;
+                        setCollapsed(collapsed);
+                    });
+                }
+
+                setCollapsed(true);
+                refresh();
+                setInterval(refresh, 30000);
+            })();
+        </script>
     </main>
 
     <!-- ==================== RIGHT: BILL PANEL ==================== -->

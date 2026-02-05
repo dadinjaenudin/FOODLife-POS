@@ -161,6 +161,133 @@ def pos_main(request):
 
 
 @login_required
+def kitchen_printer_status(request):
+    """Kitchen printer status summary for POS widget"""
+    from apps.kitchen.models import StationPrinter
+    store_config = Store.get_current()
+
+    brand = request.user.brand
+    if not brand and store_config and store_config.brand:
+        brand = store_config.brand
+
+    printers = StationPrinter.objects.filter(brand=brand, is_active=True).order_by('station_code') if brand else StationPrinter.objects.none()
+
+    online = 0
+    offline = 0
+    unknown = 0
+    last_checked = None
+
+    printer_rows = []
+    for printer in printers:
+        latest_health = printer.health_checks.order_by('-checked_at').first()
+        if latest_health is None:
+            status = 'unknown'
+            unknown += 1
+        elif latest_health.is_online:
+            status = 'online'
+            online += 1
+        else:
+            status = 'offline'
+            offline += 1
+
+        if latest_health and (last_checked is None or latest_health.checked_at > last_checked):
+            last_checked = latest_health.checked_at
+
+        printer_rows.append({
+            'id': printer.id,
+            'station_code': printer.station_code,
+            'printer_name': printer.printer_name,
+            'printer_ip': printer.printer_ip,
+            'printer_port': printer.printer_port,
+            'status': status,
+        })
+
+    if offline > 0:
+        overall = 'offline'
+    elif online > 0 and unknown == 0:
+        overall = 'online'
+    elif online > 0 and unknown > 0:
+        overall = 'degraded'
+    else:
+        overall = 'unknown'
+
+    return JsonResponse({
+        'overall': overall,
+        'counts': {
+            'total': printers.count(),
+            'online': online,
+            'offline': offline,
+            'unknown': unknown,
+        },
+        'last_checked': last_checked.isoformat() if last_checked else None,
+        'printers': printer_rows,
+    })
+
+
+@login_required
+def kitchen_agent_status(request):
+    """Kitchen agent service status for POS widget"""
+    import subprocess
+
+    status = 'unknown'
+    try:
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'kitchen-agent'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            status = 'running'
+        else:
+            status = 'stopped'
+    except Exception:
+        status = 'unknown'
+
+    return JsonResponse({'status': status})
+
+
+@login_required
+@require_http_methods(["POST"])
+def kitchen_agent_start(request):
+    """Start kitchen-agent systemd service"""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ['systemctl', 'start', 'kitchen-agent'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return JsonResponse({'success': True, 'message': 'Kitchen agent started'})
+        return JsonResponse({'success': False, 'message': result.stderr or 'Failed to start agent'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def kitchen_agent_stop(request):
+    """Stop kitchen-agent systemd service"""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ['systemctl', 'stop', 'kitchen-agent'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return JsonResponse({'success': True, 'message': 'Kitchen agent stopped'})
+        return JsonResponse({'success': False, 'message': result.stderr or 'Failed to stop agent'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
 def product_list(request):
     """Product list partial - HTMX"""
     from apps.core.models import ProductPhoto

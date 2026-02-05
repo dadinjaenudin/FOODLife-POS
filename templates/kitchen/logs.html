@@ -13,11 +13,42 @@
                         <h1 class="text-2xl font-bold text-gray-900">📋 Audit Logs</h1>
                         <p class="text-sm text-gray-600 mt-1">Complete history of all ticket state changes</p>
                     </div>
-                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                        </svg>
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <form method="post" action="{% url 'kitchen:logs_purge' %}" class="hidden lg:flex items-center gap-2">
+                            {% csrf_token %}
+                            <label class="text-sm text-gray-600">Logs &gt;</label>
+                            <input type="number" name="logs_days" min="1" value="30"
+                                   class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500">
+                            <span class="text-sm text-gray-600">days</span>
+                            <label class="flex items-center gap-2 text-sm text-gray-600">
+                                <input type="checkbox" name="purge_tickets" class="rounded">
+                                Purge tickets
+                            </label>
+                            <label class="text-sm text-gray-600">Tickets &gt;</label>
+                            <input type="number" name="tickets_days" min="1" value="30"
+                                   class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500">
+                            <span class="text-sm text-gray-600">days</span>
+                            <button type="submit"
+                                    onclick="return confirm('Purge logs (and tickets if checked)?')"
+                                    class="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
+                                Purge
+                            </button>
+                            <span class="text-xs text-gray-400 ml-2">Auto purge daily at 03:00</span>
+                        </form>
+                        <form method="post" action="{% url 'kitchen:logs_clear_all' %}" class="hidden lg:flex">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    onclick="return confirm('Clear ALL logs for current brand?')"
+                                    class="px-3 py-1.5 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm">
+                                Clear All Logs
+                            </button>
+                        </form>
+                        <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </header>

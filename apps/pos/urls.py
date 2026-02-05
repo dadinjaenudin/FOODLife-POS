@@ -5,6 +5,10 @@ app_name = 'pos'
 
 urlpatterns = [
     path('', views.pos_main, name='main'),
+    path('kitchen-printer-status/', views.kitchen_printer_status, name='kitchen_printer_status'),
+    path('kitchen-agent-status/', views.kitchen_agent_status, name='kitchen_agent_status'),
+    path('kitchen-agent/start/', views.kitchen_agent_start, name='kitchen_agent_start'),
+    path('kitchen-agent/stop/', views.kitchen_agent_stop, name='kitchen_agent_stop'),
     path('products/', views.product_list, name='products'),
     
     # Bill operations

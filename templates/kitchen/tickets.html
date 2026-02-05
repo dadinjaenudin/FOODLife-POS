@@ -13,11 +13,21 @@
                         <h1 class="text-2xl font-bold text-gray-900">🎫 Kitchen Tickets</h1>
                         <p class="text-sm text-gray-600 mt-1">View and manage all kitchen print tickets</p>
                     </div>
-                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                        </svg>
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <form method="post" action="{% url 'kitchen:tickets_clear_all' %}" class="hidden lg:flex">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    onclick="return confirm('Clear ALL tickets for current brand?')"
+                                    class="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
+                                Clear All Tickets
+                            </button>
+                        </form>
+                        <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -111,10 +121,22 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ ticket.created_at|date:"d M Y H:i" }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    <a href="{% url 'kitchen:ticket_detail' ticket.id %}" class="text-indigo-600 hover:text-indigo-900">
-                                        View
-                                    </a>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <div class="flex items-center space-x-2">
+                                        <a href="{% url 'kitchen:ticket_detail' ticket.id %}" 
+                                           class="text-indigo-600 hover:text-indigo-900 font-medium">
+                                            View
+                                        </a>
+                                        <span class="text-gray-300">|</span>
+                                        <form method="post" action="{% url 'kitchen:ticket_reprint' ticket.id %}" 
+                                              onsubmit="return confirm('Reprint ticket #{{ ticket.id }}?')" class="inline">
+                                            {% csrf_token %}
+                                            <button type="submit" 
+                                                    class="text-green-600 hover:text-green-900 font-medium">
+                                                🖨️ Reprint
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             {% empty %}
@@ -128,6 +150,27 @@
                     </table>
                 </div>
             </div>
+            {% if page_obj and page_obj.paginator.num_pages > 1 %}
+            <div class="mt-4 flex items-center justify-between text-sm text-gray-600">
+                <div>
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </div>
+                <div class="flex items-center gap-2">
+                    {% if page_obj.has_previous %}
+                    <a href="?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if station_filter %}station={{ station_filter }}&{% endif %}page={{ page_obj.previous_page_number }}"
+                       class="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Prev
+                    </a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                    <a href="?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if station_filter %}station={{ station_filter }}&{% endif %}page={{ page_obj.next_page_number }}"
+                       class="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Next
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </main>
     </div>
 </div>

@@ -1,0 +1,16 @@
+[Unit]
+Description=Kitchen Printer Agent (Python)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/foodlife/kitchen_printer_agent
+EnvironmentFile=/opt/foodlife/.env
+ExecStart=/opt/foodlife/kitchen_printer_agent/venv/bin/python /opt/foodlife/kitchen_printer_agent/kitchen_agent.py
+Restart=always
+RestartSec=3
+User=foodlife
+Group=foodlife
+
+[Install]
+WantedBy=multi-user.target

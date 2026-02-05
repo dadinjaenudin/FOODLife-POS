@@ -24,9 +24,13 @@ urlpatterns = [
     # Kitchen Printer System Monitoring
     path('dashboard/', views.kitchen_dashboard, name='dashboard'),
     path('tickets/', views.kitchen_tickets, name='tickets'),
+    path('tickets/clear/', views.kitchen_tickets_clear_all, name='tickets_clear_all'),
     path('tickets/<int:ticket_id>/', views.kitchen_ticket_detail, name='ticket_detail'),
+    path('tickets/<int:ticket_id>/reprint/', views.ticket_reprint, name='ticket_reprint'),
     path('printer-status/', views.kitchen_printers, name='printers'),
     path('logs/', views.kitchen_logs, name='logs'),
+    path('logs/purge/', views.kitchen_logs_purge, name='logs_purge'),
+    path('logs/clear/', views.kitchen_logs_clear_all, name='logs_clear_all'),
     
     # Station Printer CRUD
     path('printers/manage/', views.printer_list_manage, name='printer_manage'),

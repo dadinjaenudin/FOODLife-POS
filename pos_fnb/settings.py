@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -155,6 +156,10 @@ TIME_ZONE = 'Asia/Jakarta'
 USE_I18N = True
 USE_TZ = True
 
+# Kitchen log/ticket retention (days)
+KITCHEN_LOG_RETENTION_DAYS = int(os.environ.get('KITCHEN_LOG_RETENTION_DAYS', '30'))
+KITCHEN_TICKET_RETENTION_DAYS = int(os.environ.get('KITCHEN_TICKET_RETENTION_DAYS', '30'))
+
 # Static files
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
@@ -198,6 +203,15 @@ BASE_URL = os.environ.get('BASE_URL', 'http://localhost:8000')
 
 # Number formatting
 USE_THOUSAND_SEPARATOR = True
+
+# Celery
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    'purge_kitchen_logs_and_tickets_daily': {
+        'task': 'apps.kitchen.tasks.purge_kitchen_logs_and_tickets',
+        'schedule': crontab(hour=3, minute=0),
+    },
+}
 THOUSAND_SEPARATOR = ','
 NUMBER_GROUPING = 3
 

@@ -151,6 +151,7 @@ def create_kitchen_tickets(bill, item_ids=None):
         
         ticket = KitchenTicket.objects.create(
             bill=bill,
+            brand=bill.brand,
             printer_target=station_code,
             status='new'
         )
@@ -242,6 +243,7 @@ def reprint_kitchen_ticket(ticket, actor):
     with transaction.atomic():
         new_ticket = KitchenTicket.objects.create(
             bill=ticket.bill,
+            brand=ticket.brand or ticket.bill.brand,
             printer_target=ticket.printer_target,
             status='new',
             is_reprint=True,

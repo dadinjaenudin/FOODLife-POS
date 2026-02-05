@@ -307,6 +307,7 @@ class KitchenTicket(models.Model):
     ]
     
     bill = models.ForeignKey('pos.Bill', on_delete=models.CASCADE, related_name='kitchen_tickets')
+    brand = models.ForeignKey('core.Brand', on_delete=models.PROTECT, null=True, blank=True, db_index=True)
     
     printer_target = models.CharField(
         max_length=50, 
@@ -346,6 +347,7 @@ class KitchenTicket(models.Model):
         indexes = [
             models.Index(fields=['status', 'created_at']),
             models.Index(fields=['bill', 'printer_target']),
+            models.Index(fields=['brand', 'printer_target']),
             models.Index(fields=['printer_target', 'status']),
             models.Index(fields=['created_at']),
         ]

@@ -24,6 +24,12 @@ echo "[1/7] Creating directories..."
 mkdir -p "$INSTALL_DIR"
 mkdir -p "/opt/foodlife"
 
+echo "[1.5/7] Ensuring service user exists..."
+if ! id -u foodlife >/dev/null 2>&1; then
+    useradd --system --home /opt/foodlife --shell /usr/sbin/nologin foodlife
+fi
+chown -R foodlife:foodlife /opt/foodlife
+
 echo "[2/7] Copying files..."
 cp -v kitchen_agent.py "$INSTALL_DIR/"
 cp -v kitchen_agent_config.json "$INSTALL_DIR/"
@@ -38,23 +44,7 @@ echo "[4/7] Installing Python dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "[5/7] Building executable with PyInstaller..."
-pip install pyinstaller
-
-# Build executable
-pyinstaller --onefile \
-    --name=KitchenAgent \
-    --add-data=kitchen_agent_config.json:. \
-    --collect-data=escpos \
-    --hidden-import=psycopg2 \
-    --hidden-import=escpos.printer \
-    --clean \
-    --noconfirm \
-    kitchen_agent.py
-
-# Copy executable to install dir
-cp -v dist/KitchenAgent "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/KitchenAgent"
+echo "[5/7] Skipping PyInstaller (Python service mode)"
 
 echo "[6/7] Setting up environment file..."
 if [ ! -f "$ENV_FILE" ]; then
@@ -74,13 +64,15 @@ else
     echo "✅ Environment file already exists: $ENV_FILE"
 fi
 
-echo "[7/7] Installing systemd service..."
-cp -v kitchen-agent.service "$SERVICE_FILE"
+echo "[7/7] Installing systemd service (Python)..."
+cp -v kitchen-agent-python.service "$SERVICE_FILE"
 
 # Update service file with correct paths
 sed -i "s|WorkingDirectory=.*|WorkingDirectory=$INSTALL_DIR|g" "$SERVICE_FILE"
 sed -i "s|EnvironmentFile=.*|EnvironmentFile=$ENV_FILE|g" "$SERVICE_FILE"
-sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/KitchenAgent|g" "$SERVICE_FILE"
+sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/kitchen_agent.py|g" "$SERVICE_FILE"
+sed -i "s|User=.*|User=foodlife|g" "$SERVICE_FILE"
+sed -i "s|Group=.*|Group=foodlife|g" "$SERVICE_FILE"
 
 # Reload systemd
 systemctl daemon-reload
@@ -91,7 +83,8 @@ echo "✅ DEPLOYMENT COMPLETE!"
 echo "=============================================="
 echo ""
 echo "Installed to: $INSTALL_DIR"
-echo "Executable: $INSTALL_DIR/KitchenAgent"
+echo "Python: $INSTALL_DIR/venv/bin/python"
+echo "Entry: $INSTALL_DIR/kitchen_agent.py"
 echo "Config: $INSTALL_DIR/kitchen_agent_config.json"
 echo "Environment: $ENV_FILE"
 echo "Service: $SERVICE_FILE"

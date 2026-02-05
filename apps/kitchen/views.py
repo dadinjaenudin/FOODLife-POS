@@ -1,10 +1,12 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
+from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Avg, Count, Q
+from datetime import timedelta
 from decimal import Decimal
 import json
 
@@ -422,25 +424,49 @@ def kitchen_dashboard(request):
 def kitchen_tickets(request):
     """Kitchen Tickets List - View and manage all tickets"""
     from .models import KitchenTicket
+    from apps.core.models import Store, StoreBrand
+    
+    store_config = Store.get_current()
+    
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+    
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
     
     # Filters
     status_filter = request.GET.get('status', '')
     station_filter = request.GET.get('station', '')
     
-    tickets = KitchenTicket.objects.select_related('bill').prefetch_related('items__bill_item__product')
+    # Filter tickets by brand through bill relationship
+    tickets = KitchenTicket.objects.select_related('bill').prefetch_related('items__bill_item__product').filter(
+        bill__brand_id__in=brand_ids
+    )
     
     if status_filter:
         tickets = tickets.filter(status=status_filter)
     if station_filter:
         tickets = tickets.filter(printer_target=station_filter)
     
-    tickets = tickets.order_by('-created_at')[:100]
+    tickets = tickets.order_by('-created_at')
     
-    # Get unique stations for filter
-    stations = KitchenTicket.objects.values_list('printer_target', flat=True).distinct()
+    # Pagination
+    paginator = Paginator(tickets, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Get unique stations for filter (from filtered tickets)
+    stations = KitchenTicket.objects.filter(
+        bill__brand_id__in=brand_ids
+    ).values_list('printer_target', flat=True).distinct()
     
     context = {
-        'tickets': tickets,
+        'tickets': page_obj,
+        'page_obj': page_obj,
+        'paginator': paginator,
         'stations': stations,
         'status_filter': status_filter,
         'station_filter': station_filter,
@@ -450,11 +476,49 @@ def kitchen_tickets(request):
 
 
 @login_required
+@require_POST
+def kitchen_tickets_clear_all(request):
+    """Clear all kitchen tickets for current brand scope"""
+    from .models import KitchenTicket
+    from apps.core.models import Store, StoreBrand
+
+    store_config = Store.get_current()
+
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
+
+    tickets_qs = KitchenTicket.objects.filter(bill__brand_id__in=brand_ids)
+    tickets_deleted = tickets_qs.count()
+    tickets_qs.delete()
+
+    messages.success(request, f'✓ Cleared {tickets_deleted} tickets')
+    return redirect('kitchen:tickets')
+
+
+@login_required
 def kitchen_printers(request):
     """Printer Status - Monitor printer health and configuration"""
     from .models import StationPrinter, PrinterHealthCheck
+    from apps.core.models import Store, StoreBrand
     
-    printers = StationPrinter.objects.all().order_by('station_code', 'priority')
+    store_config = Store.get_current()
+    
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+    
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
+    
+    printers = StationPrinter.objects.filter(brand_id__in=brand_ids).order_by('station_code', 'priority')
     
     printer_data = []
     for printer in printers:
@@ -489,12 +553,27 @@ def kitchen_printers(request):
 def kitchen_logs(request):
     """Audit Logs - View all ticket state changes"""
     from .models import KitchenTicketLog
+    from apps.core.models import Store, StoreBrand
+    
+    store_config = Store.get_current()
+    
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+    
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
     
     # Filters
     action_filter = request.GET.get('action', '')
     ticket_id = request.GET.get('ticket_id', '')
     
-    logs = KitchenTicketLog.objects.select_related('ticket', 'ticket__bill')
+    # Filter logs by brand through ticket->bill relationship
+    logs = KitchenTicketLog.objects.select_related('ticket', 'ticket__bill').filter(
+        ticket__bill__brand_id__in=brand_ids
+    )
     
     if action_filter:
         logs = logs.filter(action=action_filter)
@@ -503,8 +582,10 @@ def kitchen_logs(request):
     
     logs = logs.order_by('-timestamp')[:200]
     
-    # Get unique actions for filter
-    actions = KitchenTicketLog.objects.values_list('action', flat=True).distinct()
+    # Get unique actions for filter (from filtered logs)
+    actions = KitchenTicketLog.objects.filter(
+        ticket__bill__brand_id__in=brand_ids
+    ).values_list('action', flat=True).distinct()
     
     context = {
         'logs': logs,
@@ -514,6 +595,97 @@ def kitchen_logs(request):
     }
     
     return render(request, 'kitchen/logs.html', context)
+
+
+@login_required
+@require_POST
+def kitchen_logs_purge(request):
+    """Purge kitchen ticket logs (and optionally tickets) by retention days"""
+    from .models import KitchenTicket, KitchenTicketLog
+    from apps.core.models import Store, StoreBrand
+
+    store_config = Store.get_current()
+
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
+
+    # Retention days (minimum 1)
+    logs_days_value = (request.POST.get('logs_days') or request.POST.get('days') or '30').strip()
+    tickets_days_value = (request.POST.get('tickets_days') or logs_days_value or '30').strip()
+    try:
+        retention_logs_days = max(1, int(logs_days_value))
+    except ValueError:
+        retention_logs_days = 30
+    try:
+        retention_tickets_days = max(1, int(tickets_days_value))
+    except ValueError:
+        retention_tickets_days = retention_logs_days
+
+    cutoff_logs = timezone.now() - timedelta(days=retention_logs_days)
+    purge_tickets = request.POST.get('purge_tickets') == 'on'
+
+    logs_qs = KitchenTicketLog.objects.filter(
+        timestamp__lt=cutoff_logs,
+        ticket__bill__brand_id__in=brand_ids
+    )
+    logs_deleted = logs_qs.count()
+    logs_qs.delete()
+
+    tickets_deleted = 0
+    if purge_tickets:
+        cutoff_tickets = timezone.now() - timedelta(days=retention_tickets_days)
+        tickets_qs = KitchenTicket.objects.filter(
+            created_at__lt=cutoff_tickets,
+            status__in=['printed', 'failed'],
+            bill__brand_id__in=brand_ids
+        )
+        tickets_deleted = tickets_qs.count()
+        tickets_qs.delete()
+
+    if purge_tickets:
+        messages.success(
+            request,
+            f'✓ Purged {logs_deleted} logs (> {retention_logs_days} days) and {tickets_deleted} tickets (> {retention_tickets_days} days)'
+        )
+    else:
+        messages.success(
+            request,
+            f'✓ Purged {logs_deleted} logs older than {retention_logs_days} days'
+        )
+
+    return redirect('kitchen:logs')
+
+
+@login_required
+@require_POST
+def kitchen_logs_clear_all(request):
+    """Clear all kitchen ticket logs for current brand scope"""
+    from .models import KitchenTicketLog
+    from apps.core.models import Store, StoreBrand
+
+    store_config = Store.get_current()
+
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
+
+    logs_qs = KitchenTicketLog.objects.filter(ticket__bill__brand_id__in=brand_ids)
+    logs_deleted = logs_qs.count()
+    logs_qs.delete()
+
+    messages.success(request, f'✓ Cleared {logs_deleted} logs')
+    return redirect('kitchen:logs')
 
 
 @login_required
@@ -535,6 +707,83 @@ def kitchen_ticket_detail(request, ticket_id):
     }
     
     return render(request, 'kitchen/ticket_detail.html', context)
+
+
+@login_required
+@require_POST
+def ticket_reprint(request, ticket_id):
+    """Reprint a kitchen ticket - creates new ticket with is_reprint flag"""
+    from .models import KitchenTicket, KitchenTicketItem, KitchenTicketLog
+    from django.contrib import messages
+    
+    try:
+        # Get original ticket
+        original_ticket = get_object_or_404(
+            KitchenTicket.objects.prefetch_related('items__bill_item'),
+            id=ticket_id
+        )
+        
+        # Create new ticket as reprint
+        reprint_ticket = KitchenTicket.objects.create(
+            bill=original_ticket.bill,
+            brand=original_ticket.brand or original_ticket.bill.brand,
+            printer_target=original_ticket.printer_target,
+            status='new',  # Will be picked up by kitchen agent
+            is_reprint=True,
+            original_ticket=original_ticket,
+            print_attempts=0,
+            max_retries=3
+        )
+        
+        # Copy all items from original ticket
+        for original_item in original_ticket.items.all():
+            KitchenTicketItem.objects.create(
+                kitchen_ticket=reprint_ticket,
+                bill_item=original_item.bill_item,
+                quantity=original_item.quantity
+            )
+        
+        # Log reprint action on original ticket
+        KitchenTicketLog.log_action(
+            ticket=original_ticket,
+            action='reprinted',
+            actor=request.user.username,
+            old_status=original_ticket.status,
+            new_status=original_ticket.status,
+            metadata={
+                'reprint_ticket_id': reprint_ticket.id,
+                'reason': 'Manual reprint by user'
+            }
+        )
+        
+        # Log creation of reprint ticket
+        KitchenTicketLog.log_action(
+            ticket=reprint_ticket,
+            action='created',
+            actor=request.user.username,
+            old_status='',
+            new_status='new',
+            metadata={
+                'original_ticket_id': original_ticket.id,
+                'is_reprint': True,
+                'items_count': reprint_ticket.items.count()
+            }
+        )
+        
+        messages.success(
+            request, 
+            f'✓ Ticket #{original_ticket.id} berhasil di-reprint. Ticket baru: #{reprint_ticket.id}'
+        )
+        
+    except Exception as e:
+        messages.error(request, f'Error reprint ticket: {str(e)}')
+    
+    # Redirect back to tickets list or ticket detail
+    referer = request.META.get('HTTP_REFERER', '')
+    if 'ticket_detail' in referer or f'/tickets/{ticket_id}/' in referer:
+        return redirect('kitchen:ticket_detail', ticket_id=ticket_id)
+    else:
+        return redirect('kitchen:tickets')
 
 
 # ============================================================================

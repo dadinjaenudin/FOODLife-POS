@@ -13,6 +13,63 @@
         </div>
     </div>
     
+    <!-- Kitchen Printer Status Widget -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Kitchen Printer Status</h3>
+                <p class="text-sm text-gray-600">Live connectivity from kitchen_printer_agent</p>
+            </div>
+            <a href="{% url 'kitchen:printers' %}" class="text-sm text-indigo-600 hover:underline">View All →</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div class="p-4 bg-gray-50 rounded-lg">
+                <p class="text-xs text-gray-500">Total</p>
+                <p class="text-2xl font-bold text-gray-900">{{ printer_status_counts.total }}</p>
+            </div>
+            <div class="p-4 bg-green-50 rounded-lg">
+                <p class="text-xs text-gray-500">Online</p>
+                <p class="text-2xl font-bold text-green-700">{{ printer_status_counts.online }}</p>
+            </div>
+            <div class="p-4 bg-red-50 rounded-lg">
+                <p class="text-xs text-gray-500">Offline</p>
+                <p class="text-2xl font-bold text-red-700">{{ printer_status_counts.offline }}</p>
+            </div>
+            <div class="p-4 bg-yellow-50 rounded-lg">
+                <p class="text-xs text-gray-500">Unknown</p>
+                <p class="text-2xl font-bold text-yellow-700">{{ printer_status_counts.unknown }}</p>
+            </div>
+        </div>
+        <div class="space-y-2">
+            {% for row in printer_status_list|slice:":5" %}
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                    <p class="text-sm font-medium text-gray-900">{{ row.printer.station_code|upper }} — {{ row.printer.printer_name }}</p>
+                    <p class="text-xs text-gray-500">{{ row.printer.printer_ip }}:{{ row.printer.printer_port }}</p>
+                </div>
+                <div class="text-right">
+                    {% if row.status == 'online' %}
+                    <span class="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Online</span>
+                    {% elif row.status == 'offline' %}
+                    <span class="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">Offline</span>
+                    {% else %}
+                    <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">Unknown</span>
+                    {% endif %}
+                    <div class="text-xs text-gray-400 mt-1">
+                        {% if row.last_checked %}
+                        Last: {{ row.last_checked|date:"H:i:s" }}
+                        {% else %}
+                        No check yet
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="p-4 text-sm text-gray-500">No printers configured.</div>
+            {% endfor %}
+        </div>
+    </div>
+    
     <!-- Metrics Grid (Auto-refresh every 30 seconds) -->
     <div hx-get="{% url 'management:dashboard_refresh' %}" 
          hx-trigger="every 30s"
