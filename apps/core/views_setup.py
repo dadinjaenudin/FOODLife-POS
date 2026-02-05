@@ -47,6 +47,7 @@ def sync_brand_from_remote(brand_data):
         # Ensure company exists
         company = Company.objects.filter(id=brand_data['company_id']).first()
         if not company:
+            logger.error(f"[SYNC] Company {brand_data['company_id']} not found for brand {brand_data.get('name')}")
             return None, False
         
         brand, created = Brand.objects.update_or_create(
@@ -64,9 +65,12 @@ def sync_brand_from_remote(brand_data):
                 'point_expiry_months_override': brand_data.get('point_expiry_months_override'),
             }
         )
+        logger.info(f"[SYNC] Brand {brand.name} synced successfully (created={created})")
         return brand, created
     except Exception as e:
-        print(f"Error syncing brand: {e}")
+        logger.error(f"[SYNC] Error syncing brand {brand_data.get('name', 'Unknown')}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None, False
 
 
@@ -160,6 +164,8 @@ def setup_store_config_multi_brand(request):
             logger.info(f"[SETUP] Fetching store-brands for store {ho_store_id} from HO...")
             store_brands_data = client.get_store_brands(company_id=company_id, store_id=ho_store_id)
             
+            logger.info(f"[SETUP] Store-brands API response: {store_brands_data}")
+            
             if not store_brands_data or len(store_brands_data) == 0:
                 raise Exception('No brands found for this store in HO Server')
             
@@ -167,23 +173,36 @@ def setup_store_config_multi_brand(request):
             
             # Step 4: Sync all brands for this store
             synced_brands = []
-            for store_brand_rel in store_brands_data:
+            for idx, store_brand_rel in enumerate(store_brands_data):
+                logger.info(f"[SETUP] Processing store-brand #{idx + 1}: {store_brand_rel}")
+                
                 brand_data = store_brand_rel.get('brand')
                 if not brand_data:
-                    logger.warning(f"[SETUP] Skipping store-brand relationship - missing brand data")
+                    logger.warning(f"[SETUP] Skipping store-brand relationship #{idx + 1} - missing brand data")
+                    logger.warning(f"[SETUP] Full relation data: {store_brand_rel}")
                     continue
                 
-                brand, created = sync_brand_from_remote(brand_data)
-                if brand:
-                    synced_brands.append({
-                        'brand': brand,
-                        'created': created,
-                        'is_active': store_brand_rel.get('is_active', True)
-                    })
-                    logger.info(f"[SETUP] ✓ Brand synced: {brand.name} (created={created})")
+                logger.info(f"[SETUP] Syncing brand: {brand_data.get('name', 'Unknown')} (ID: {brand_data.get('id')})")
+                
+                try:
+                    brand, created = sync_brand_from_remote(brand_data)
+                    if brand:
+                        synced_brands.append({
+                            'brand': brand,
+                            'created': created,
+                            'is_active': store_brand_rel.get('is_active', True)
+                        })
+                        logger.info(f"[SETUP] ✓ Brand synced: {brand.name} (created={created})")
+                    else:
+                        logger.error(f"[SETUP] sync_brand_from_remote returned None for brand: {brand_data}")
+                except Exception as brand_sync_error:
+                    logger.error(f"[SETUP] Failed to sync brand {brand_data.get('name')}: {brand_sync_error}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             if not synced_brands:
-                raise Exception('Failed to sync any brands for this store')
+                logger.error(f"[SETUP] No brands were successfully synced. Total store-brands received: {len(store_brands_data)}")
+                raise Exception(f'Failed to sync any brands for this store. Received {len(store_brands_data)} brand(s) but all failed to sync.')
             
             # Step 5: Create Edge Store
             edge_store = Store.objects.create(
