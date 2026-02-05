@@ -538,20 +538,21 @@ class DatabaseManager:
                     'items': []
                 }
                 
-                # Fetch bill items
+                # Fetch bill items - ONLY items in this specific ticket
                 items_query = """
                     SELECT 
                         bi.id,
-                        bi.quantity,
+                        kti.quantity,
                         p.name as product_name,
                         bi.notes
-                    FROM pos_billitem bi
+                    FROM kitchen_kitchenticketitem kti
+                    JOIN pos_billitem bi ON kti.bill_item_id = bi.id
                     JOIN core_product p ON bi.product_id = p.id
-                    WHERE bi.bill_id = %s
+                    WHERE kti.kitchen_ticket_id = %s
                     ORDER BY bi.id
                 """
                 
-                cursor.execute(items_query, (ticket[7],))
+                cursor.execute(items_query, (ticket[0],))
                 items = cursor.fetchall()
                 
                 for item in items:

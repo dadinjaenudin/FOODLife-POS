@@ -16,6 +16,9 @@ urlpatterns = [
     path('profile/settings/', views.profile_settings, name='profile_settings'),
     path('profile/update-photo/', views.update_profile_photo, name='update_profile_photo'),
     
+    # Global context filter
+    path('context/set-brand/', views.set_context_brand, name='set_context_brand'),
+    
     # Setup wizard
     path('setup/', views_setup.setup_wizard, name='setup_wizard'),
     path('setup/store-config/', views_setup.setup_store_config_multi_brand, name='setup_store_config'),

@@ -98,13 +98,15 @@ def create_kitchen_order(bill, station, items):
 # ============================================================================
 
 @transaction.atomic
-def create_kitchen_tickets(bill):
+def create_kitchen_tickets(bill, item_ids=None):
     """
     Create kitchen tickets from bill
     Groups items by printer_target and creates one ticket per station
     
     Args:
         bill: Bill instance
+        item_ids: Optional list of specific BillItem IDs to create tickets for.
+                  If None, creates tickets for all non-void items.
         
     Returns:
         list: List of created KitchenTicket instances
@@ -122,7 +124,13 @@ def create_kitchen_tickets(bill):
     # Group items by printer_target
     items_by_station = {}
     
-    for item in bill.items.filter(is_void=False).exclude(printer_target='').exclude(printer_target='none'):
+    # Filter items - if item_ids provided, use only those items
+    items_query = bill.items.filter(is_void=False).exclude(printer_target='').exclude(printer_target='none')
+    if item_ids is not None:
+        items_query = items_query.filter(id__in=item_ids)
+        logger.info(f"Filtering for specific {len(item_ids)} item(s)")
+    
+    for item in items_query:
         # Use printer_target, fallback to 'kitchen' if empty
         station = item.printer_target or 'kitchen'
         

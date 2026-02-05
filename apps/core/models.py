@@ -305,6 +305,7 @@ class Product(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name='products', null=True)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, help_text='Company that owns this product')
     name = models.CharField(max_length=200)
     sku = models.CharField(max_length=50, db_index=True)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='products')
@@ -317,14 +318,15 @@ class Product(models.Model):
     
     is_active = models.BooleanField(default=True)
     track_stock = models.BooleanField(default=False)
-    stock_quantity = models.IntegerField(default=0)
+    stock_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text='Current stock quantity')
     low_stock_alert = models.IntegerField(default=10)
+    sort_order = models.IntegerField(default=0, help_text='Display order for product listing')
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['name']
+        ordering = ['sort_order', 'name']
         unique_together = [['brand', 'category', 'name', 'sku']]
         indexes = [
             models.Index(fields=['brand', 'is_active']),

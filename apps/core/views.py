@@ -109,3 +109,23 @@ def update_profile_photo(request):
         'success': False,
         'message': 'Tidak ada file yang diupload'
     }, status=400)
+
+
+@login_required
+def set_context_brand(request):
+    """Set global brand filter context in session"""
+    if request.method == 'POST':
+        brand_id = request.POST.get('brand_id', '')
+        
+        # Save to session
+        if brand_id:
+            request.session['context_brand_id'] = brand_id
+        else:
+            # Clear filter if "All Brands" selected
+            request.session.pop('context_brand_id', None)
+        
+        request.session.modified = True
+        
+    # Redirect back to referrer or dashboard
+    referer = request.META.get('HTTP_REFERER', '/management/')
+    return redirect(referer)

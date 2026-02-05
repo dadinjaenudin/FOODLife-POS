@@ -1007,13 +1007,33 @@ def send_to_kitchen(request, bill_id):
     try:
         from apps.kitchen.services import create_kitchen_tickets
         
-        print(f"DEBUG: Sending {pending_items.count()} pending items to kitchen")
+        print(f"\n{'='*60}")
+        print(f"DEBUG: send_to_kitchen for Bill #{bill.bill_number}")
+        print(f"Total bill items: {bill.items.count()}")
+        print(f"Pending items to send: {pending_items.count()}")
+        
+        # Get item IDs before update
+        pending_item_ids = list(pending_items.values_list('id', flat=True))
+        print(f"Pending item IDs: {pending_item_ids}")
+        
+        # Print status of all items BEFORE update
+        print("\nItem status BEFORE update:")
+        for item in bill.items.all():
+            print(f"  - Item #{item.id}: {item.product.name} - Status: {item.status}")
         
         # IMPORTANT: Update status BEFORE creating kitchen tickets to prevent race condition
-        pending_items.update(status='sent')
+        updated_count = pending_items.update(status='sent')
+        print(f"\nUpdated {updated_count} items to 'sent' status")
         
-        # Create kitchen tickets (automatically groups by printer_target)
-        tickets = create_kitchen_tickets(bill)
+        # Print status of all items AFTER update
+        print("\nItem status AFTER update:")
+        for item in bill.items.all():
+            print(f"  - Item #{item.id}: {item.product.name} - Status: {item.status}")
+        
+        # Create kitchen tickets ONLY for these specific items
+        print(f"\nCalling create_kitchen_tickets with item_ids: {pending_item_ids}")
+        tickets = create_kitchen_tickets(bill, item_ids=pending_item_ids)
+        print(f"{'='*60}\n")
         
         print(f"DEBUG: Created {len(tickets)} kitchen ticket(s) for bill #{bill.bill_number}")
         for ticket in tickets:

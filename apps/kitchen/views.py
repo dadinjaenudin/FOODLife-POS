@@ -544,18 +544,26 @@ def kitchen_ticket_detail(request, ticket_id):
 @login_required
 def printer_list_manage(request):
     """Station Printer Management - List all printers with CRUD"""
-    from apps.core.models import Brand
+    from apps.core.models import Brand, Store, StoreBrand
     
-    # Filter by brand if user has brand assigned
-    if hasattr(request.user, 'brand') and request.user.brand:
-        printers = StationPrinter.objects.filter(brand=request.user.brand)
-    else:
-        printers = StationPrinter.objects.all()
+    store_config = Store.get_current()
     
-    printers = printers.select_related('brand').order_by('station_code', 'priority')
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
     
-    # Get brands for dropdown
-    brands = Brand.objects.all()
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
+    
+    # Filter printers by brand(s)
+    printers = StationPrinter.objects.filter(
+        brand_id__in=brand_ids
+    ).select_related('brand').order_by('station_code', 'priority')
+    
+    # Get brands for dropdown (all store brands)
+    brands = Brand.objects.filter(id__in=[sb.brand_id for sb in store_brands])
     
     context = {
         'printers': printers,
@@ -728,15 +736,25 @@ def printer_test_print(request, printer_id):
 @require_http_methods(["POST"])
 def printer_setup_defaults(request):
     """Setup default station printers (kitchen, bar, dessert)"""
-    from apps.core.models import Brand
+    from apps.core.models import Brand, Store, StoreBrand
     
     try:
-        # Get first available brand
-        brand = Brand.objects.first()
+        store_config = Store.get_current()
+        
+        # Get brand from global filter or first store brand
+        context_brand_id = request.session.get('context_brand_id')
+        
+        if context_brand_id:
+            brand = Brand.objects.filter(id=context_brand_id).first()
+        else:
+            # Get first brand for this store
+            store_brand = StoreBrand.objects.filter(store=store_config).select_related('brand').first()
+            brand = store_brand.brand if store_brand else None
+        
         if not brand:
             return JsonResponse({
                 'success': False,
-                'message': 'No Brand found. Please create a Brand first in the system.'
+                'message': 'No Brand found. Please create a Brand first or select a brand from the filter.'
             })
         
         printers_data = [

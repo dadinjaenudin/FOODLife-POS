@@ -133,10 +133,14 @@
                     <p class="text-xs text-gray-600 mb-2">{{ item.description }}</p>
                     
                     <div class="flex items-center justify-between gap-2">
+                        {% if item.table != 'core_brand' %}
                         <div class="text-center">
                             <div class="text-xl font-bold text-gray-800">{{ item.count }}</div>
                             <div class="text-[10px] text-gray-500">Records</div>
                         </div>
+                        {% else %}
+                        <div></div>
+                        {% endif %}
                         
                         <div class="flex gap-1">
                             {% if item.sync == 'pull' and item.table not in 'core_company,core_brand,core_Store' %}

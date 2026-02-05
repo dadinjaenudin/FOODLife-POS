@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
-from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto
+from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto, Brand, Company, StoreBrand
 from apps.core.models_session import StoreSession
 from apps.pos.models import Bill, Payment
 from apps.tables.models import Table, TableArea
@@ -123,10 +123,16 @@ def user_create(request):
         return render(request, 'management/user_form.html', {
             'error': 'Store configuration not found. Please run setup wizard first.',
         })
+    
+    # Get all brands for this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    available_brands = [sb.brand for sb in store_brands]
 
     if request.method == 'GET':
         return render(request, 'management/user_form.html', {
             'is_edit': False,
+            'available_brands': available_brands,
         })
 
     try:
@@ -135,8 +141,15 @@ def user_create(request):
         last_name = request.POST.get('last_name', '').strip()
         email = request.POST.get('email', '').strip()
         role = request.POST.get('role', '').strip()
+        role_scope = request.POST.get('role_scope', 'store').strip()
         password = request.POST.get('password', '').strip()
         is_active = request.POST.get('is_active') == 'on'
+        
+        # Brand access - can be empty for "All Brands" access
+        brand_id = request.POST.get('brand', '').strip()
+        selected_brand = None
+        if brand_id:
+            selected_brand = Brand.objects.filter(id=brand_id).first()
 
         if not username:
             messages.error(request, 'Username is required')
@@ -151,20 +164,25 @@ def user_create(request):
         elif User.objects.filter(username=username).exists():
             messages.error(request, 'Username already exists')
         else:
-            Brand = store_config.brand
+            # Set company - get from selected brand or first brand
+            company = selected_brand.company if selected_brand else available_brands[0].company
+            
             user = User.objects.create(
                 username=username,
                 first_name=first_name,
                 last_name=last_name,
                 email=email,
                 role=role,
-                brand=Brand,
-                company=Brand.company,
+                role_scope=role_scope,
+                brand=selected_brand,  # None if "All Brands" selected
+                company=company,
                 is_active=is_active,
             )
             user.set_password(password)
             user.save()
-            messages.success(request, f'User {username} created successfully')
+            
+            brand_access_msg = selected_brand.name if selected_brand else "All Brands"
+            messages.success(request, f'User {username} created successfully with access to: {brand_access_msg}')
             return redirect('management:users')
 
     except Exception as e:
@@ -172,12 +190,14 @@ def user_create(request):
 
     return render(request, 'management/user_form.html', {
         'is_edit': False,
+        'available_brands': available_brands,
         'user_obj': {
             'username': username,
             'first_name': first_name,
             'last_name': last_name,
             'email': email,
             'role': role,
+            'role_scope': role_scope,
             'is_active': is_active,
         }
     })
@@ -191,6 +211,11 @@ def user_edit(request, user_id):
         return render(request, 'management/user_form.html', {
             'error': 'Store configuration not found. Please run setup wizard first.',
         })
+    
+    # Get all brands for this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    available_brands = [sb.brand for sb in store_brands]
 
     user_obj = get_object_or_404(User, id=user_id)
 
@@ -198,6 +223,7 @@ def user_edit(request, user_id):
         return render(request, 'management/user_form.html', {
             'is_edit': True,
             'user_obj': user_obj,
+            'available_brands': available_brands,
         })
 
     username = request.POST.get('username', '').strip()
@@ -205,8 +231,15 @@ def user_edit(request, user_id):
     last_name = request.POST.get('last_name', '').strip()
     email = request.POST.get('email', '').strip()
     role = request.POST.get('role', '').strip()
+    role_scope = request.POST.get('role_scope', 'store').strip()
     password = request.POST.get('password', '').strip()
     is_active = request.POST.get('is_active') == 'on'
+    
+    # Brand access
+    brand_id = request.POST.get('brand', '').strip()
+    selected_brand = None
+    if brand_id:
+        selected_brand = Brand.objects.filter(id=brand_id).first()
 
     if not username:
         messages.error(request, 'Username is required')
@@ -222,6 +255,8 @@ def user_edit(request, user_id):
         user_obj.last_name = last_name
         user_obj.email = email
         user_obj.role = role
+        user_obj.role_scope = role_scope
+        user_obj.brand = selected_brand
         user_obj.is_active = is_active
         if password:
             if len(password) < 6:
@@ -707,13 +742,28 @@ def master_data(request):
             'error': 'Store configuration not found. Please run setup wizard first.',
         })
     
-    Brand = store_config.brand
-    company = Brand.company
+    # Get all brands associated with this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
     
-    # Count product images
-    edge_images_count = ProductPhoto.objects.filter(product__category__brand=Brand).count()
+    # Get global context brand filter from session
+    context_brand_id = request.session.get('context_brand_id', '')
+    
+    # Apply global brand filter if set
+    if context_brand_id and context_brand_id in [str(bid) for bid in brand_ids]:
+        filtered_brand_ids = [context_brand_id]
+        current_brand = Brand.objects.get(id=context_brand_id)
+    else:
+        filtered_brand_ids = brand_ids
+        current_brand = store_brands.first().brand if store_brands.exists() else None
+    
+    company = current_brand.company if current_brand else None
+    
+    # Count product images (filtered by selected brands)
+    edge_images_count = ProductPhoto.objects.filter(product__brand_id__in=filtered_brand_ids).count()
     last_image_sync = ProductPhoto.objects.filter(
-        product__category__brand=Brand,
+        product__brand_id__in=filtered_brand_ids,
         last_sync_at__isnull=False
     ).order_by('-last_sync_at').first()
     
@@ -731,11 +781,11 @@ def master_data(request):
         {
             'name': 'Brand (Brand)',
             'table': 'core_brand',
-            'count': 1,  # Always 1 per Edge Server
+            'count': Brand.objects.all().count(),
             'sync': 'pull',
             'description': 'Brand/Brand configuration',
             'icon': '🏷️',
-            'url': None,  # Read-only
+            'url': 'management:brands',
         },
         {
             'name': 'Store Configuration',
@@ -749,7 +799,7 @@ def master_data(request):
         {
             'name': 'Master Data',
             'table': 'core_product',
-            'count': Product.objects.filter(category__brand=Brand).count(),
+            'count': Product.objects.filter(brand_id__in=filtered_brand_ids).count(),
             'sync': 'pull',
             'description': 'Categories, Products, Modifiers, Modifier Options, Product-Modifier Links',
             'icon': '🍽️',
@@ -758,7 +808,7 @@ def master_data(request):
         {
             'name': 'Tables',
             'table': 'tables_table',
-            'count': Table.objects.filter(area__brand=Brand).count(),
+            'count': Table.objects.filter(area__brand_id__in=filtered_brand_ids).count(),
             'sync': 'pull',
             'description': 'Tables, Table Areas, Table Groups',
             'icon': '🪑',
@@ -768,7 +818,7 @@ def master_data(request):
             'name': 'Promotions',
             'table': 'promotions_promotion',
             'count': Promotion.objects.filter(
-                brand=Brand,
+                brand_id__in=filtered_brand_ids,
                 is_active=True,
             ).filter(
                 Q(store=store_config) | Q(store__isnull=True)
@@ -785,19 +835,19 @@ def master_data(request):
         {
             'name': 'Bills (Transactions)',
             'table': 'pos_bill',
-            'count': Bill.objects.filter(brand=Brand).count(),
+            'count': Bill.objects.filter(brand_id__in=filtered_brand_ids).count(),
             'sync': 'push',
             'description': 'All sales transactions',
-            'icon': '??',
+            'icon': '💵',
             'url': 'management:bills',
         },
         {
             'name': 'Payments',
             'table': 'pos_payment',
-            'count': Payment.objects.filter(bill__brand=Brand).count(),
+            'count': Payment.objects.filter(bill__brand_id__in=filtered_brand_ids).count(),
             'sync': 'push',
             'description': 'Payment records',
-            'icon': '??',
+            'icon': '💳',
             'url': 'management:payments',
         },
         {
@@ -813,7 +863,7 @@ def master_data(request):
     
     context = {
         'store_config': store_config,
-        'brand': Brand,  # Changed from 'Brand' to 'brand' for consistency with template
+        'brand': current_brand,  # current_brand instance for template
         'company': company,
         'master_data_summary': master_data_summary,
         'transaction_data': transaction_data,
@@ -951,12 +1001,30 @@ def sync_from_ho(request):
                     # Sync Categories
                     categories = client.get_categories(company_id=company_id, store_id=ho_store_id)
                     saved_count = 0
+                    skipped_no_brand = 0
+                    
+                    # Log sample to check structure
+                    if categories and len(categories) > 0:
+                        print(f"[SYNC] Sample category data: {categories[0]}")
                     
                     # First pass: Create/update all categories without parent
                     for cat_data in categories:
                         try:
+                            # Get brand_id from API response
+                            category_brand_id = cat_data.get('brand_id')
+                            if not category_brand_id:
+                                print(f"[SYNC] Category {cat_data.get('name')} skipped - missing brand_id")
+                                skipped_no_brand += 1
+                                continue
+                            
+                            category_brand = Brand.objects.filter(id=category_brand_id).first()
+                            if not category_brand:
+                                print(f"[SYNC] Category {cat_data.get('name')} skipped - brand not found: {category_brand_id}")
+                                skipped_no_brand += 1
+                                continue
+                            
                             defaults = {
-                                'brand': brand,
+                                'brand': category_brand,
                                 'name': cat_data.get('name', 'Unnamed Category'),
                                 'is_active': cat_data.get('is_active', True),
                                 'sort_order': cat_data.get('sort_order', 0),
@@ -988,7 +1056,8 @@ def sync_from_ho(request):
                     synced_tables.append(table_name)
                     sync_results[table_name] = {
                         'success': True,
-                        'records_count': saved_count
+                        'records_count': saved_count,
+                        'details': f'{saved_count} saved, {skipped_no_brand} skipped (no brand)'
                     }
                 
                 elif table_name == 'tables_table':
@@ -1000,12 +1069,30 @@ def sync_from_ho(request):
                     # Step 1: Sync Table Areas
                     table_areas = client.get_table_areas(company_id=company_id, store_id=ho_store_id)
                     area_count = 0
+                    area_skipped_no_brand = 0
+                    
+                    if table_areas and len(table_areas) > 0:
+                        print(f"[SYNC] Sample table area data: {table_areas[0]}")
+                    
                     for area_data in table_areas:
                         try:
+                            # Get brand_id from API response
+                            area_brand_id = area_data.get('brand_id')
+                            if not area_brand_id:
+                                print(f"[SYNC] Table area {area_data.get('name')} skipped - missing brand_id")
+                                area_skipped_no_brand += 1
+                                continue
+                            
+                            area_brand = Brand.objects.filter(id=area_brand_id).first()
+                            if not area_brand:
+                                print(f"[SYNC] Table area {area_data.get('name')} skipped - brand not found: {area_brand_id}")
+                                area_skipped_no_brand += 1
+                                continue
+                            
                             TableArea.objects.update_or_create(
                                 id=area_data['id'],
                                 defaults={
-                                    'brand': brand,
+                                    'brand': area_brand,
                                     'company': company,
                                     'store': store_config,
                                     'name': area_data['name'],
@@ -1056,11 +1143,14 @@ def sync_from_ho(request):
                             try:
                                 main_table = Table.objects.filter(id=group_data.get('main_table_id')).first()
                                 if main_table:
+                                    # Get brand from main_table's area
+                                    group_brand = main_table.area.brand
+                                    
                                     TableGroup.objects.update_or_create(
                                         id=group_data['id'],
                                         defaults={
                                             'main_table': main_table,
-                                            'brand': brand,
+                                            'brand': group_brand,
                                             'created_by_id': group_data.get('created_by_id'),
                                         }
                                     )
@@ -1076,7 +1166,7 @@ def sync_from_ho(request):
                     sync_results[table_name] = {
                         'success': True,
                         'records_count': table_count,
-                        'details': f'{area_count} areas, {table_count} tables, {group_count} groups'
+                        'details': f'{area_count} areas ({area_skipped_no_brand} skipped), {table_count} tables, {group_count} groups'
                     }
                 
                 elif table_name == 'promotions_promotion':
@@ -1089,9 +1179,26 @@ def sync_from_ho(request):
                     promotions = client.get_promotions(company_id=company_id, store_id=ho_store_id)
                     promo_count = 0
                     updated_count = 0
+                    promo_skipped_no_brand = 0
+                    
+                    if promotions and len(promotions) > 0:
+                        print(f"[SYNC] Sample promotion data: {promotions[0]}")
                     
                     for promo_data in promotions:
                         try:
+                            # Get brand_id from API response
+                            promo_brand_id = promo_data.get('brand_id')
+                            if not promo_brand_id:
+                                print(f"[SYNC] Promotion {promo_data.get('code')} skipped - missing brand_id")
+                                promo_skipped_no_brand += 1
+                                continue
+                            
+                            promo_brand = Brand.objects.filter(id=promo_brand_id).first()
+                            if not promo_brand:
+                                print(f"[SYNC] Promotion {promo_data.get('code')} skipped - brand not found: {promo_brand_id}")
+                                promo_skipped_no_brand += 1
+                                continue
+                            
                             # Extract validity fields
                             validity = promo_data.get('validity', {})
                             start_date_str = validity.get('start_date')
@@ -1125,7 +1232,7 @@ def sync_from_ho(request):
                                 id=promo_data['id'],
                                 defaults={
                                     'company': company,
-                                    'brand': brand,
+                                    'brand': promo_brand,
                                     'store': store_config,
                                     'code': promo_data['code'],
                                     'name': promo_data['name'],
@@ -1189,7 +1296,7 @@ def sync_from_ho(request):
                     sync_results[table_name] = {
                         'success': True,
                         'records_count': promo_count + updated_count,
-                        'details': f'{promo_count} added, {updated_count} updated'
+                        'details': f'{promo_count} added, {updated_count} updated, {promo_skipped_no_brand} skipped (no brand)'
                     }
                 
                 elif table_name == 'core_product':
@@ -1206,13 +1313,33 @@ def sync_from_ho(request):
                     modifiers = client.get_modifiers(company_id=company_id, store_id=ho_store_id)
                     products = client.get_products(company_id=company_id, store_id=ho_store_id)
                     product_received = len(products)
+                    
+                    # Log first product to see structure
+                    if products and len(products) > 0:
+                        print(f"[SYNC] Sample product data from HO API: {products[0]}")
+                    else:
+                        print(f"[SYNC] No products received from HO API")
 
                     # Sync categories first (needed for products)
                     category_count = 0
+                    category_skipped_no_brand = 0
                     for cat_data in categories:
                         try:
+                            # Get brand_id from API response
+                            cat_brand_id = cat_data.get('brand_id')
+                            if not cat_brand_id:
+                                print(f"[SYNC] Category {cat_data.get('name')} skipped - missing brand_id")
+                                category_skipped_no_brand += 1
+                                continue
+                            
+                            cat_brand = Brand.objects.filter(id=cat_brand_id).first()
+                            if not cat_brand:
+                                print(f"[SYNC] Category {cat_data.get('name')} skipped - brand not found: {cat_brand_id}")
+                                category_skipped_no_brand += 1
+                                continue
+                            
                             defaults = {
-                                'brand': brand,
+                                'brand': cat_brand,
                                 'name': cat_data.get('name', 'Unnamed Category'),
                                 'is_active': cat_data.get('is_active', True),
                                 'sort_order': cat_data.get('sort_order', 0),
@@ -1243,12 +1370,30 @@ def sync_from_ho(request):
                     # Process in safe FK order:
                     # 1) modifiers -> 2) modifier options -> 3) products -> 4) product-modifier links
                     modifier_count = 0
+                    modifier_skipped_no_brand = 0
+                    
+                    if modifiers and len(modifiers) > 0:
+                        print(f"[SYNC] Sample modifier data: {modifiers[0]}")
+                    
                     for mod_data in modifiers:
                         try:
+                            # Get brand_id from API response
+                            mod_brand_id = mod_data.get('brand_id')
+                            if not mod_brand_id:
+                                print(f"[SYNC] Modifier {mod_data.get('name')} skipped - missing brand_id")
+                                modifier_skipped_no_brand += 1
+                                continue
+                            
+                            mod_brand = Brand.objects.filter(id=mod_brand_id).first()
+                            if not mod_brand:
+                                print(f"[SYNC] Modifier {mod_data.get('name')} skipped - brand not found: {mod_brand_id}")
+                                modifier_skipped_no_brand += 1
+                                continue
+                            
                             Modifier.objects.update_or_create(
                                 id=mod_data['id'],
                                 defaults={
-                                    'brand': brand,
+                                    'brand': mod_brand,
                                     'name': mod_data['name'],
                                     'is_required': mod_data.get('is_required', False),
                                     'max_selections': mod_data.get('max_selections', 1),
@@ -1284,23 +1429,59 @@ def sync_from_ho(request):
                     product_count = 0
                     product_duplicate_sku_updates = 0
                     product_skipped_missing_category = 0
+                    product_skipped_missing_brand = 0
                     product_errors = 0
+                    
+                    if products and len(products) > 0:
+                        print(f"[SYNC] Sample product data (first product):")
+                        print(f"  - ID: {products[0].get('id')}")
+                        print(f"  - Name: {products[0].get('name')}")
+                        print(f"  - Brand ID: {products[0].get('brand_id')}")
+                        print(f"  - Category ID: {products[0].get('category_id')}")
+                        print(f"  - Printer Target: {products[0].get('printer_target', 'NOT FOUND IN API')}")
+                        print(f"  - Full keys: {list(products[0].keys())}")
+                    
                     for prod_data in products:
                         try:
                             category = Category.objects.filter(id=prod_data.get('category_id')).first()
+                            
+                            # Get brand_id from product data (products belong to specific brands)
+                            product_brand_id = prod_data.get('brand_id')
+                            if not product_brand_id:
+                                print(f"[SYNC] Product {prod_data.get('name')} skipped - missing brand_id in API response")
+                                product_skipped_missing_brand += 1
+                                continue
+                            
+                            product_brand = Brand.objects.filter(id=product_brand_id).first()
+                            if not product_brand:
+                                print(f"[SYNC] Product {prod_data.get('name')} skipped - brand not found: {product_brand_id}")
+                                product_skipped_missing_brand += 1
+                                continue
+                            
                             if category:
                                 try:
+                                    # Get company for product
+                                    product_company = None
+                                    if prod_data.get('company_id'):
+                                        product_company = Company.objects.filter(id=prod_data['company_id']).first()
+                                    
                                     Product.objects.update_or_create(
                                         id=prod_data['id'],
                                         defaults={
-                                            'brand': brand,
+                                            'brand': product_brand,
                                             'category': category,
+                                            'company': product_company,
                                             'name': prod_data['name'],
                                             'description': prod_data.get('description', ''),
                                             'price': Decimal(str(prod_data['price'])),
+                                            'cost': Decimal(str(prod_data.get('cost', 0))),
                                             'sku': prod_data.get('sku', ''),
+                                            'image': prod_data.get('image', ''),
+                                            'printer_target': prod_data.get('printer_target', ''),
+                                            'track_stock': prod_data.get('track_stock', False),
+                                            'stock_quantity': Decimal(str(prod_data.get('stock_quantity', 0))),
                                             'is_active': prod_data.get('is_active', True),
-                                            'printer_target': prod_data.get('printer_target', 'kitchen'),
+                                            'sort_order': prod_data.get('sort_order', 0),
                                         }
                                     )
                                     product_count += 1
@@ -1308,16 +1489,27 @@ def sync_from_ho(request):
                                     sku = prod_data.get('sku', '')
                                     existing = None
                                     if sku:
-                                        existing = Product.objects.filter(brand=brand, sku=sku).first()
+                                        existing = Product.objects.filter(brand=product_brand, sku=sku).first()
                                     if existing:
+                                        # Update company if provided
+                                        if prod_data.get('company_id'):
+                                            existing.company = Company.objects.filter(id=prod_data['company_id']).first()
+                                        
                                         existing.category = category
                                         existing.name = prod_data['name']
                                         existing.description = prod_data.get('description', '')
                                         existing.price = Decimal(str(prod_data['price']))
+                                        existing.cost = Decimal(str(prod_data.get('cost', 0)))
+                                        existing.image = prod_data.get('image', '')
+                                        existing.printer_target = prod_data.get('printer_target', '')
+                                        existing.track_stock = prod_data.get('track_stock', False)
+                                        existing.stock_quantity = Decimal(str(prod_data.get('stock_quantity', 0)))
                                         existing.is_active = prod_data.get('is_active', True)
-                                        existing.printer_target = prod_data.get('printer_target', 'kitchen')
+                                        existing.sort_order = prod_data.get('sort_order', 0)
                                         existing.save(update_fields=[
-                                            'category', 'name', 'description', 'price', 'is_active', 'printer_target'
+                                            'company', 'category', 'name', 'description', 'price', 'cost',
+                                            'image', 'printer_target', 'track_stock', 'stock_quantity',
+                                            'is_active', 'sort_order'
                                         ])
                                         product_count += 1
                                         product_duplicate_sku_updates += 1
@@ -1351,13 +1543,17 @@ def sync_from_ho(request):
                             print(f"Error linking product-modifier: {pm_error}")
                             continue
                     
-                    # Count totals in Edge DB
-                    brand_category_total = Category.objects.filter(brand=brand).count()
-                    brand_product_total = Product.objects.filter(brand=brand).count()
-                    brand_modifier_total = Modifier.objects.filter(brand=brand).count()
-                    modifier_ids = list(Modifier.objects.filter(brand=brand).values_list('id', flat=True))
+                    # Count totals in Edge DB for all brands in this store
+                    from apps.core.models import StoreBrand
+                    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+                    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+                    
+                    brand_category_total = Category.objects.filter(brand_id__in=brand_ids).count()
+                    brand_product_total = Product.objects.filter(brand_id__in=brand_ids).count()
+                    brand_modifier_total = Modifier.objects.filter(brand_id__in=brand_ids).count()
+                    modifier_ids = list(Modifier.objects.filter(brand_id__in=brand_ids).values_list('id', flat=True))
                     brand_option_total = ModifierOption.objects.filter(modifier_id__in=modifier_ids).count()
-                    brand_link_total = ProductModifier.objects.filter(modifier__brand=brand).count()
+                    brand_link_total = ProductModifier.objects.filter(modifier__brand_id__in=brand_ids).count()
                     
                     # Track HO counts
                     ho_category_count = len(categories)
@@ -1401,10 +1597,13 @@ def sync_from_ho(request):
                         'records_count': brand_product_total,
                         'checklist': checklist,
                         'details': (
-                            f'{modifier_count} modifiers, {option_count} options, '
+                            f'{category_count} categories ({category_skipped_no_brand} skipped), '
+                            f'{modifier_count} modifiers ({modifier_skipped_no_brand} skipped), '
+                            f'{option_count} options, '
                             f'{product_count} products processed (received {product_received}, '
                             f'updated_by_sku {product_duplicate_sku_updates}, '
-                            f'skipped_category {product_skipped_missing_category}, '
+                            f'skipped_no_category {product_skipped_missing_category}, '
+                            f'skipped_no_brand {product_skipped_missing_brand}, '
                             f'errors {product_errors}, total_in_db {brand_product_total}), '
                             f'{link_count} links'
                         )
@@ -1489,14 +1688,42 @@ def sync_from_ho(request):
 
 
 @manager_required
+def brands_list(request):
+    """Brands List - Display all brands in the system"""
+    store_config = Store.get_current()
+    
+    # Get all brands
+    brands = Brand.objects.all().order_by('code')
+    
+    context = {
+        'brands': brands,
+        'store_config': store_config,
+        'total_count': brands.count(),
+    }
+    
+    return render(request, 'management/brands_list.html', context)
+
+
+@manager_required
 def categories(request):
     """Categories Management"""
     store_config = Store.get_current()
-    Brand = store_config.brand
+    
+    # Get all brands associated with this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+    
+    # Get global context brand filter from session
+    context_brand_id = request.session.get('context_brand_id', '')
+    
+    # Apply global brand filter if set
+    if context_brand_id and context_brand_id in [str(bid) for bid in brand_ids]:
+        brand_ids = [context_brand_id]
     
     categories_list = Category.objects.filter(
-        brand=Brand
-    ).select_related('parent').order_by('sort_order', 'name')
+        brand_id__in=brand_ids
+    ).select_related('parent', 'brand').order_by('brand__name', 'sort_order', 'name')
     
     # Calculate counts for template
     active_count = categories_list.filter(is_active=True).count()
@@ -1519,19 +1746,43 @@ def products(request):
     from django.db.models import Prefetch
     
     store_config = Store.get_current()
-    Brand = store_config.brand
     
-    # Get all products with prefetch photos
+    # Get all brands associated with this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+    
+    # Get global context brand filter from session
+    context_brand_id = request.session.get('context_brand_id', '')
+    
+    # Apply global brand filter if set
+    if context_brand_id and context_brand_id in [str(bid) for bid in brand_ids]:
+        brand_ids = [context_brand_id]
+    
+    # Get all products from filtered brands
     products_list = Product.objects.filter(
-        category__brand=Brand
-    ).select_related('category').prefetch_related(
+        brand_id__in=brand_ids
+    ).select_related('category', 'brand').prefetch_related(
         'product_modifiers__modifier',
         Prefetch(
             'photos',  # Use 'photos' related_name from ProductPhoto model
             queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
             to_attr='primary_photos'
         )
-    ).order_by('category__name', 'name')
+    ).order_by('brand__name', 'category__name', 'name')
+    
+    # Filter by brand (local filter on page)
+    brand_filter = request.GET.get('brand', '')
+    if brand_filter:
+        products_list = products_list.filter(brand_id=brand_filter)
+    
+    # Get categories for filter dropdown (filtered by selected brand if any)
+    if brand_filter:
+        categories_list = Category.objects.filter(brand_id=brand_filter).order_by('name')
+    elif context_brand_id:
+        categories_list = Category.objects.filter(brand_id=context_brand_id).order_by('name')
+    else:
+        categories_list = Category.objects.filter(brand_id__in=brand_ids).order_by('brand__name', 'name')
     
     # Filter by category
     category_filter = request.GET.get('category', '')
@@ -1552,13 +1803,13 @@ def products(request):
     elif status_filter == 'inactive':
         products_list = products_list.filter(is_active=False)
     
-    # Get categories for filter dropdown
-    categories_list = Category.objects.filter(brand=Brand).order_by('name')
+    # Get brands for filter dropdown
+    brands_list = Brand.objects.filter(id__in=brand_ids).order_by('name')
     
     # Calculate counts
     total_count = products_list.count()
-    active_count = Product.objects.filter(category__brand=Brand, is_active=True).count()
-    inactive_count = Product.objects.filter(category__brand=Brand, is_active=False).count()
+    active_count = Product.objects.filter(brand_id__in=brand_ids, is_active=True).count()
+    inactive_count = Product.objects.filter(brand_id__in=brand_ids, is_active=False).count()
     
     # Pagination
     paginator = Paginator(products_list, 20)  # 20 products per page
@@ -1578,10 +1829,12 @@ def products(request):
     context = {
         'products': products_page,
         'categories': categories_list,
+        'brands': brands_list,
         'total_count': total_count,
         'active_count': active_count,
         'inactive_count': inactive_count,
         'category_filter': category_filter,
+        'brand_filter': brand_filter,
         'search': search,
         'status_filter': status_filter,
         'paginator': paginator,
@@ -1597,14 +1850,25 @@ def products(request):
 def products_set_stock_default(request):
     """Set default stock quantity for all products in current brand"""
     store_config = Store.get_current()
-    Brand = store_config.brand
+    
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+    
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
 
-    Product.objects.filter(category__brand=Brand).update(
+    updated_count = Product.objects.filter(brand_id__in=brand_ids).update(
         track_stock=True,
         stock_quantity=1000,
     )
 
-    messages.success(request, 'Stock default set to 1000 for all products')
+    if context_brand_id:
+        messages.success(request, f'Stock default set to 1000 for {updated_count} products in selected brand')
+    else:
+        messages.success(request, f'Stock default set to 1000 for {updated_count} products in all brands')
     return redirect('management:products')
 
 
@@ -1615,10 +1879,17 @@ def tables_list(request):
     if error_response:
         return error_response
     
-    Brand = store_config.brand
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+    
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
     
     tables = Table.objects.filter(
-        area__brand=Brand
+        area__brand_id__in=brand_ids
     ).select_related('area').order_by('area__name', 'number')
     
     # Filter by area
@@ -1632,7 +1903,7 @@ def tables_list(request):
         tables = tables.filter(status=status_filter)
     
     # Get areas for filter
-    areas = TableArea.objects.filter(brand=Brand).order_by('name')
+    areas = TableArea.objects.filter(brand_id__in=brand_ids).order_by('name')
     
     # Calculate status counts
     available_count = tables.filter(status='available').count()
@@ -2822,14 +3093,18 @@ def product_photo_delete(request, product_id, photo_id):
 def product_detail(request, product_id):
     """View Product Detail"""
     store_config = Store.get_current()
-    Brand = store_config.brand
+    
+    # Get all brands for this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
     
     product = get_object_or_404(
-        Product.objects.select_related('category').prefetch_related(
+        Product.objects.select_related('category', 'brand').prefetch_related(
             'product_modifiers__modifier__options', 'photos'
         ),
         id=product_id,
-        category__brand=Brand
+        brand_id__in=brand_ids
     )
     
     # MinIO settings for product images
@@ -2850,12 +3125,16 @@ def product_detail(request, product_id):
 def product_edit(request, product_id):
     """Edit Product"""
     store_config = Store.get_current()
-    Brand = store_config.brand
+    
+    # Get all brands for this store
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
     
     product = get_object_or_404(
-        Product.objects.select_related('category'),
+        Product.objects.select_related('category', 'brand'),
         id=product_id,
-        category__brand=Brand
+        brand_id__in=brand_ids
     )
     
     if request.method == 'POST':

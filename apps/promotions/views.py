@@ -93,18 +93,27 @@ def remove_promotion(request, bill_promo_id):
 @login_required
 def promotion_test_page(request):
     """Promotion Testing UI - Test promotion engine"""
+    from apps.core.models import StoreBrand
     store_config = Store.get_current()
-    brand = store_config.brand
+    
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+    
+    # Use first brand for testing (or get from session)
+    brand = store_brands.first().brand if store_brands.exists() else None
+    if not brand:
+        return render(request, 'promotions/test_engine.html', {'error': 'No brands configured'})
     
     # Get all products for search
     products = Product.objects.filter(
-        category__brand=brand,
+        brand_id__in=brand_ids,
         is_active=True
     ).select_related('category').order_by('name')[:50]
     
     # Get active promotions
     promotions = Promotion.objects.filter(
-        brand=brand,
+        brand_id__in=brand_ids,
         is_active=True
     ).order_by('execution_priority')
     
@@ -175,8 +184,14 @@ def test_add_to_cart(request):
 def test_calculate_promotions(request):
     """Calculate promotions for test cart"""
     try:
+        from apps.core.models import StoreBrand
         store_config = Store.get_current()
-        brand = store_config.brand
+        
+        # Get first brand for this store
+        store_brand = StoreBrand.objects.filter(store=store_config).select_related('brand').first()
+        if not store_brand:
+            return JsonResponse({'success': False, 'error': 'No brand configured'}, status=400)
+        brand = store_brand.brand
         
         # Get cart from session
         cart_data = request.session.get('test_cart', [])
@@ -321,8 +336,14 @@ def api_calculate_promotions(request):
                 'error': 'No items provided'
             }, status=400)
         
+        from apps.core.models import StoreBrand
         store_config = Store.get_current()
-        brand = store_config.brand
+        
+        # Get first brand for this store
+        store_brand = StoreBrand.objects.filter(store=store_config).select_related('brand').first()
+        if not store_brand:
+            return JsonResponse({'success': False, 'error': 'No brand configured'}, status=400)
+        brand = store_brand.brand
         
         # Build cart items
         cart_items = []
@@ -388,17 +409,23 @@ def api_get_applicable_promotions(request):
     GET /promotions/api/applicable/
     """
     try:
-        store_config = Store.get_current()
-        brand = store_config.brand
-        
+        from apps.core.models import StoreBrand
         from django.utils import timezone
+        
+        store_config = Store.get_current()
+        
+        # Get all brands for this store
+        store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+        brand_ids = [sb.brand_id for sb in store_brands]
+        if not brand_ids:
+            return JsonResponse({'success': False, 'error': 'No brand configured'}, status=400)
         now = timezone.now()
         today = now.date()
         current_time = now.time()
         
         # Get active promotions
         promotions = Promotion.objects.filter(
-            brand=brand,
+            brand_id__in=brand_ids,
             is_active=True,
             start_date__lte=today,
             end_date__gte=today

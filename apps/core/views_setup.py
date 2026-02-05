@@ -176,13 +176,28 @@ def setup_store_config_multi_brand(request):
             for idx, store_brand_rel in enumerate(store_brands_data):
                 logger.info(f"[SETUP] Processing store-brand #{idx + 1}: {store_brand_rel}")
                 
-                brand_data = store_brand_rel.get('brand')
-                if not brand_data:
-                    logger.warning(f"[SETUP] Skipping store-brand relationship #{idx + 1} - missing brand data")
-                    logger.warning(f"[SETUP] Full relation data: {store_brand_rel}")
+                # HO API returns flat structure with brand_id, brand_code, brand_name
+                # Need to construct brand_data from these fields
+                brand_id = store_brand_rel.get('brand_id')
+                if not brand_id:
+                    logger.warning(f"[SETUP] Skipping store-brand relationship #{idx + 1} - missing brand_id")
                     continue
                 
-                logger.info(f"[SETUP] Syncing brand: {brand_data.get('name', 'Unknown')} (ID: {brand_data.get('id')})")
+                # Construct brand data from flat structure
+                brand_data = {
+                    'id': brand_id,
+                    'company_id': store_brand_rel.get('company_id'),
+                    'code': store_brand_rel.get('brand_code', ''),
+                    'name': store_brand_rel.get('brand_name', ''),
+                    'address': '',
+                    'phone': '',
+                    'tax_id': '',
+                    'tax_rate': 11.00,
+                    'service_charge': 5.00,
+                    'is_active': store_brand_rel.get('is_active', True),
+                }
+                
+                logger.info(f"[SETUP] Syncing brand: {brand_data['name']} (ID: {brand_data['id']})")
                 
                 try:
                     brand, created = sync_brand_from_remote(brand_data)

@@ -209,16 +209,68 @@
         <div class="lg:pl-64">
             <!-- Top bar -->
             <div class="sticky top-0 z-40 flex items-center h-16 px-6 bg-white border-b border-gray-200 shadow-sm">
-                <button @click="sidebarOpen = !sidebarOpen" class="text-gray-500 focus:outline-none lg:hidden">
+                <button @click="sidebarOpen = !sidebarOpen" class="text-gray-500 focus:outline-none lg:hidden mr-4">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
                     </svg>
                 </button>
                 
-                <div class="flex-1 ml-4">
+                <div class="flex-1">
                     <h1 class="text-lg font-semibold text-gray-900">
                         {% block page_title %}Management{% endblock %}
                     </h1>
+                </div>
+                
+                <!-- Global Filter Bar (Di kanan, sebelum user info) -->
+                <div class="flex items-center space-x-4 text-xs mr-6">
+                    <!-- Company (Dropdown style) -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-gray-500 font-medium">COMPANY:</span>
+                        <div class="flex items-center px-3 py-1 bg-gray-50 border border-gray-200 rounded text-gray-700 font-medium">
+                            <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                            </svg>
+                            {{ store_config.company.name|default:"N/A" }}
+                        </div>
+                    </div>
+                    
+                    <!-- Brand (Dropdown) -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-gray-500 font-medium">BRAND:</span>
+                        <form method="post" action="{% url 'core:set_context_brand' %}" id="brand-filter-form" class="inline">
+                            {% csrf_token %}
+                            <div class="relative">
+                                <select name="brand_id" 
+                                        onchange="document.getElementById('brand-filter-form').submit()"
+                                        class="appearance-none pl-8 pr-8 py-1 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 hover:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                                    <option value="">All Brands</option>
+                                    {% for brand in available_brands %}
+                                    <option value="{{ brand.id }}" 
+                                            {% if context_brand_id == brand.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ brand.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <svg class="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                                </svg>
+                                <svg class="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Store (Read-only badge) -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-gray-500 font-medium">STORE:</span>
+                        <div class="flex items-center px-3 py-1 bg-green-50 border border-green-200 rounded text-green-700 font-medium">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                            </svg>
+                            {{ store_config.store_code }}
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Store info & user -->

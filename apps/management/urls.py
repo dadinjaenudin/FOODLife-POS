@@ -35,6 +35,7 @@ urlpatterns = [
     path('master-data/import-condiment-groups/', views.import_condiment_groups, name='import_condiment_groups'),
     path('master-data/import-condiment-groups/template/', views.download_condiment_groups_template, name='download_condiment_groups_template'),
     path('master-data/import-condiment-groups/process/', views.import_condiment_groups_process, name='import_condiment_groups_process'),
+    path('master-data/brands/', views.brands_list, name='brands'),
     path('master-data/categories/', views.categories, name='categories'),
     path('master-data/products/', views.products, name='products'),
     path('master-data/products/<uuid:product_id>/', views.product_detail, name='product_detail'),
