@@ -219,6 +219,34 @@ def serve_customer_display():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/assets/<path:filename>', methods=['GET'])
+def serve_assets(filename):
+    """Serve static assets (CSS, JS, images) for offline use"""
+    try:
+        assets_dir = Path(__file__).parent / 'assets'
+        file_path = assets_dir / filename
+        
+        print(f"[DEBUG] Serving asset: {filename}")
+        print(f"[DEBUG] Full path: {file_path}")
+        print(f"[DEBUG] File exists: {file_path.exists()}")
+        
+        if file_path.exists() and file_path.is_file():
+            # Security: Ensure file is within assets directory (prevent path traversal)
+            if not str(file_path.resolve()).startswith(str(assets_dir.resolve())):
+                print(f"[SECURITY] Path traversal attempt blocked: {filename}")
+                return jsonify({'error': 'Invalid path'}), 403
+            
+            return send_file(str(file_path))
+        else:
+            print(f"[ERROR] Asset not found: {filename}")
+            return jsonify({'error': 'Asset not found', 'path': str(file_path)}), 404
+    except Exception as e:
+        print(f"[ERROR] Exception serving asset: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""

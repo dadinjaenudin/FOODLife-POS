@@ -9,7 +9,17 @@ This folder contains static assets for the POS Launcher that need to work **offl
 - **Source:** https://cdn.tailwindcss.com
 - **Version:** Play CDN (standalone, no build required)
 - **Usage:** Used by `customer_display.html` for styling
+- **Accessed via:** `http://127.0.0.1:5000/assets/tailwind.js`
 - **Downloaded:** 2026-02-07
+
+### How it Works
+
+Customer display is served via Flask API on `http://127.0.0.1:5000/`:
+1. Browser loads `http://127.0.0.1:5000/` → Flask serves `customer_display.html`
+2. HTML references `<script src="assets/tailwind.js"></script>`
+3. Browser requests `http://127.0.0.1:5000/assets/tailwind.js`
+4. Flask route `/assets/<filename>` serves the local file
+5. ✅ **Completely offline** - no external CDN needed
 
 ### Why Local?
 
