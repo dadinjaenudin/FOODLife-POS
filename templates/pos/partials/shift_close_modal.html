@@ -224,7 +224,7 @@ if (shiftCloseForm) {
                 <div>
                     <p class="font-bold">Shift Closed!</p>
                     <p class="text-sm text-green-100">${response.message || 'Shift closed successfully'}</p>
-                    <p class="text-xs text-green-200">Opening print...</p>
+                    <p class="text-xs text-green-200">Shift closed</p>
                 </div>
             `;
             document.body.appendChild(toast);
@@ -236,43 +236,43 @@ if (shiftCloseForm) {
                 }, 500);
             }
             
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateX(100%)';
                 setTimeout(() => {
-                    toast.remove();
-                    document.getElementById('shift-close-modal')?.remove();
-                    
-                    // Show logout confirmation dialog
-                    const logoutModal = document.createElement('div');
-                    logoutModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-                    logoutModal.innerHTML = `
-                        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-                            <div class="text-center mb-6">
-                                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                                    </svg>
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(100%)';
+                    setTimeout(() => {
+                        toast.remove();
+                        document.getElementById('shift-close-modal')?.remove();
+
+                        // Show logout confirmation dialog
+                        const logoutModal = document.createElement('div');
+                        logoutModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                        logoutModal.innerHTML = `
+                            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+                                <div class="text-center mb-6">
+                                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                                        </svg>
+                                    </div>
+                                    <h3 class="text-xl font-bold text-gray-900 mb-2">Shift Closed</h3>
+                                    <p class="text-gray-600">Do you want to logout? (For cashier handover)</p>
                                 </div>
-                                <h3 class="text-xl font-bold text-gray-900 mb-2">Shift Closed</h3>
-                                <p class="text-gray-600">Do you want to logout? (For cashier handover)</p>
+                                
+                                <div class="flex gap-3">
+                                    <button onclick="this.closest('div[class*=fixed]').remove(); window.location.reload();"
+                                            class="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition">
+                                        No, Stay Logged In
+                                    </button>
+                                    <button onclick="window.location.href='{% url 'core:login' %}';"
+                                            class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition">
+                                        Yes, Logout
+                                    </button>
+                                </div>
                             </div>
-                            
-                            <div class="flex gap-3">
-                                <button onclick="this.closest('div[class*=fixed]').remove(); window.location.reload();"
-                                        class="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition">
-                                    No, Stay Logged In
-                                </button>
-                                <button onclick="window.location.href='{% url 'core:logout' %}';"
-                                        class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition">
-                                    Yes, Logout
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                    document.body.appendChild(logoutModal);
-                }, 300);
-            }, 2000);
+                        `;
+                        document.body.appendChild(logoutModal);
+                    }, 300);
+                }, 2000);
             
         } else {
             try {
@@ -322,4 +322,5 @@ document.querySelectorAll('[data-value]').forEach(function(input) {
     const value = parseFloat(input.dataset.value) || 0;
     input.value = formatNumber(value);
 });
+
 </script>

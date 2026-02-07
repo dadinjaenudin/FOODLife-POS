@@ -40,6 +40,9 @@ urlpatterns = [
     path('api/v1/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
+    # Terminal validation API
+    path('api/', include('apps.core.urls_api')),
+    
     path('api/auth/token/', api_auth_token_stub, name='api_auth_token_stub'),
     path('api/print/', include('apps.pos.print_urls')),
     #path('api/v1/core/', include('apps.core.api.urls')),

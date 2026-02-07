@@ -175,12 +175,19 @@
             <div>
                 <h2 class="text-base font-bold text-gray-800">Product Images (MinIO Storage)</h2>
                 <p class="text-xs text-gray-600 mt-0.5">Product photos synced from HO MinIO to Edge MinIO</p>
-                <p class="text-[10px] text-purple-600 mt-0.5">
-                    <svg class="w-3 h-3 inline-block mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    Bucket policy auto-configured on first sync (public read for browser access)
-                </p>
+                <!-- Bucket Policy Status & Configure Button -->
+                <div class="flex items-center gap-2 mt-1">
+                    <span id="bucket-policy-dot" class="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0"></span>
+                    <span id="bucket-policy-text" class="text-[10px] text-gray-500">Checking bucket policy...</span>
+                    <button onclick="configureBucketPolicy()" id="btn-configure-bucket"
+                            class="ml-1 px-2 py-0.5 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-semibold rounded transition-colors flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                        Configure Bucket Policy
+                    </button>
+                </div>
             </div>
         </div>
         
@@ -766,6 +773,82 @@ async function confirmSyncProductImages() {
         progressDiv.classList.add('hidden');
     }
 }
+
+// ===== MinIO Bucket Policy Configuration =====
+async function configureBucketPolicy() {
+    const btn = document.getElementById('btn-configure-bucket');
+    const dot = document.getElementById('bucket-policy-dot');
+    const text = document.getElementById('bucket-policy-text');
+    
+    // Show loading state
+    btn.disabled = true;
+    btn.classList.add('opacity-50');
+    btn.innerHTML = '<svg class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="4" class="opacity-25"></circle><path class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor"></path></svg> Configuring...';
+    dot.className = 'w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0 animate-pulse';
+    text.textContent = 'Configuring bucket policy...';
+    text.className = 'text-[10px] text-yellow-600';
+    
+    try {
+        const response = await fetch('/management/configure-bucket-policy/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin'
+        });
+        
+        // Check if redirected to login (302)
+        if (response.redirected || response.url.includes('/login/')) {
+            throw new Error('Session expired. Please refresh the page and login again.');
+        }
+        
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Session expired. Please refresh the page and login again.');
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            dot.className = 'w-2 h-2 rounded-full bg-green-500 flex-shrink-0';
+            const createdMsg = result.bucket_created ? ' (bucket created)' : '';
+            text.textContent = `✓ Bucket policy configured — public read access enabled${createdMsg}`;
+            text.className = 'text-[10px] text-green-600 font-medium';
+            btn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Configured';
+            btn.className = 'ml-1 px-2 py-0.5 bg-green-600 text-white text-[10px] font-semibold rounded flex items-center gap-1 cursor-default';
+            showNotification('✅ MinIO bucket policy configured successfully!', 'success');
+        } else {
+            dot.className = 'w-2 h-2 rounded-full bg-red-500 flex-shrink-0';
+            text.textContent = '✗ ' + result.message;
+            text.className = 'text-[10px] text-red-600';
+            btn.disabled = false;
+            btn.classList.remove('opacity-50');
+            btn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Retry';
+            showNotification('❌ ' + result.message, 'warning');
+        }
+    } catch (error) {
+        dot.className = 'w-2 h-2 rounded-full bg-red-500 flex-shrink-0';
+        text.textContent = '✗ Connection failed: ' + error.message;
+        text.className = 'text-[10px] text-red-600';
+        btn.disabled = false;
+        btn.classList.remove('opacity-50');
+        btn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Retry';
+        showNotification('❌ MinIO connection failed: ' + error.message, 'warning');
+    }
+}
+
+// Auto-check bucket status on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Quick health check - just try to reach the configure endpoint with GET (will fail gracefully)
+    const dot = document.getElementById('bucket-policy-dot');
+    const text = document.getElementById('bucket-policy-text');
+    if (dot && text) {
+        dot.className = 'w-2 h-2 rounded-full bg-gray-400 flex-shrink-0';
+        text.textContent = 'Click "Configure Bucket Policy" to set up public read access for product images';
+        text.className = 'text-[10px] text-gray-500';
+    }
+});
 
 function showNotification(message, type = 'info') {
     // Remove any existing notifications

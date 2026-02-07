@@ -229,7 +229,7 @@ HO_API_USERNAME = os.environ.get('HO_API_USERNAME', 'admin')
 HO_API_PASSWORD = os.environ.get('HO_API_PASSWORD', 'admin123')
 
 # Edge MinIO Settings (Object Storage for Product Images)
-EDGE_MINIO_ENDPOINT = os.environ.get('EDGE_MINIO_ENDPOINT', 'localhost:9002')
+EDGE_MINIO_ENDPOINT = os.environ.get('EDGE_MINIO_ENDPOINT', 'edgeminio:9000')
 EDGE_MINIO_ACCESS_KEY = os.environ.get('EDGE_MINIO_ACCESS_KEY', 'foodlife_admin')
 EDGE_MINIO_SECRET_KEY = os.environ.get('EDGE_MINIO_SECRET_KEY', 'foodlife_secret_2026')
 EDGE_MINIO_SECURE = os.environ.get('EDGE_MINIO_SECURE', 'False') == 'True'
@@ -237,6 +237,17 @@ EDGE_MINIO_SECURE = os.environ.get('EDGE_MINIO_SECURE', 'False') == 'True'
 # HO MinIO Settings (to download product images from HO)
 HO_MINIO_ENDPOINT = os.environ.get('HO_MINIO_ENDPOINT', 'host.docker.internal:9000')
 HO_MINIO_SECURE = os.environ.get('HO_MINIO_SECURE', 'False') == 'True'
+
+# Generic MinIO Settings (for customer display slideshow, etc)
+# Uses EDGE_MINIO by default
+MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', EDGE_MINIO_ENDPOINT)
+MINIO_ACCESS_KEY = os.environ.get('MINIO_ACCESS_KEY', EDGE_MINIO_ACCESS_KEY)
+MINIO_SECRET_KEY = os.environ.get('MINIO_SECRET_KEY', EDGE_MINIO_SECRET_KEY)
+MINIO_USE_SSL = os.environ.get('MINIO_USE_SSL', 'False') == 'True' or EDGE_MINIO_SECURE
+
+# Public URL for browser access (from outside Docker)
+# Edge MinIO is exposed on localhost:9002 (see docker-compose.yml: 9002:9000)
+MINIO_PUBLIC_URL = os.environ.get('MINIO_PUBLIC_URL', 'http://localhost:9002')
 
 # REST Framework & JWT Configuration
 REST_FRAMEWORK = {

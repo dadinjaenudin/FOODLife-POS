@@ -353,15 +353,21 @@ def main():
     # Load configuration
     config = load_config()
     
+    # Check if customer display is enabled
+    enable_customer_display = config.get('enable_customer_display', False)
+    
     # Start local API server (REQUIRED for customer display)
-    print("\n[*] Starting Local API Server...")
-    if not start_local_api_server():
-        print("[ERROR] API server failed to start!")
-        print("[ERROR] Customer display and print features will not work")
-        print("[ERROR] Check if port 5000 is already in use")
-        
-        # Wait for user acknowledgment
-        input("\nPress Enter to continue anyway (or Ctrl+C to cancel)...")
+    if enable_customer_display:
+        print("\n[*] Starting Local API Server...")
+        if not start_local_api_server():
+            print("[ERROR] API server failed to start!")
+            print("[ERROR] Customer display and print features will not work")
+            print("[ERROR] Check if port 5000 is already in use")
+            
+            # Wait for user acknowledgment
+            input("\nPress Enter to continue anyway (or Ctrl+C to cancel)...")
+    else:
+        print("\n[INFO] Local API Server: SKIPPED (customer display disabled)")
     
     # Validate terminal
     validation = validate_terminal(config)
@@ -389,8 +395,13 @@ def main():
         f.write(f"separator: {separator}\n")
         f.write(f"final pos_url: {pos_url}\n")
     
-    # Create customer display window first
-    customer_window = CustomerDisplayWindow()
+    # Create customer display window if enabled
+    customer_window = None
+    if enable_customer_display:
+        print("[INFO] Customer display: ENABLED")
+        customer_window = CustomerDisplayWindow()
+    else:
+        print("[INFO] Customer display: DISABLED (config.enable_customer_display = false)")
     
     # Create main POS window (with reference to customer window)
     pos_window = POSWindow(pos_url, customer_window)
@@ -398,8 +409,9 @@ def main():
     print("=" * 60)
     print("[INFO] POS Launcher running")
     print("[INFO] Main POS: Fullscreen on primary monitor")
-    print("[INFO] Customer Display: Fullscreen on secondary monitor (if available)")
-    print("[INFO] Local API: http://127.0.0.1:5000")
+    if enable_customer_display:
+        print("[INFO] Customer Display: Fullscreen on secondary monitor (if available)")
+        print("[INFO] Local API: http://127.0.0.1:5000")
     print("[INFO] Press Alt+F4 to exit")
     print("=" * 60)
     

@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order - Meja {{ table.number }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/output.css' %}">
+    <script src="{% static 'js/htmx.min.js' %}"></script>
+    <script defer src="{% static 'js/alpine.min.js' %}"></script>
     <style>
         .category-scroll::-webkit-scrollbar { display: none; }
         .category-scroll { -ms-overflow-style: none; scrollbar-width: none; }

@@ -3,7 +3,17 @@
 {% block title %}POS - {{ request.user.outlet.name }}{% endblock %}
 
 {% block extra_head %}
+<!-- Using system fonts for offline mode -->
 <style>
+    /* Typography */
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 600;
+    }
+    
     /* Hide scrollbar for category navigation */
     .scrollbar-hide::-webkit-scrollbar {
         display: none;
@@ -14,21 +24,44 @@
         scrollbar-width: none;
     }
 
-    /* Pulse Glow Animation for Sidebar Logo */
-    @keyframes pulse-glow {
-
-        0%,
-        100% {
-            box-shadow: 0 0 15px rgba(147, 51, 234, 0.5), 0 0 30px rgba(236, 72, 153, 0.3);
+    /* Floor Plan Overlay Animations */
+    @keyframes slideInLeft {
+        from {
+            transform: translateX(-100%);
+            opacity: 0;
         }
-
-        50% {
-            box-shadow: 0 0 25px rgba(147, 51, 234, 0.8), 0 0 50px rgba(236, 72, 153, 0.5);
+        to {
+            transform: translateX(0);
+            opacity: 1;
         }
     }
 
-    .animate-pulse-glow {
-        animation: pulse-glow 3s ease-in-out infinite;
+    @keyframes slideOutLeft {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+    }
+
+    .animate-slideInLeft {
+        animation: slideInLeft 0.3s ease-out forwards;
+    }
+
+    .animate-slideOutLeft {
+        animation: slideOutLeft 0.3s ease-in forwards;
+    }
+
+    /* Hide kitchen printer widget and all footer widgets when in floor plan modal */
+    #floor-plan-modal #kitchen-printer-widget,
+    #floor-plan-modal #printer-status-widget,
+    #floor-plan-modal #pos-footer,
+    #floor-plan-modal [id*="widget"],
+    #floor-plan-modal .fixed.bottom-0 {
+        display: none !important;
     }
 </style>
 {% endblock %}
@@ -44,138 +77,98 @@
      ================================================== -->
 <div class="flex h-screen bg-gray-50">
 
-    <!-- ==================== LEFT: SIDEBAR (ICON ONLY) ==================== -->
-    <aside
-        class="w-20 bg-gradient-to-b from-purple-900 via-purple-800 to-pink-900 text-white flex flex-col shadow-2xl relative overflow-hidden">
-
-        <!-- Animated Background Pattern -->
-        <div class="absolute inset-0 opacity-10 pointer-events-none">
-            <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent">
-            </div>
-        </div>
+    <!-- ==================== LEFT: SIDEBAR (Icon + Text Navigation) ==================== -->
+    <aside class="w-48 bg-white flex flex-col">
 
         <!-- Branding Logo -->
-        <div class="relative h-16 flex items-center justify-center border-b border-white/10">
-            <div
-                class="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl flex items-center justify-center shadow-lg animate-pulse-glow">
-                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                </svg>
+        <div>
+            <div class="h-16 flex flex-col items-center justify-center px-4 gap-1">
+                {% if store_config.login_logo %}
+                <div class="w-10 h-10 rounded-full overflow-hidden bg-green-50 border-2 border-green-200 flex-shrink-0">
+                    <img src="{{ store_config.login_logo.url }}" alt="Logo" class="w-full h-full object-contain p-0.5">
+                </div>
+                {% endif %}
+                <span class="text-sm font-bold text-gray-900 text-center" style="font-family:'Outfit',sans-serif;">{{ store_config.brand.name }}</span>
+            </div>
+            
+            <!-- User Info -->
+            <div class="flex flex-col items-center gap-2 px-4 pb-3">
+                {% if request.user.profile_photo %}
+                <img src="{{ request.user.profile_photo.url }}" alt="" class="w-24 h-24 rounded-full object-cover border-2 border-gray-200">
+                {% else %}
+                <div class="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-3xl font-bold">
+                    {{ request.user.get_full_name.0|default:request.user.username.0|upper }}
+                </div>
+                {% endif %}
+                <span class="text-xs font-medium text-gray-700 text-center truncate w-full">{{ request.user.get_full_name|default:request.user.username }}</span>
             </div>
         </div>
 
-        <!-- Main Navigation Links -->
-        <nav class="relative flex-1 py-4 overflow-y-auto">
-            <!-- Shift Status (HTMX auto-refresh) -->
-            <div id="shift-status-sidebar" hx-get="{% url 'pos:shift_status' %}" hx-trigger="load, every 30s"
-                hx-swap="innerHTML" class="px-2 py-2">
-            </div>
-
-            <!-- Divider -->
-            <div class="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mx-2 my-2"></div>
-
-            <!-- Shift Reports Group -->
-            <div class="relative px-2 space-y-2">
-                <!-- My Shift -->
-                <button onclick="openMyShiftDashboard()"
-                    class="relative w-full py-2.5 px-3 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg transition-all duration-300 shadow-lg hover:shadow-purple-500/50 hover:-translate-y-0.5 active:scale-95 overflow-hidden group"
-                    title="My Shift Dashboard">
-                    <span class="relative z-10">My Shift</span>
-                    <!-- Shine Effect -->
-                    <div
-                        class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000">
-                    </div>
-                </button>
-
-                <!-- Reprint -->
-                <button onclick="openReprintReconciliation()"
-                    class="relative w-full py-2.5 px-3 text-xs font-bold text-white bg-white/10 backdrop-blur-sm hover:bg-white/20 border border-white/20 hover:border-white/40 rounded-lg transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 active:scale-95"
-                    title="Reprint Reconciliation">
-                    Reprint
-                </button>
-            </div>
-
-            <!-- Divider -->
-            <div class="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mx-2 my-2"></div>
-
-            <!-- Kitchen Stations Group -->
-            <div class="relative px-2 space-y-2">
-                <!-- Kitchen -->
-                <a href="{% url 'kitchen:kds_station' 'kitchen' %}" target="_blank"
-                    class="relative w-full py-2.5 px-3 text-xs font-bold text-white bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 rounded-lg transition-all duration-300 shadow-md hover:shadow-orange-500/50 hover:-translate-y-0.5 active:scale-95 text-center block overflow-hidden group"
-                    title="Kitchen Station">
-                    <span class="relative z-10">Kitchen</span>
-                    <div
-                        class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000">
-                    </div>
-                </a>
-
-                <!-- Bar -->
-                <a href="{% url 'kitchen:kds_station' 'bar' %}" target="_blank"
-                    class="relative w-full py-2.5 px-3 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 rounded-lg transition-all duration-300 shadow-md hover:shadow-purple-500/50 hover:-translate-y-0.5 active:scale-95 text-center block overflow-hidden group"
-                    title="Bar Station">
-                    <span class="relative z-10">Bar</span>
-                    <div
-                        class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000">
-                    </div>
-                </a>
-
-                <!-- Dessert -->
-                <a href="{% url 'kitchen:kds_station' 'dessert' %}" target="_blank"
-                    class="relative w-full py-2.5 px-3 text-xs font-bold text-white bg-gradient-to-r from-pink-600 to-rose-700 hover:from-pink-500 hover:to-rose-600 rounded-lg transition-all duration-300 shadow-md hover:shadow-pink-500/50 hover:-translate-y-0.5 active:scale-95 text-center block overflow-hidden group"
-                    title="Dessert Station">
-                    <span class="relative z-10">Dessert</span>
-                    <div
-                        class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000">
-                    </div>
-                </a>
-            </div>
-
-            <!-- Divider -->
-            <div class="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mx-2 my-2"></div>
-
-            <!-- Queue Display -->
-            <div class="relative px-2 space-y-2">
-                <a href="{% url 'pos:queue_display' %}" target="_blank"
-                    class="relative w-full py-2.5 px-3 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 rounded-lg transition-all duration-300 shadow-md hover:shadow-amber-500/50 hover:-translate-y-0.5 active:scale-95 text-center block overflow-hidden group"
-                    title="Queue Display (TV Monitor)">
-                    <span class="relative z-10 flex items-center justify-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
-                        </svg>
-                        Queue
-                    </span>
-                    <div
-                        class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000">
-                    </div>
-                </a>
-            </div>
-        </nav>
-
-        <!-- Bottom Action Buttons -->
-        <div class="relative border-t border-white/10">
-            <!-- Profile Settings -->
-            <a href="{% url 'core:profile_settings' %}"
-                class="relative flex items-center justify-center h-12 hover:bg-gradient-to-r hover:from-blue-600 hover:to-purple-600 transition-all duration-300 group"
-                title="Profile Settings">
-                <svg class="w-6 h-6 group-hover:scale-110 transition-transform duration-300" fill="none"
-                    stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
+        <!-- Main Navigation -->
+        <nav class="flex-1 py-3 px-3 space-y-1 overflow-y-auto">
+            <!-- Menu (Active) -->
+            <a href="{% url 'pos:main' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold bg-green-600 text-white transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                <span>Menu</span>
             </a>
 
-            <!-- Logout -->
-            <a href="{% url 'core:logout' %}"
-                class="relative flex items-center justify-center h-12 hover:bg-gradient-to-r hover:from-red-600 hover:to-red-700 transition-all duration-300 group border-t border-white/10"
-                title="Logout">
-                <svg class="w-6 h-6 group-hover:scale-110 group-hover:rotate-12 transition-all duration-300" fill="none"
-                    stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
+            <!-- Table Services -->
+            <button onclick="openFloorPlanModal()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                <span>Table Services</span>
+            </button>
+
+            <!-- My Shift -->
+            <button onclick="openMyShiftDashboard()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                <span>My Shift</span>
+            </button>
+
+            <!-- Reprint -->
+            <button onclick="openReprintReconciliation()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                <span>Reprint</span>
+            </button>
+
+            <div class="h-px bg-gray-100 my-2"></div>
+
+            <!-- Shift Status -->
+            <div id="shift-status-sidebar" hx-get="{% url 'pos:shift_status' %}" hx-trigger="load, every 30s" hx-swap="innerHTML" class="py-1"></div>
+
+            <div class="h-px bg-gray-100 my-2"></div>
+
+            <!-- Kitchen Stations -->
+            <a href="{% url 'kitchen:kds_station' 'kitchen' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+                <span>Kitchen</span>
+            </a>
+
+            <a href="{% url 'kitchen:kds_station' 'bar' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                <span>Bar</span>
+            </a>
+
+            <a href="{% url 'kitchen:kds_station' 'dessert' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 15.546c-.523 0-1.046.151-1.5.454a2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0A1.75 1.75 0 003 15.546M12 3v1m0 11v1m-4-7h1m6 0h1M7.757 5.757l.707.707m6.072 6.072l.707.707M5.757 12.243l.707-.707m6.072-6.072l.707-.707"/></svg>
+                <span>Dessert</span>
+            </a>
+
+            <a href="{% url 'pos:queue_display' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+                <span>Queue</span>
+            </a>
+
+            <a href="{% url 'core:profile_settings' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Settings</span>
+            </a>
+        </nav>
+
+        <!-- Bottom: Logout -->
+        <div class="px-3 py-3">
+            <a href="{% url 'core:logout' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 hover:text-red-600 transition-all duration-200">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                <span>Logout</span>
             </a>
         </div>
     </aside>
@@ -183,207 +176,152 @@
     <!-- ==================== CENTER: MAIN CONTENT ==================== -->
     <main class="flex-1 flex flex-col">
 
-        <!-- Header Section: Outlet Info, Shift Status, User Details, Terminal -->
-        <header class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 border-b border-gray-200 px-6 py-4">
-            <div class="flex items-center justify-between">
-                <!-- Left Side: Outlet & Shift Status -->
-                <div class="flex items-center gap-4">
-                    <!-- Outlet Information -->
-                    <div class="flex items-center gap-3">
-                        {% if store_config.login_logo %}
-                        <div
-                            class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 overflow-hidden">
-                            <img src="{{ store_config.login_logo.url }}" alt="AVRIL"
-                                class="w-full h-full object-contain p-1">
-                        </div>
-                        {% else %}
-                        <div
-                            class="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-md">
-                            <span class="text-white text-xl font-bold">A</span>
-                        </div>
-                        {% endif %}
-                        <div>
-                            <h2
-                                class="font-bold text-xl tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                                AVRIL</h2>
-                            <p class="text-xs font-medium text-gray-600 tracking-wide">Yogya Group</p>
-                        </div>
+        <!-- Header: Search Bar -->
+        <header class="bg-gray-50 px-6 py-4">
+            <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-4 flex-1">
+                    <!-- Hamburger (optional visual) -->
+                    <button class="p-2 hover:bg-gray-100 rounded-lg transition-colors" onclick="document.querySelector('aside').classList.toggle('hidden')">
+                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </button>
+
+                    <!-- Search Bar -->
+                    <div class="flex-1 relative max-w-xl">
+                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <input type="text" id="product-search" placeholder="Search Product here..."
+                            class="w-full pl-12 pr-4 py-3 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100 focus:bg-white transition-all"
+                            hx-get="{% url 'pos:products' %}" hx-trigger="keyup changed delay:300ms"
+                            hx-target="#product-grid" hx-include="this" name="search">
                     </div>
                 </div>
 
-                <!-- Right Side: User + Profile Photo -->
-                <div class="flex items-center gap-4">
-
-                    <!-- User & DateTime -->
-                    <div class="text-right">
-                        <p class="text-sm font-medium text-gray-700">
-                            {{ request.user.get_full_name|default:request.user.username }}
-                        </p>
-                        <p class="text-xs text-gray-500">{% now "l, d M Y \a\t h:i A" %}</p>
-                    </div>
-
-                    <!-- User Profile Photo -->
-                    <div class="flex-shrink-0">
-                        {% if request.user.profile_photo %}
-                        <img src="{{ request.user.profile_photo.url }}"
-                            alt="{{ request.user.get_full_name|default:request.user.username }}"
-                            class="w-10 h-10 rounded-full object-cover border-2 border-gray-200">
-                        {% else %}
-                        <div
-                            class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center border-2 border-gray-200">
-                            <span class="text-white font-bold text-sm">
-                                {{ request.user.get_full_name.0|default:request.user.username.0|upper }}
-                            </span>
+                <!-- Right: Shift Status + Notification -->
+                <div class="flex items-center gap-3">
+                    <!-- Shift Status Indicator -->
+                    <div id="header-shift-status" 
+                         hx-get="{% url 'pos:shift_status_header' %}" 
+                         hx-trigger="load, every 30s, shiftStatusChanged from:body" 
+                         hx-swap="innerHTML">
+                        <div class="px-3 py-2 bg-gray-200 rounded-lg animate-pulse">
+                            <span class="text-xs text-gray-500">Loading...</span>
                         </div>
-                        {% endif %}
                     </div>
+                    
+                    <button class="p-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors relative">
+                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    </button>
                 </div>
             </div>
         </header>
 
-        <!-- Category Filter Tabs (Icon-Based with Horizontal Scroll) -->
-        <nav class="bg-white border-b px-6 py-1">
+        <!-- Content Area: Categories + Products (will be covered by floor plan) -->
+        <div id="pos-content-area" class="flex-1 flex flex-col relative overflow-hidden">
+            <!-- Shift Not Active Overlay (Hidden by default, shown by JS) -->
+            <div id="shift-required-overlay" class="hidden absolute inset-0 bg-gray-900/50 backdrop-blur-sm z-40 flex items-center justify-center">
+                <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center transform animate-slideUp">
+                    <div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Shift Not Active</h3>
+                    <p class="text-gray-600 mb-6">You need to open your shift before you can start taking orders.</p>
+                    <button onclick="openShiftFromOverlay()" class="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-lg transition-all shadow-lg">
+                        Open Shift Now
+                    </button>
+                </div>
+            </div>
+        <!-- Category Filter - Icon Card Style -->
+        <nav class="bg-gray-50 px-6 py-4">
             <!-- Level 1 (Parent) Categories -->
-            <div class="flex items-center gap-3">
-                <div class="flex-1 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <a href="{% url 'pos:main' %}"
-                       class="flex-shrink-0 flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if not selected_parent %}bg-emerald-50 border border-emerald-500{% else %}bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400{% endif %} category-btn transition-all duration-200">
-                        <div class="w-8 h-8 flex items-center justify-center">
-                            <svg class="w-6 h-6 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                            </svg>
-                        </div>
-                        <span class="text-[11px] font-semibold text-gray-900">All</span>
-                    </a>
+            <div class="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+                <a href="{% url 'pos:main' %}"
+                   class="flex-shrink-0 flex flex-col items-center gap-1.5 px-4 py-2 rounded-2xl border-2 transition-all duration-200 min-w-[80px] {% if not selected_parent %}border-green-500 bg-green-50{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
+                    <div class="w-8 h-8 flex items-center justify-center">
+                        <svg class="w-6 h-6 {% if not selected_parent %}text-green-600{% else %}text-gray-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs font-bold {% if not selected_parent %}text-green-700{% else %}text-gray-700{% endif %}">All</span>
+                    <span class="text-[10px] {% if not selected_parent %}text-green-500{% else %}text-gray-400{% endif %}">{{ products|length }} Items</span>
+                </a>
 
-                    {% for category in parent_categories %}
-                    <a href="{% url 'pos:main' %}?parent={{ category.id }}"
-                       class="flex-shrink-0 flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if selected_parent and selected_parent.id == category.id %}bg-emerald-50 border border-emerald-500{% else %}bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400{% endif %} category-btn transition-all duration-200">
-                        <div class="w-8 h-8 flex items-center justify-center">
-                            {% if category.icon %}
-                            <span class="text-2xl">{{ category.icon }}</span>
-                            {% else %}
-                            <svg class="w-6 h-6 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                            </svg>
-                            {% endif %}
-                        </div>
-                        <span class="text-[11px] font-semibold text-gray-900">{{ category.name }}</span>
-                    </a>
-                    {% endfor %}
-                </div>
-
-                <div class="flex-shrink-0 relative pb-2">
-                    <input type="text" id="product-search" placeholder="Search menu..."
-                        class="w-64 px-3 py-1.5 pr-9 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-emerald-500 transition-colors"
-                        hx-get="{% url 'pos:products' %}" hx-trigger="keyup changed delay:300ms"
-                        hx-target="#product-grid" hx-include="this" name="search">
-                    <svg class="absolute right-3 top-2 w-4 h-4 text-gray-400 pointer-events-none" fill="none"
-                        stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                </div>
+                {% for category in parent_categories %}
+                <a href="{% url 'pos:main' %}?parent={{ category.id }}"
+                   class="flex-shrink-0 flex flex-col items-center gap-1.5 px-4 py-2 rounded-2xl border-2 transition-all duration-200 min-w-[80px] {% if selected_parent and selected_parent.id == category.id %}border-green-500 bg-green-50{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
+                    <div class="w-8 h-8 flex items-center justify-center">
+                        {% if category.icon %}
+                        <span class="text-xl">{{ category.icon }}</span>
+                        {% else %}
+                        <svg class="w-6 h-6 {% if selected_parent and selected_parent.id == category.id %}text-green-600{% else %}text-gray-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.87c1.355 0 2.697.055 4.024.165C17.155 8.51 18 9.473 18 10.608v2.513m-3-4.87v-1.5m-6 1.5v-1.5m12 9.75l-1.5.75a3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0L3 16.5m15-3.38a48.474 48.474 0 00-6-.37c-2.032 0-4.034.125-6 .37"/>
+                        </svg>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs font-bold {% if selected_parent and selected_parent.id == category.id %}text-green-700{% else %}text-gray-700{% endif %}">{{ category.name }}</span>
+                </a>
+                {% endfor %}
             </div>
 
             <!-- Level 2 (Sub) Categories -->
             {% if selected_parent %}
-            <div class="flex items-center gap-3 mt-2">
-                <div class="flex-1 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <button
-                        class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-500 text-xs font-semibold text-gray-900"
-                        hx-get="{% url 'pos:products' %}?parent={{ selected_parent.id }}" hx-target="#product-grid"
-                        hx-swap="innerHTML swap:200ms settle:300ms">
-                        All {{ selected_parent.name }}
-                    </button>
+            <div class="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
+                <button
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold bg-green-500 text-white"
+                    hx-get="{% url 'pos:products' %}?parent={{ selected_parent.id }}" hx-target="#product-grid"
+                    hx-swap="innerHTML swap:200ms settle:300ms">
+                    All {{ selected_parent.name }}
+                </button>
 
-                    {% for category in subcategories %}
-                    <button
-                        class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-semibold text-gray-900 hover:bg-gray-50 hover:border-gray-400"
-                        hx-get="{% url 'pos:products' %}?category={{ category.id }}" hx-target="#product-grid"
-                        hx-swap="innerHTML swap:200ms settle:300ms">
-                        {% if category.icon %}<span class="text-base">{{ category.icon }}</span>{% endif %}
-                        {{ category.name }}
-                    </button>
-                    {% endfor %}
-                </div>
+                {% for category in subcategories %}
+                <button
+                    class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                    hx-get="{% url 'pos:products' %}?category={{ category.id }}" hx-target="#product-grid"
+                    hx-swap="innerHTML swap:200ms settle:300ms">
+                    {% if category.icon %}<span class="mr-1">{{ category.icon }}</span>{% endif %}
+                    {{ category.name }}
+                </button>
+                {% endfor %}
             </div>
             {% endif %}
         </nav>
 
         <!-- Product Grid Container (Responsive, scrollable) -->
-        <section id="product-grid" class="flex-1 p-1 overflow-y-auto bg-white" style="padding-bottom: 80px;">
+        <section id="product-grid" class="flex-1 p-4 overflow-y-auto bg-gray-50" style="padding-bottom: 6rem;">
             {% include 'pos/partials/product_grid.html' %}
         </section>
+        </div>
+        <!-- End Content Area -->
 
-        <!-- Footer Action Buttons (Single Row) - Enhanced Design -->
-        <footer id="pos-footer" class="bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200 shadow-2xl">
-            <div class="flex justify-between items-center px-4 py-3.5 h-14">
-                <!-- System Information: Company, Brand, Store from DB | Terminal from localStorage -->
-                <div class="flex items-center gap-3">
-                    <!-- Company Badge -->
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
-                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                        </svg>
-                        <div class="flex flex-col">
-                            <span class="text-xs text-blue-600 font-medium">{{ store_config.brand.company.code }}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Brand Badge -->
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 rounded-lg">
-                        <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
-                        </svg>
-                        <div class="flex flex-col">
-                            <span class="text-xs text-purple-600 font-medium">{{ store_config.brand.code }}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Store Badge -->
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-lg">
-                        <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-                        </svg>
-                        <div class="flex flex-col">
-                            <span class="text-xs text-green-600 font-medium">{{ store_config.store_code }}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Terminal Badge -->
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 rounded-lg">
-                        <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                        </svg>
-                        <div class="flex flex-col">
-                            <span class="text-xs text-orange-600 font-medium" id="footer-terminal-code">-</span>
-                        </div>
-                    </div>
+        <!-- Footer: System Info Bar -->
+        <footer id="pos-footer" class="bg-white border-t border-gray-100">
+            <div class="flex items-center px-4 py-3">
+                <!-- System Info Tags -->
+                <div class="flex items-center gap-3 text-sm text-gray-700">
+                    <span class="px-6 py-2.5 bg-gray-100 border-2 border-gray-300 rounded-full font-semibold">{{ store_config.brand.company.code }}</span>
+                    <span class="text-gray-300">•</span>
+                    <span class="px-6 py-2.5 bg-gray-100 border-2 border-gray-300 rounded-full font-semibold">{{ store_config.brand.code }}</span>
+                    <span class="text-gray-300">•</span>
+                    <span class="px-6 py-2.5 bg-green-100 border-2 border-green-400 text-green-700 rounded-full font-semibold">{{ store_config.store_code }}</span>
+                    <span class="text-gray-300">•</span>
+                    <span class="px-6 py-2.5 bg-gray-100 border-2 border-gray-300 rounded-full font-semibold" id="footer-terminal-code">-</span>
                 </div>
-                <script>
-                    (function () {
-                        // Load terminal code from server-side config (terminal-config.json)
-                        const terminalCode = '{{ terminal_config.terminal_code|default:"NOT REGISTERED" }}';
-                        
-                        const terminalEl = document.getElementById('footer-terminal-code');
-                        if (terminalEl) {
-                            terminalEl.textContent = terminalCode;
-                            if (terminalCode === 'NOT REGISTERED') {
-                                // Change badge colors to red for not registered
-                                const terminalBadge = terminalEl.closest('div.flex.items-center.gap-1\\.5');
-                                if (terminalBadge) {
-                                    terminalBadge.classList.remove('from-orange-50', 'to-orange-100', 'border-orange-200');
-                                    terminalBadge.classList.add('from-red-50', 'to-red-100', 'border-red-200');
-                                }
-                                terminalEl.classList.remove('text-orange-600');
-                                terminalEl.classList.add('text-red-600', 'animate-pulse');
-                            }
-                        }
-                    })();
-                </script>
-                <div></div>
             </div>
+            <script>
+                (function () {
+                    const terminalCode = '{{ terminal_config.terminal_code|default:"NOT REGISTERED" }}';
+                    const terminalEl = document.getElementById('footer-terminal-code');
+                    if (terminalEl) {
+                        terminalEl.textContent = terminalCode;
+                        if (terminalCode === 'NOT REGISTERED') {
+                            terminalEl.classList.add('text-red-700', 'bg-red-100', 'border-red-400', 'animate-pulse');
+                            terminalEl.classList.remove('bg-gray-100', 'border-gray-300');
+                        }
+                    }
+                })();
+            </script>
         </footer>
 
         <!-- Kitchen Printer Status Widget (POS Footer Area) -->
@@ -552,6 +490,9 @@
                 setInterval(refresh, 30000);
             })();
         </script>
+
+        <!-- Printer Status Widget -->
+        {% include 'pos/printer_status.html' %}
     </main>
 
     <!-- ==================== RIGHT: BILL PANEL ==================== -->
@@ -600,22 +541,30 @@
                 }
                 // Auto set payment amount
                 this.paymentAmount = this.total;
+                // Update customer display in kiosk mode
+                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
             },
 
             removeItem(index) {
                 this.items.splice(index, 1);
                 this.paymentAmount = this.total;
+                // Update customer display in kiosk mode
+                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
             },
 
             increaseQty(index) {
                 this.items[index].quantity++;
                 this.paymentAmount = this.total;
+                // Update customer display in kiosk mode
+                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
             },
 
             decreaseQty(index) {
                 if (this.items[index].quantity > 1) {
                     this.items[index].quantity--;
                     this.paymentAmount = this.total;
+                    // Update customer display in kiosk mode
+                    updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
                 } else {
                     this.removeItem(index);
                 }
@@ -672,14 +621,135 @@
         }
     }
 
+    /**
+     * Check if shift is active before allowing operations
+     * @returns {boolean} true if shift is active, false otherwise
+     */
+    function checkShiftActive() {
+        const shiftHeader = document.getElementById('header-shift-status');
+        
+        // Check if shift status header shows active shift
+        const hasActiveShift = shiftHeader && shiftHeader.textContent.includes('Shift Active');
+        
+        if (!hasActiveShift) {
+            // Show sweet alert
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Shift Belum Dibuka',
+                    text: 'Silakan buka shift terlebih dahulu sebelum melakukan transaksi',
+                    confirmButtonText: 'Buka Shift',
+                    confirmButtonColor: '#10b981',
+                    showCancelButton: true,
+                    cancelButtonText: 'Batal'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        openShiftModal();
+                    }
+                });
+            } else {
+                alert('Silakan buka shift terlebih dahulu');
+            }
+            return false;
+        }
+        
+        return true;
+    }
+
+    /**
+     * Check shift status on page load and show modal if no active shift
+     */
+    function checkShiftOnLoad() {
+        console.log('🔍 Checking shift status on load...');
+        fetch('/pos/shift/status-check/', {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('📊 Shift status response:', data);
+            if (!data.has_active_shift) {
+                console.log('❌ No active shift detected');
+                // Show the overlay
+                updateShiftOverlay(false);
+                
+                // Auto-open shift modal after brief delay
+                setTimeout(() => {
+                    console.log('⏰ Opening shift modal after delay...');
+                    openShiftModal();
+                }, 500);
+            } else {
+                console.log('✅ Active shift detected');
+                // Hide the overlay
+                updateShiftOverlay(true);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Error checking shift status:', error);
+        });
+    }
+
+    /**
+     * Open shift modal from the overlay
+     */
+    function openShiftFromOverlay() {
+        openShiftModal();
+    }
+
+    /**
+     * Show or hide the shift required overlay
+     * @param {boolean} hasShift - true if shift is active, false otherwise
+     */
+    function updateShiftOverlay(hasShift) {
+        const overlay = document.getElementById('shift-required-overlay');
+        if (overlay) {
+            if (hasShift) {
+                overlay.classList.add('hidden');
+            } else {
+                overlay.classList.remove('hidden');
+            }
+        }
+    }
+
+    /**
+     * Listen for shift status changes (when shift opens/closes)
+     */
+    document.addEventListener('shiftStatusChanged', function(event) {
+        const hasShift = event.detail && event.detail.hasActiveShift;
+        updateShiftOverlay(hasShift);
+        
+        // Trigger HTMX to refresh shift status header
+        const shiftHeader = document.getElementById('header-shift-status');
+        if (shiftHeader) {
+            htmx.trigger(shiftHeader, 'refresh');
+        }
+    });
+
     // Ensure modal-container always exists on page load
     document.addEventListener('DOMContentLoaded', function () {
         let modalContainer = document.getElementById('modal-container');
         if (!modalContainer) {
             modalContainer = document.createElement('div');
             modalContainer.id = 'modal-container';
+            // Add inline styles to ensure it's always on top and positioned correctly
+            modalContainer.style.cssText = 'position: relative; z-index: 9999;';
             document.body.appendChild(modalContainer);
+            console.log('✅ Modal container created and appended to body');
         }
+        
+        // Check shift status on page load
+        console.log('🚀 Starting shift status check...');
+        checkShiftOnLoad();
+        
+        // Update customer display on page load (if bill panel exists)
+        setTimeout(() => {
+            const billPanel = document.getElementById('bill-panel');
+            if (billPanel && typeof updateCustomerDisplay === 'function') {
+                console.log('📱 Page loaded with active bill, updating customer display...');
+                updateCustomerDisplay([], 0);
+            }
+        }, 500);
     });
 
     /**
@@ -698,12 +768,31 @@
             event.detail.elt.classList.remove('bg-gray-100', 'border-gray-300', 'text-gray-700');
             event.detail.elt.classList.add('bg-white', 'border-gray-300', 'text-gray-700');
         }
+        
+        // Update customer display when bill panel is swapped
+        if (event.detail.target.id === 'bill-panel' || event.detail.target.closest('#bill-panel')) {
+            console.log('📱 Bill panel swapped, updating customer display...');
+            setTimeout(() => {
+                if (typeof updateCustomerDisplay === 'function') {
+                    updateCustomerDisplay([], 0);
+                }
+            }, 100);
+        }
     });
 
     /**
      * Ensure modal container exists before any HTMX request to it
      */
     document.addEventListener('htmx:beforeRequest', function (event) {
+        // Log all shift-related requests for debugging
+        const url = event.detail.pathInfo.requestPath;
+        if (url && url.includes('shift')) {
+            console.log('🔔 HTMX Shift Request:', url);
+            console.log('   Triggered by:', event.detail.elt);
+            console.log('   Element ID:', event.detail.elt.id);
+            console.log('   Element classes:', event.detail.elt.className);
+        }
+        
         // Check if request is targeting modal-container
         const targetSelector = event.detail.elt.getAttribute('hx-target');
         if (targetSelector === '#modal-container') {
@@ -770,6 +859,11 @@
             if (modalContainer) {
                 htmx.process(modalContainer);
             }
+            
+            // Clone and send modal to customer display
+            setTimeout(() => {
+                sendModalToCustomerDisplay();
+            }, 200);
         }
 
         // Re-process HTMX attributes when bill-panel is updated (after resume or add item)
@@ -780,6 +874,12 @@
                 if (billPanel) {
                     // Force HTMX to re-process all elements inside
                     htmx.process(billPanel);
+                    
+                    // Trigger customer display update
+                    if (isKioskMode()) {
+                        updateCustomerDisplay([], 0);
+                        console.log('📺 Customer display update triggered after bill-panel HTMX swap');
+                    }
 
                     // Specifically re-enable the View Held Bills button
                     const heldBillsBtn = document.getElementById('held-bills-btn');
@@ -807,6 +907,13 @@
                 if (billPanel) {
                     console.log('Re-processing bill-panel after outerHTML swap');
                     htmx.process(billPanel);
+                    
+                    // Update customer display
+                    if (isKioskMode()) {
+                        setTimeout(() => {
+                            updateCustomerDisplay([], 0); // Trigger update with dummy params
+                        }, 100);
+                    }
                 }
             }, 100);
         }
@@ -817,19 +924,23 @@
      * This is called after animations complete
      */
     document.addEventListener('htmx:afterSettle', function (event) {
-        // Check if bill-panel was involved in the swap
+        // Only process if the target IS the bill-panel itself (not sidebar or other elements)
         const target = event.detail.target;
-        if (target && (target.id === 'bill-panel' || target.closest('#bill-panel') || document.getElementById('bill-panel'))) {
-            const billPanel = document.getElementById('bill-panel');
-            if (billPanel) {
-                console.log('htmx:afterSettle - Re-processing bill-panel');
-                htmx.process(billPanel);
+        if (target && target.id === 'bill-panel') {
+            console.log('htmx:afterSettle - Re-processing bill-panel');
+            htmx.process(target);
 
-                // Also reprocess modal container to ensure delete buttons work
-                const modalContainer = document.getElementById('modal-container');
-                if (modalContainer) {
-                    htmx.process(modalContainer);
-                }
+            // Also reprocess modal container to ensure delete buttons work
+            const modalContainer = document.getElementById('modal-container');
+            if (modalContainer) {
+                htmx.process(modalContainer);
+            }
+            
+            // Update customer display after bill panel settles
+            if (isKioskMode()) {
+                setTimeout(() => {
+                    updateCustomerDisplay([], 0); // Trigger update with dummy params
+                }, 50);
             }
         }
     });
@@ -1138,7 +1249,7 @@
         const billPanel = document.getElementById('bill-panel');
         if (!billPanel) {
             // No bill panel found, allow close shift
-            openCloseShiftModal();
+            closeShiftModal();
             return;
         }
 
@@ -1195,10 +1306,46 @@
         }
         
         // No active bill, open close shift modal
-        openCloseShiftModal();
+        closeShiftModal();
     }
 
-    function openCloseShiftModal() {
+    function openShiftModal() {
+        console.log('🔵 Opening shift modal...');
+        const modalContainer = document.getElementById('modal-container');
+        console.log('   Modal container exists:', !!modalContainer);
+        
+        // Add one-time event listener for after swap
+        modalContainer.addEventListener('htmx:afterSwap', function checkModal() {
+            console.log('✅ Shift modal HTML swapped');
+            const shiftModal = document.getElementById('shift-open-modal');
+            const sessionModal = document.getElementById('session-required-modal');
+            
+            console.log('   shift-open-modal exists:', !!shiftModal);
+            console.log('   session-required-modal exists:', !!sessionModal);
+            
+            if (shiftModal) {
+                console.log('✅ Shift modal rendered successfully');
+                console.log('   Classes:', shiftModal.className);
+                console.log('   Display:', window.getComputedStyle(shiftModal).display);
+                console.log('   Z-index:', window.getComputedStyle(shiftModal).zIndex);
+            } else if (sessionModal) {
+                console.log('⚠️ Session required modal shown (no active store session)');
+            } else {
+                console.log('❌ No modal element found!');
+                console.log('   Container HTML:', modalContainer.innerHTML.substring(0, 300));
+            }
+            
+            // Remove this one-time listener
+            modalContainer.removeEventListener('htmx:afterSwap', checkModal);
+        }, { once: true });
+        
+        htmx.ajax('GET', '{% url "pos:shift_open_form" %}', {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+
+    function closeShiftModal() {
         htmx.ajax('GET', '{% url "pos:shift_close_form" %}', {
             target: '#modal-container',
             swap: 'innerHTML'
@@ -1212,6 +1359,214 @@
             swap: 'innerHTML'
         });
     }
+
+    // Open Floor Plan Modal
+    function openFloorPlanModal() {
+        // Check if floor plan is already open
+        const existingModal = document.getElementById('floor-plan-modal');
+        if (existingModal) {
+            console.log('ℹ️ Floor plan already open, skipping...');
+            return; // Don't open again
+        }
+        
+        // Create overlay that covers main content area
+        const overlay = document.createElement('div');
+        overlay.id = 'floor-plan-modal';
+        overlay.className = 'absolute inset-0 bg-white z-50 animate-slideInLeft';
+        overlay.innerHTML = `
+            <div class="w-full h-full flex flex-col bg-gradient-to-br from-gray-50 to-white">
+                <!-- Header with Gradient -->
+                <div class="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 overflow-hidden shadow-lg">
+                    <!-- Animated Background Pattern -->
+                    <div class="absolute inset-0 opacity-20">
+                        <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.3),transparent)]"></div>
+                    </div>
+                    
+                    <div class="relative flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center shadow-lg">
+                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold text-white tracking-tight">Floor Plan</h2>
+                                <p class="text-xs text-white/80 font-medium">Select your table</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Legend inline with title -->
+                        <div class="flex items-center gap-1.5">
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <svg class="w-3 h-3 text-green-300" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-bold text-white text-xs">Available</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <svg class="w-3 h-3 text-red-300 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-bold text-white text-xs">Occupied</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <svg class="w-3 h-3 text-purple-300" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
+                                </svg>
+                                <span class="font-bold text-white text-xs">Joined</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <svg class="w-3 h-3 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-bold text-white text-xs">Cleaning</span>
+                            </div>
+                        </div>
+                        
+                        <button onclick="closeFloorPlanModal()" 
+                            class="w-9 h-9 bg-red-500/90 hover:bg-red-600 rounded-lg flex items-center justify-center transition-all group shadow-lg hover:shadow-xl">
+                            <svg class="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Content - Loading -->
+                <div id="floor-plan-content" class="flex-1 overflow-hidden">
+                    <div class="flex items-center justify-center h-full">
+                        <div class="text-center">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
+                            <p class="text-gray-600 font-medium">Loading floor plan...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Append to content area (categories + products)
+        const contentArea = document.getElementById('pos-content-area');
+        if (contentArea) {
+            contentArea.appendChild(overlay);
+        }
+        
+        // Load floor plan content via iframe to preserve all scripts and styles
+        fetch('{% url "tables:floor_plan" %}')
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Get the main content (skip header with back button)
+                const mainContentDoc = doc.querySelector('.min-h-screen');
+                
+                if (mainContentDoc) {
+                    // Remove the sticky header with back button
+                    const header = mainContentDoc.querySelector('.sticky');
+                    if (header) {
+                        header.remove();
+                    }
+                    
+                    // Insert content first
+                    const contentDiv = document.getElementById('floor-plan-content');
+                    contentDiv.innerHTML = mainContentDoc.innerHTML;
+                    
+                    console.log('📦 Content inserted, checking for scripts...');
+                    
+                    // Remove any previously appended floor plan scripts to prevent duplicates
+                    document.querySelectorAll('script.floor-plan-script').forEach(s => {
+                        s.remove();
+                        console.log('🧹 Removed old floor plan script');
+                    });
+                    
+                    // Reset Alpine initialization flag
+                    window.floorPlanInitialized = false;
+                    
+                    // Flag to track if we've already executed scripts for THIS modal instance
+                    if (window.floorPlanScriptsLoaded) {
+                        console.log('⚠️ Floor plan scripts already loaded, skipping script execution');
+                        window.floorPlanLoading = false;
+                        return;
+                    }
+                    
+                    console.log('📜 Executing floor plan scripts for the first time...');
+                    
+                    // Get all script tags from original page and execute them properly
+                    const scripts = doc.querySelectorAll('script');
+                    let scriptCount = 0;
+                    scripts.forEach(script => {
+                        // Skip JSON scripts and external scripts
+                        if (script.type === 'application/json' || script.src) {
+                            return;
+                        }
+                        
+                        // Only append JavaScript scripts once
+                        if (script.textContent && (!script.type || script.type === 'text/javascript')) {
+                            try {
+                                const newScript = document.createElement('script');
+                                newScript.className = 'floor-plan-script'; // Mark for cleanup
+                                newScript.textContent = script.textContent;
+                                document.body.appendChild(newScript);
+                                scriptCount++;
+                            } catch (e) {
+                                console.error('Error appending script:', e);
+                            }
+                        }
+                    });
+                    
+                    console.log(`✅ Executed ${scriptCount} scripts`);
+                    
+                    // Mark scripts as loaded
+                    window.floorPlanScriptsLoaded = true;
+                    window.floorPlanLoading = false;
+                    
+                    console.log('✅ Floor plan loaded successfully');
+                }
+            })
+            .catch(error => {
+                window.floorPlanLoading = false;
+                console.error('Error loading floor plan:', error);
+                document.getElementById('floor-plan-content').innerHTML = `
+                    <div class="flex items-center justify-center h-full">
+                        <div class="text-center p-8">
+                            <div class="text-red-600 mb-4">
+                                <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <p class="text-gray-700 font-medium mb-4">Failed to load floor plan</p>
+                            <button onclick="closeFloorPlanModal()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+    }
+    
+    function closeFloorPlanModal() {
+        const overlay = document.getElementById('floor-plan-modal');
+        if (overlay) {
+            overlay.classList.add('animate-slideOutLeft');
+            setTimeout(() => {
+                overlay.remove();
+                
+                // Reset all flags to allow fresh initialization on next open
+                window.floorPlanScriptsLoaded = false;
+                window.floorPlanLoading = false;
+                window.floorPlanInitialized = false; // Reset Alpine init flag
+                
+                console.log('🔄 Floor plan modal closed, all flags reset for next open');
+            }, 300);
+        }
+    }
+    
+    // Close modal on ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('floor-plan-modal')) {
+            closeFloorPlanModal();
+        }
+    });
 
     // Kiosk mode: Auto-fullscreen when opened from pos.exe
     (function() {
@@ -1232,6 +1587,505 @@
             }, 1000);
         }
     })();
+
+    // ==================== POS LAUNCHER INTEGRATION ====================
+    // Event-Based Hybrid: Send data to local API for printing and customer display
+    
+    const LOCAL_API_URL = 'http://127.0.0.1:5000';
+    
+    /**
+     * Check if running in kiosk mode
+     */
+    function isKioskMode() {
+        // Check localStorage first (set by PyQt launcher)
+        if (localStorage.getItem('kiosk_mode') === '1') {
+            return true;
+        }
+        
+        // Fall back to URL parameter for compatibility
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('kiosk') === '1';
+    }
+    
+    /**
+     * Send modal to customer display
+     */
+    function sendModalToCustomerDisplay() {
+        console.log('🎭 sendModalToCustomerDisplay() called');
+        console.log('🔍 Kiosk mode:', isKioskMode());
+        
+        if (!isKioskMode()) {
+            console.log('⚠️ Not in kiosk mode, skipping modal sync');
+            return;
+        }
+        
+        const modalContainer = document.getElementById('modal-container');
+        console.log('🔍 Modal container:', modalContainer);
+        console.log('🔍 Modal container innerHTML length:', modalContainer ? modalContainer.innerHTML.trim().length : 0);
+        
+        if (!modalContainer || !modalContainer.innerHTML.trim()) {
+            console.log('⚠️ Modal container empty, clearing modal on customer display...');
+            // Clear modal on customer display
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    show_modal: false,
+                    modal_html: null
+                })
+            });
+            return;
+        }
+        
+        // ⛔ BLACKLIST FIRST: Exclude specific internal modals before whitelist check
+        const modalContent = modalContainer.innerHTML;
+        
+        console.log('🔍 Checking modal content (first 500 chars):', modalContent.substring(0, 500));
+        
+        // Quick Order modal - ALWAYS skip (staff-only)
+        // Multiple checks for robust detection
+        const isQuickOrder = modalContent.includes('Quick Order') || 
+                            modalContent.includes('quickOrder()') || 
+                            modalContent.includes('Select Products') ||
+                            modalContent.includes('Select items & pay instantly') ||
+                            modalContent.includes('z-[60]');
+        
+        if (isQuickOrder) {
+            console.log('⛔ Quick Order modal detected - Skipping customer display sync (staff-only)');
+            // Clear any existing modal on customer display
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    show_modal: false,
+                    modal_html: null
+                })
+            });
+            return;
+        }
+        
+        // ⛔ WHITELIST APPROACH - Only Payment modals should be shown to customers
+        const isPaymentModal = modalContent.includes('Payment - ') && 
+                              (modalContent.includes('Payment Method') || modalContent.includes('Quick Amount'));
+        
+        if (!isPaymentModal) {
+            console.log('⛔ Not a payment modal - Skipping customer display sync');
+            console.log('   This is an internal/staff modal (Hold Bill, PIN, Shift, etc.)');
+            // Clear any existing modal on customer display
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    show_modal: false,
+                    modal_html: null
+                })
+            });
+            return;
+        }
+        
+        console.log('✅ Modal is customer-facing (Payment related), proceeding with clone...');
+        
+        console.log('🎭 Cloning modal for customer display...');
+        
+        // Get Alpine.js component data from original modal (before cloning)
+        const originalModal = modalContainer.querySelector('[x-data]');
+        let alpineData = null;
+        if (originalModal && originalModal._x_dataStack && originalModal._x_dataStack.length > 0) {
+            alpineData = originalModal._x_dataStack[0];
+            console.log('📊 Alpine.js data captured:', {
+                amount: alpineData.amount,
+                amountDisplay: alpineData.amountDisplay,
+                remaining: alpineData.remaining,
+                change: alpineData.change,
+                method: alpineData.method,
+                payments: alpineData.payments
+            });
+        } else {
+            console.error('❌ Failed to capture Alpine.js data!', {
+                originalModal,
+                hasDataStack: originalModal?._x_dataStack,
+                stackLength: originalModal?._x_dataStack?.length
+            });
+        }
+        
+        // Clone modal
+        const modalClone = modalContainer.cloneNode(true);
+        
+        // Replace Alpine.js x-text bindings with actual values
+        if (alpineData) {
+            // Helper function to safely evaluate expressions
+            const safeEval = (expr, context) => {
+                try {
+                    const func = new Function(...Object.keys(context), `return ${expr}`);
+                    return func(...Object.values(context));
+                } catch (e) {
+                    console.warn('Failed to eval:', expr, e);
+                    return null;
+                }
+            };
+            
+            const context = {
+                formatNumber: alpineData.formatNumber.bind(alpineData),
+                remaining: alpineData.remaining,
+                change: alpineData.change,
+                amount: alpineData.amount,
+                method: alpineData.method,
+                payments: alpineData.payments
+            };
+            
+            // Process x-show first (handle visibility)
+            const xShowElements = modalClone.querySelectorAll('[x-show]');
+            xShowElements.forEach(el => {
+                const xShowValue = el.getAttribute('x-show');
+                const result = safeEval(xShowValue, context);
+                if (result === false) {
+                    el.style.display = 'none';
+                } else {
+                    el.style.display = '';
+                }
+                el.removeAttribute('x-show');
+                console.log('🔍 x-show:', xShowValue, '→', result);
+            });
+            
+            // Process x-text (replace with actual text)
+            const xTextElements = modalClone.querySelectorAll('[x-text]');
+            xTextElements.forEach(el => {
+                const xTextValue = el.getAttribute('x-text');
+                const result = safeEval(xTextValue, context);
+                if (result !== null) {
+                    el.textContent = result;
+                    console.log('✅ x-text:', xTextValue, '→', result);
+                }
+                el.removeAttribute('x-text');
+            });
+        }
+        
+        console.log('📊 Clone snapshot taken at:', new Date().toISOString().substr(11, 12));
+        
+        // Disable buttons but keep them visible for customer display
+        const buttons = modalClone.querySelectorAll('button');
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.7';
+            // Remove event handlers
+            btn.removeAttribute('onclick');
+            btn.removeAttribute('hx-get');
+            btn.removeAttribute('hx-post');
+            btn.removeAttribute('hx-target');
+            btn.removeAttribute('hx-swap');
+            // Remove Alpine.js click handlers
+            Array.from(btn.attributes).forEach(attr => {
+                if (attr.name.startsWith('@') || attr.name.startsWith('x-on:')) {
+                    btn.removeAttribute(attr.name);
+                }
+            });
+        });
+        
+        // Remove interactivity from other elements
+        const interactiveElements = modalClone.querySelectorAll('[hx-get], [hx-post], [onclick], [x-on\\:click]');
+        interactiveElements.forEach(el => {
+            el.removeAttribute('hx-get');
+            el.removeAttribute('hx-post');
+            el.removeAttribute('hx-target');
+            el.removeAttribute('hx-swap');
+            el.removeAttribute('onclick');
+            // Remove Alpine.js attributes
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.name.startsWith('x-') || attr.name.startsWith('@')) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+        
+        // Make all input fields read-only (but keep them visible)
+        const inputs = modalClone.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.readOnly = true;
+            input.disabled = true;
+            input.style.pointerEvents = 'none';
+        });
+        
+        // Remove ALL Alpine.js attributes and onclick handlers from entire clone
+        const allElements = modalClone.querySelectorAll('*');
+        allElements.forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                // Remove Alpine.js attributes
+                if (attr.name.startsWith('x-') || attr.name.startsWith('@') || attr.name.startsWith(':')) {
+                    el.removeAttribute(attr.name);
+                }
+                // Remove onclick and other event handlers (to prevent "function not defined" errors on customer display)
+                if (attr.name.startsWith('on')) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+        console.log('🧹 Cleaned all Alpine.js attributes and event handlers from clone');
+        
+        // Set input values AFTER removing Alpine attributes to ensure they stick
+        if (alpineData) {
+            // Target the VISIBLE amount input (not the hidden one for form submission)
+            const amountInput = modalClone.querySelector('input[name="amount_display"]') || 
+                               modalClone.querySelector('input[type="text"][placeholder="0"]:not([type="hidden"])') ||
+                               modalClone.querySelector('input[placeholder="0"]');
+            if (amountInput) {
+                // Try various ways to get the display value
+                let displayValue = '';
+                
+                // Helper function to format number (in case Alpine's formatNumber is not accessible)
+                const formatNumber = (num) => {
+                    if (!num && num !== 0) return '0';
+                    const str = Math.floor(num).toString();
+                    return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                };
+                
+                if (alpineData.amountDisplay) {
+                    displayValue = alpineData.amountDisplay;
+                } else if (alpineData.amount) {
+                    // Try Alpine's formatNumber first, fallback to local function
+                    try {
+                        displayValue = alpineData.formatNumber ? alpineData.formatNumber(alpineData.amount) : formatNumber(alpineData.amount);
+                    } catch (e) {
+                        displayValue = formatNumber(alpineData.amount);
+                    }
+                }
+                
+                console.log('💰 Setting amount input:', {
+                    rawAmount: alpineData.amount,
+                    amountDisplay: alpineData.amountDisplay,
+                    finalDisplayValue: displayValue,
+                    inputName: amountInput.getAttribute('name'),
+                    inputType: amountInput.getAttribute('type'),
+                    inputPlaceholder: amountInput.getAttribute('placeholder'),
+                    inputHTML: amountInput.outerHTML.substring(0, 150)
+                });
+                
+                // Set both property and attribute for maximum compatibility
+                amountInput.value = displayValue;
+                amountInput.setAttribute('value', displayValue);
+                
+                console.log('✅ Amount input value set successfully');
+            } else {
+                console.warn('⚠️ Amount input not found in clone. Available inputs:', 
+                    modalClone.querySelectorAll('input').length);
+            }
+        } else {
+            console.warn('⚠️ No Alpine data available to set input value');
+        }
+        
+        const modalHTML = modalClone.innerHTML;
+        
+        console.log('📏 Cloned modal HTML length:', modalHTML.length);
+        console.log('📄 Modal HTML preview (first 300 chars):', modalHTML.substring(0, 300));
+        
+        // Add timestamp for debugging
+        const timestamp = Date.now();
+        console.log('⏱️ Sending update at timestamp:', timestamp);
+        
+        fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                show_modal: true,
+                modal_html: modalHTML
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('✅ Modal sent to customer display:', data);
+        })
+        .catch(error => {
+            console.error('❌ Failed to send modal to customer display:', error);
+        });
+    }
+    
+    /**
+     * Update customer display with current cart (mirror bill panel)
+     * @param {Array} items - Array of cart items (not used in current implementation, kept for compatibility)
+     * @param {Number} total - Total amount (not used in current implementation, kept for compatibility)
+     * @param {Number} paymentAmount - Payment amount (not used in current implementation, kept for compatibility)
+     * @param {String} paymentMethod - Payment method (not used in current implementation, kept for compatibility)
+     * @param {Boolean} clearDisplay - If true, send empty state to clear customer display
+     */
+    function updateCustomerDisplay(items, total, paymentAmount = 0, paymentMethod = 'cash', clearDisplay = false) {
+        console.log('🔵 updateCustomerDisplay() called', clearDisplay ? '(CLEAR MODE)' : '');
+        console.log('🔍 Kiosk mode check - localStorage:', localStorage.getItem('kiosk_mode'));
+        
+        // Only send if local API is available (running in launcher)
+        if (!isKioskMode()) {
+            console.log('⚠️ Not in kiosk mode - localStorage:', localStorage.getItem('kiosk_mode'), 'URL param:', new URLSearchParams(window.location.search).get('kiosk'));
+            return; // Not in kiosk mode, skip
+        }
+        
+        console.log('✅ Kiosk mode active');
+        
+        // If clearDisplay is true, send empty state
+        if (clearDisplay) {
+            console.log('🧹 Sending CLEAR signal to customer display...');
+            const displayData = {
+                bill_panel_html: null,
+                has_bill: false
+            };
+            
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(displayData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('✅ Customer display cleared successfully:', data);
+            })
+            .catch(error => {
+                console.error('❌ Failed to clear customer display:', error);
+            });
+            return;
+        }
+        
+        console.log('📸 Capturing bill panel...');
+        
+        // Capture bill panel HTML
+        const billPanel = document.getElementById('bill-panel');
+        if (!billPanel) {
+            console.warn('❌ Bill panel not found in DOM');
+            return;
+        }
+        
+        console.log('✅ Bill panel found, cloning HTML...');
+        
+        // Clone and clean up the bill panel HTML
+        const billPanelClone = billPanel.cloneNode(true);
+        
+        // COMPLETELY REMOVE all buttons from customer display
+        const buttons = billPanelClone.querySelectorAll('button');
+        console.log(`🗑️ Removing ${buttons.length} buttons from customer display...`);
+        buttons.forEach(btn => btn.remove());
+        
+        // Remove other interactive elements (but keep the structure)
+        const interactiveElements = billPanelClone.querySelectorAll('[hx-get], [hx-post], [onclick]');
+        console.log(`🔧 Cleaning ${interactiveElements.length} interactive elements...`);
+        
+        interactiveElements.forEach(el => {
+            el.removeAttribute('hx-get');
+            el.removeAttribute('hx-post');
+            el.removeAttribute('hx-target');
+            el.removeAttribute('hx-swap');
+            el.removeAttribute('hx-vals');
+            el.removeAttribute('onclick');
+            el.style.cursor = 'default';
+        });
+        
+        const billPanelHTML = billPanelClone.outerHTML;
+        console.log(`✅ Bill panel HTML captured (${billPanelHTML.length} chars)`);
+        
+        const displayData = {
+            bill_panel_html: billPanelHTML,
+            has_bill: true
+        };
+        
+        console.log('📤 Sending to local API...', LOCAL_API_URL);
+        
+        fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(displayData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('✅ Customer display updated successfully:', data);
+        })
+        .catch(error => {
+            console.error('❌ Customer display update failed:', error.message);
+            console.error('   Make sure POS Launcher is running!');
+        });
+    }
+    
+    /**
+     * Send receipt to local printer
+     */
+    function sendReceiptToLocalPrinter(bill) {
+        if (!isKioskMode()) {
+            return; // Not in kiosk mode, skip
+        }
+        
+        // Wait a bit to ensure bill data is fully saved
+        setTimeout(() => {
+            // Fetch complete bill data from server
+            fetch(`/pos/bill/${bill.id}/data/`, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(billData => {
+                const receiptData = {
+                    outlet_name: billData.outlet_name || '{{ request.user.outlet.name }}',
+                    outlet_address: billData.outlet_address || '',
+                    outlet_phone: billData.outlet_phone || '',
+                    bill_number: billData.bill_number,
+                    date: billData.date || new Date().toISOString(),
+                    cashier: billData.cashier || '{{ request.user.get_full_name }}',
+                    customer_name: billData.customer_name || null,
+                    table: billData.table || null,
+                    items: billData.items || [],
+                    payments: billData.payments || [],
+                    subtotal: billData.subtotal,
+                    discount: billData.discount || 0,
+                    tax: billData.tax || 0,
+                    service: billData.service || 0,
+                    total: billData.total,
+                    footer: billData.footer || 'Terima Kasih!'
+                };
+                
+                return fetch(`${LOCAL_API_URL}/api/print`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(receiptData)
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('🖨️ Receipt sent to local printer:', data);
+            })
+            .catch(error => {
+                console.warn('⚠️ Local print failed (local API not available):', error.message);
+            });
+        }, 500);
+    }
+    
+    // Listen for payment complete event to trigger local print
+    document.body.addEventListener('paymentComplete', function(e) {
+        console.log('💰 Payment complete, sending to local printer...');
+        
+        // Clear customer display (show waiting state)
+        console.log('🧹 Clearing customer display after payment (from listener)');
+        updateCustomerDisplay([], 0, 0, 'cash', true);
+        
+        // Extract bill data from success modal
+        const modalContainer = document.getElementById('modal-container');
+        if (modalContainer) {
+            const billIdMatch = modalContainer.innerHTML.match(/billId\s*=\s*(\d+)/);
+            if (billIdMatch) {
+                const billId = parseInt(billIdMatch[1]);
+                sendReceiptToLocalPrinter({ id: billId });
+            }
+        }
+    });
 
 </script>
 

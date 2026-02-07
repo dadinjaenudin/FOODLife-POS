@@ -15,6 +15,8 @@ urlpatterns = [
     path('bill/open/', views.open_bill, name='open_bill'),
     path('bill/<int:bill_id>/product/<uuid:product_id>/add-modal/', views.add_item_modal, name='add_item_modal'),
     path('bill/<int:bill_id>/add-item/', views.add_item, name='add_item'),
+    path('bill/<int:bill_id>/product/<uuid:product_id>/quick-add/', views.quick_add_product, name='quick_add_product'),
+    path('bill/<int:bill_id>/product/<uuid:product_id>/quick-remove/', views.quick_remove_product, name='quick_remove_product'),
     path('bill/<int:bill_id>/hold/', views.hold_bill, name='hold_bill'),
     path('bill/<int:bill_id>/hold-modal/', views.hold_modal, name='hold_modal'),
     path('bill/<int:bill_id>/resume/', views.resume_bill, name='resume_bill'),
@@ -47,6 +49,7 @@ urlpatterns = [
     # Reprint
     path('bill/<int:bill_id>/reprint-receipt/', views.reprint_receipt, name='reprint_receipt'),
     path('bill/<int:bill_id>/print-preview/', views.print_preview, name='print_preview'),
+    path('bill/<int:bill_id>/data/', views.bill_data_json, name='bill_data_json'),
     path('bill/<int:bill_id>/reprint-kitchen/', views.reprint_kitchen, name='reprint_kitchen'),
     
     # Held bills
@@ -76,6 +79,8 @@ urlpatterns = [
     path('shift/<uuid:shift_id>/print-reconciliation/', views.shift_print_reconciliation, name='shift_print_reconciliation'),
     path('shift/<uuid:shift_id>/print-interim/', views.shift_print_interim, name='shift_print_interim'),
     path('shift/status/', views.shift_status, name='shift_status'),
+    path('shift/status-header/', views.shift_status_header, name='shift_status_header'),
+    path('shift/status-check/', views.shift_status_check, name='shift_status_check'),
     
     # Cash Drop
     path('cash-drop/form/', views.cash_drop_form, name='cash_drop_form'),

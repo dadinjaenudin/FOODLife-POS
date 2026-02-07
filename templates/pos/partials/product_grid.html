@@ -1,123 +1,113 @@
 {% load humanize %}
-<!-- Product Grid - Ultra Compact Layout -->
-<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+<!-- Product Grid - Professional F&B POS Layout -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
     {% for product in products %}
-    <div class="product-card bg-white rounded-lg overflow-hidden transition-all duration-200 {% if bill and product.stock_quantity %}hover:shadow-md border-2 border-gray-400 hover:border-emerald-400 cursor-pointer{% else %}border-2 border-gray-400 cursor-not-allowed{% endif %} {% if not product.stock_quantity or not bill %}opacity-50 pointer-events-none{% endif %}"
-         data-product-id="{{ product.id }}">
-        <!-- Product Image -->
-        <div class="relative aspect-square bg-gray-100 overflow-hidden {% if bill and product.stock_quantity %}cursor-pointer{% else %}cursor-not-allowed{% endif %}"
-             {% if bill and product.stock_quantity %}
-             hx-get="{% url 'pos:add_item_modal' bill.id product.id %}"
-             hx-target="#modal-container"
-             {% endif %}>
-            {% if product.primary_photos|length > 0 %}
-                {% with product.primary_photos.0 as photo %}
-                <img src="{{ minio_endpoint }}/{{ minio_bucket }}/{{ photo.object_key }}?v={{ photo.checksum|slice:':8' }}" 
-                     alt="{{ product.name }}" 
-                     class="w-full h-full object-cover {% if bill and product.stock_quantity %}transition-transform duration-300 hover:scale-105{% endif %}"
-                     onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 flex items-center justify-center\'><div class=\'text-center\'><span class=\'text-4xl opacity-30\'>🍽️</span><p class=\'text-[8px] text-gray-400 mt-1\'>Gambar menu<br>belum tersedia</p></div></div>';">
-                {% endwith %}
-            {% elif product.image %}
-            <img src="{{ product.image.url }}" 
-                 alt="{{ product.name }}" 
-                 class="w-full h-full object-cover {% if bill and product.stock_quantity %}transition-transform duration-300 hover:scale-105{% endif %}">
-            {% else %}
-            <div class="w-full h-full bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 flex items-center justify-center">
-                <div class="text-center">
-                    <span class="text-4xl opacity-30">🍽️</span>
-                    <p class="text-[8px] text-gray-400 mt-1">Gambar menu<br>belum tersedia</p>
-                </div>
-            </div>
-            {% endif %}
-            
-            <!-- Out of Stock Overlay -->
-            {% if not product.stock_quantity %}
-            <div class="absolute inset-0 bg-black/60 flex items-center justify-center">
-                <div class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg">
-                    Out of Stock
-                </div>
-            </div>
-            {% endif %}
-            
-            <!-- No Active Bill Overlay -->
-            {% if not bill and product.stock_quantity %}
-            <div class="absolute inset-0 bg-gray-900/40 flex items-center justify-center backdrop-blur-[1px]">
-                <div class="bg-gray-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg">
-                    No Active Bill
-                </div>
-            </div>
-            {% endif %}
-        </div>
-        
-        <!-- Product Info -->
-        <div class="p-1.5 space-y-1">
-            <!-- Product Name -->
-            <h3 class="font-semibold text-gray-900 text-[10px] leading-tight h-6 line-clamp-2">
-                {{ product.name }}
-            </h3>
-            
-            <!-- Price -->
-            <div class="text-gray-900 font-bold text-[11px]">
-                Rp {{ product.price|floatformat:0|intcomma }}
-            </div>
-            
-            <!-- Add Button -->
-            {% if product.stock_quantity > 0 %}
-                {% if bill %}
-                <button 
-                    class="w-full py-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1 shadow-sm hover:shadow-md active:scale-95 add-product-btn"
-                    hx-get="{% url 'pos:add_item_modal' bill.id product.id %}"
-                    hx-target="#modal-container">
-                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                    <span class="text-[10px]">ADD</span>
-                </button>
-                {% else %}
-                <button 
-                    disabled
-                    class="w-full py-1 bg-gray-300 text-gray-500 font-semibold rounded cursor-not-allowed opacity-60 flex items-center justify-center gap-1">
-                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
-                    </svg>
-                    <span class="text-[10px]">No Bill</span>
-                </button>
-                {% endif %}
-            {% else %}
-            <button disabled class="w-full py-1 bg-gray-200 text-gray-500 font-semibold rounded cursor-not-allowed opacity-60 text-[10px]">
-                Out
-            </button>
-            {% endif %}
-        </div>
-    </div>
+    {% include 'pos/partials/product_card.html' with product=product bill=bill bill_items_dict=bill_items_dict minio_endpoint=minio_endpoint minio_bucket=minio_bucket %}
     {% empty %}
     <!-- Empty State -->
-    <div class="col-span-2 md:col-span-3 lg:col-span-4 text-center py-16">
-        <div class="inline-block p-6 bg-gray-50 rounded-2xl">
-            <svg class="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
-            </svg>
-            <p class="text-lg font-bold text-gray-700 mb-1">No Products Found</p>
-            <p class="text-xs text-gray-500">Try selecting a different category</p>
+    <div class="col-span-full text-center py-16">
+        <div class="inline-flex flex-col items-center p-8 bg-white rounded-2xl shadow-sm">
+            <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                </svg>
+            </div>
+            <p class="text-base font-bold text-gray-700 mb-1" style="font-family:'Outfit',sans-serif;">No Products Found</p>
+            <p class="text-sm text-gray-400">Try selecting a different category</p>
         </div>
     </div>
     {% endfor %}
 </div>
 
 <script>
-// Mark product card as selected with green background
-function markProductAsSelected(button) {
-    const productCard = button.closest('.product-card');
-    if (productCard) {
-        // Add selected state
-        productCard.classList.add('bg-emerald-50', 'border-emerald-500');
-        productCard.classList.remove('border-gray-200');
-        
-        // Remove after 1 second to show feedback
-        setTimeout(() => {
-            productCard.classList.remove('bg-emerald-50', 'border-emerald-500');
-            productCard.classList.add('border-gray-200');
-        }, 1000);
+// Quick add/remove product functions
+function quickAddProduct(billId, productId) {
+    // Check if shift is active before allowing product operations
+    if (!checkShiftActive()) {
+        return;
     }
+    
+    fetch(`/pos/bill/${billId}/product/${productId}/quick-add/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error adding product:', data.error);
+            return;
+        }
+        // Update product card
+        const productCard = document.getElementById(`product-card-${productId}`);
+        if (productCard) {
+            productCard.outerHTML = data.product_card_html;
+        }
+        // Update bill panel
+        const billPanel = document.getElementById('bill-panel');
+        if (billPanel) {
+            billPanel.outerHTML = data.bill_panel_html;
+            
+            // Trigger customer display update
+            if (typeof updateCustomerDisplay === 'function') {
+                setTimeout(() => {
+                    updateCustomerDisplay([], 0);
+                    console.log('📺 Customer display update triggered after quickAddProduct');
+                }, 100);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+function quickRemoveProduct(billId, productId) {
+    // Check if shift is active before allowing product operations
+    if (!checkShiftActive()) {
+        return;
+    }
+    
+    fetch(`/pos/bill/${billId}/product/${productId}/quick-remove/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error removing product:', data.error);
+            return;
+        }
+        // Update product card
+        const productCard = document.getElementById(`product-card-${productId}`);
+        if (productCard) {
+            productCard.outerHTML = data.product_card_html;
+        }
+        // Update bill panel
+        const billPanel = document.getElementById('bill-panel');
+        if (billPanel) {
+            billPanel.outerHTML = data.bill_panel_html;
+            
+            // Trigger customer display update
+            if (typeof updateCustomerDisplay === 'function') {
+                setTimeout(() => {
+                    updateCustomerDisplay([], 0);
+                    console.log('📺 Customer display update triggered after quickRemoveProduct');
+                }, 100);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
 }
 </script>

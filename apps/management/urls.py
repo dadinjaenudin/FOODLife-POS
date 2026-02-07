@@ -24,10 +24,18 @@ urlpatterns = [
     path('settings/', views.settings, name='settings'),
     path('settings/update/', views.settings_update, name='settings_update'),
     
+    # Customer Display Slideshow
+    path('customer-display/slides/', views.customer_display_slides, name='customer_display_slides'),
+    path('customer-display/slides/upload/', views.customer_display_slide_upload, name='customer_display_slide_upload'),
+    path('customer-display/slides/<int:slide_id>/update/', views.customer_display_slide_update, name='customer_display_slide_update'),
+    path('customer-display/slides/<int:slide_id>/delete/', views.customer_display_slide_delete, name='customer_display_slide_delete'),
+    path('customer-display/slides/<int:slide_id>/toggle/', views.customer_display_slide_toggle, name='customer_display_slide_toggle'),
+    
     # Master Data
     path('master-data/', views.master_data, name='master_data'),
     path('master-data/sync-from-ho/', views.sync_from_ho, name='sync_from_ho'),
     path('sync-product-images/', views.sync_product_images, name='sync_product_images'),
+    path('configure-bucket-policy/', views.configure_bucket_policy, name='configure_bucket_policy'),
     path('master-data/import-excel/', views.import_excel_page, name='import_excel'),
     path('master-data/import-excel/template/', views.download_excel_template, name='download_excel_template'),
     path('master-data/import-excel/reset/', views.import_excel_reset, name='import_excel_reset'),
@@ -70,4 +78,8 @@ urlpatterns = [
     path('reports/void-discount/', views.void_discount_report, name='void_discount_report'),
     path('reports/peak-hours/', views.peak_hours_report, name='peak_hours_report'),
     path('reports/export/sales-excel/', views.export_sales_excel, name='export_sales_excel'),
+    
+    # Session Management
+    path('session/', views.session_management, name='session_open_form'),
+    path('session/close/', views.session_close, name='session_close'),
 ]

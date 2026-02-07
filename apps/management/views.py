@@ -1,8 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
+from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
@@ -984,6 +986,80 @@ def sync_product_images(request):
 
 @csrf_exempt
 @require_POST
+def configure_bucket_policy(request):
+    """
+    Configure MinIO bucket policy for public read access (product images).
+    Creates bucket if not exists and sets public GetObject policy.
+    """
+    import json as json_lib
+    from minio import Minio
+    from minio.error import S3Error
+    from django.conf import settings as django_settings
+    
+    # Check authentication - return JSON for AJAX requests
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Authentication required. Please login.'}, status=401)
+    
+    try:
+        endpoint = django_settings.EDGE_MINIO_ENDPOINT
+        access_key = django_settings.EDGE_MINIO_ACCESS_KEY
+        secret_key = django_settings.EDGE_MINIO_SECRET_KEY
+        secure = django_settings.EDGE_MINIO_SECURE
+        bucket_name = 'product-images'
+        
+        logger.info(f"Configuring bucket policy - endpoint: {endpoint}")
+        client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
+        
+        # Create bucket if not exists
+        bucket_created = False
+        if not client.bucket_exists(bucket_name):
+            client.make_bucket(bucket_name)
+            bucket_created = True
+            logger.info(f"Created bucket: {bucket_name}")
+        
+        # Set public read policy
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": ["s3:GetObject"],
+                    "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
+                }
+            ]
+        }
+        client.set_bucket_policy(bucket_name, json_lib.dumps(policy))
+        logger.info(f"Set public read policy for bucket: {bucket_name}")
+        
+        # Verify by reading back
+        current_policy = client.get_bucket_policy(bucket_name)
+        policy_set = 's3:GetObject' in current_policy
+        
+        return JsonResponse({
+            'success': True,
+            'message': f"Bucket '{bucket_name}' configured successfully!",
+            'bucket_created': bucket_created,
+            'policy_set': policy_set,
+            'endpoint': endpoint,
+        })
+        
+    except S3Error as e:
+        logger.error(f"MinIO S3 error configuring bucket: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'message': f'MinIO error: {str(e)}'
+        }, status=500)
+    except Exception as e:
+        logger.error(f"Error configuring bucket policy: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'message': f'Connection error: {str(e)}. Make sure MinIO is running.'
+        }, status=500)
+
+
+@csrf_exempt
+@require_POST
 @manager_required
 def sync_from_ho(request):
     """
@@ -1148,6 +1224,10 @@ def sync_from_ho(request):
                     # Step 2: Sync Tables
                     tables = client.get_tables(company_id=company_id, store_id=ho_store_id)
                     table_count = 0
+                    
+                    if tables and len(tables) > 0:
+                        print(f"[SYNC] Sample table data: {tables[0]}")
+                    
                     for table_data in tables:
                         try:
                             area = TableArea.objects.filter(id=table_data.get('area_id')).first()
@@ -1163,6 +1243,7 @@ def sync_from_ho(request):
                                         'is_active': table_data.get('is_active', True),
                                         'pos_x': table_data.get('pos_x'),
                                         'pos_y': table_data.get('pos_y'),
+                                        'shape': table_data.get('shape', 'rect'),
                                     }
                                 )
                                 table_count += 1
@@ -1964,7 +2045,7 @@ def tables_list(request):
 @manager_required
 def users_list(request):
     """Users Management"""
-    store_config, error_response = check_store_config(request, 'management/users_list.html')
+    store_config, error_response = check_store_config(request, 'management/users.html')
     if error_response:
         return error_response
     
@@ -4197,4 +4278,355 @@ def import_excel_process(request):
         return redirect('management:import_excel')
 
 
+# ==================== SESSION MANAGEMENT ====================
 
+@login_required
+@manager_required
+def session_management(request):
+    """Session management page for opening/closing store sessions"""
+    store_config = Store.get_current()
+    current_session = StoreSession.get_current(store_config)
+    
+    context = {
+        'current_session': current_session,
+        'today': timezone.now().date(),
+    }
+    
+    return render(request, 'management/session_management.html', context)
+
+
+@login_required
+@manager_required
+def session_close(request):
+    """Close the current store session"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+    
+    try:
+        store_config = Store.get_current()
+        current_session = StoreSession.get_current(store_config)
+        
+        if not current_session:
+            return JsonResponse({'success': False, 'error': 'No active session found'}, status=400)
+        
+        # Check for open cashier shifts
+        from apps.core.models import CashierShift
+        open_shifts = CashierShift.objects.filter(
+            session=current_session,
+            closed_at__isnull=True
+        )
+        
+        if open_shifts.exists():
+            shift_users = ', '.join([shift.cashier.get_full_name() or shift.cashier.username 
+                                     for shift in open_shifts])
+            return JsonResponse({
+                'success': False, 
+                'error': f'Cannot close session. Open shifts found for: {shift_users}'
+            }, status=400)
+        
+        # Close the session
+        closing_notes = request.POST.get('closing_notes', '').strip()
+        current_session.closed_at = timezone.now()
+        current_session.closed_by = request.user
+        current_session.closing_notes = closing_notes
+        current_session.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Session closed successfully at {current_session.closed_at.strftime("%H:%M")}'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ========================================
+# CUSTOMER DISPLAY SLIDESHOW MANAGEMENT
+# ========================================
+
+@manager_required
+def customer_display_slides(request):
+    """
+    Customer Display Slideshow Management
+    View, upload, edit, delete slides
+    """
+    store_config, error_response = check_store_config(request, 'management/customer_display_slides.html')
+    if error_response:
+        return error_response
+    
+    # Get company and brand from store
+    from apps.core.models import CustomerDisplaySlide
+    
+    # Get context brand if set
+    context_brand_id = request.session.get('context_brand_id')
+    
+    # Build filter
+    slides = CustomerDisplaySlide.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store', 'created_by')
+    
+    # Filter by brand if context set
+    if context_brand_id:
+        slides = slides.filter(
+            Q(brand_id=context_brand_id) | 
+            Q(brand__isnull=True, store__isnull=True)
+        )
+    
+    # Order by order field and created date
+    slides = slides.order_by('order', '-created_at')
+    
+    # Get all brands for dropdown
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(
+        store=store_config,
+        is_active=True
+    ).select_related('brand')
+    
+    context = {
+        'store_config': store_config,
+        'slides': slides,
+        'store_brands': store_brands,
+        'context_brand_id': context_brand_id,
+    }
+    
+    return render(request, 'management/customer_display_slides.html', context)
+
+
+@manager_required
+@require_POST
+def customer_display_slide_upload(request):
+    """
+    Upload new slide to MinIO
+    """
+    try:
+        store_config = Store.get_current()
+        if not store_config:
+            return JsonResponse({
+                'success': False,
+                'error': 'Store configuration not found'
+            }, status=400)
+        
+        # Get form data
+        image = request.FILES.get('image')
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        brand_id = request.POST.get('brand_id')
+        store_id = request.POST.get('store_id')
+        order = int(request.POST.get('order', 0))
+        duration = int(request.POST.get('duration', 5))
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        
+        # Validate
+        if not image:
+            return JsonResponse({
+                'success': False,
+                'error': 'Image file is required'
+            }, status=400)
+        
+        if not title:
+            return JsonResponse({
+                'success': False,
+                'error': 'Title is required'
+            }, status=400)
+        
+        # Validate file size (10MB max)
+        if image.size > 10 * 1024 * 1024:
+            return JsonResponse({
+                'success': False,
+                'error': 'File size must be less than 10MB'
+            }, status=400)
+        
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+        if image.content_type not in allowed_types:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid file type. Allowed: JPG, PNG, GIF, WebP'
+            }, status=400)
+        
+        # Get brand and store objects
+        brand = None
+        if brand_id:
+            brand = Brand.objects.filter(id=brand_id).first()
+        
+        store = None
+        if store_id:
+            store = Store.objects.filter(id=store_id).first()
+        
+        # Upload to MinIO
+        from apps.core.minio_client import upload_to_minio
+        import uuid
+        
+        # Generate unique filename
+        file_ext = image.name.split('.')[-1]
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"slide_{unique_id}.{file_ext}"
+        
+        # Upload path
+        bucket_name = 'customer-display'
+        brand_code = brand.code if brand else 'all'
+        object_path = f"{store_config.company.code}/{brand_code}/{filename}"
+        
+        # Upload to MinIO
+        image_url = upload_to_minio(
+            bucket_name=bucket_name,
+            object_name=object_path,
+            file_data=image.read(),
+            content_type=image.content_type
+        )
+        
+        # Create database record
+        from apps.core.models import CustomerDisplaySlide
+        
+        slide = CustomerDisplaySlide.objects.create(
+            company=store_config.company,
+            brand=brand,
+            store=store,
+            title=title,
+            description=description,
+            image_url=image_url,
+            image_path=object_path,
+            order=order,
+            duration_seconds=duration,
+            is_active=True,
+            start_date=start_date if start_date else None,
+            end_date=end_date if end_date else None,
+            created_by=request.user,
+            updated_by=request.user
+        )
+        
+        messages.success(request, f'Slide "{title}" uploaded successfully!')
+        
+        return JsonResponse({
+            'success': True,
+            'slide': {
+                'id': slide.id,
+                'title': slide.title,
+                'image_url': slide.image_url,
+                'order': slide.order
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading slide: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@manager_required
+@require_POST
+def customer_display_slide_update(request, slide_id):
+    """
+    Update slide metadata (not image)
+    """
+    try:
+        from apps.core.models import CustomerDisplaySlide
+        
+        slide = get_object_or_404(CustomerDisplaySlide, id=slide_id)
+        
+        # Get form data
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        order = int(request.POST.get('order', 0))
+        duration = int(request.POST.get('duration', 5))
+        is_active = request.POST.get('is_active') == 'true'
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        
+        # Update fields
+        if title:
+            slide.title = title
+        slide.description = description
+        slide.order = order
+        slide.duration_seconds = duration
+        slide.is_active = is_active
+        slide.start_date = start_date if start_date else None
+        slide.end_date = end_date if end_date else None
+        slide.updated_by = request.user
+        slide.save()
+        
+        messages.success(request, f'Slide "{slide.title}" updated successfully!')
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Slide updated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating slide: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@manager_required
+@require_POST
+def customer_display_slide_delete(request, slide_id):
+    """
+    Delete slide from database and MinIO
+    """
+    try:
+        from apps.core.models import CustomerDisplaySlide
+        
+        slide = get_object_or_404(CustomerDisplaySlide, id=slide_id)
+        slide_title = slide.title
+        
+        # Delete from MinIO
+        try:
+            from apps.core.minio_client import delete_from_minio
+            delete_from_minio(slide.image_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete from MinIO: {e}")
+            # Continue with database deletion even if MinIO fails
+        
+        # Delete from database
+        slide.delete()
+        
+        messages.success(request, f'Slide "{slide_title}" deleted successfully!')
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Slide deleted successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting slide: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@manager_required
+@require_POST
+def customer_display_slide_toggle(request, slide_id):
+    """
+    Toggle slide active status
+    """
+    try:
+        from apps.core.models import CustomerDisplaySlide
+        
+        slide = get_object_or_404(CustomerDisplaySlide, id=slide_id)
+        slide.is_active = not slide.is_active
+        slide.updated_by = request.user
+        slide.save()
+        
+        status = 'activated' if slide.is_active else 'deactivated'
+        messages.success(request, f'Slide "{slide.title}" {status}!')
+        
+        return JsonResponse({
+            'success': True,
+            'is_active': slide.is_active,
+            'message': f'Slide {status}'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error toggling slide: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

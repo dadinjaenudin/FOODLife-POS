@@ -76,7 +76,8 @@
                                 "status": "{{ table.status }}",
                                 "pos_x": {{ table.pos_x|default:"null" }},
                                 "pos_y": {{ table.pos_y|default:"null" }},
-                                "is_joined": {{ table.table_group|yesno:"true,false" }}
+                                "is_joined": {{ table.table_group|yesno:"true,false" }},
+                                "shape": "{{ table.shape|default:'rect' }}"
                             }{% if not forloop.last %},{% endif %}
                             {% endfor %}
                         ]
@@ -91,58 +92,76 @@
                 window.CSRF_TOKEN = '{{ csrf_token }}';
             </script>
 
-            <div x-data="floorPlanTabs()" class="w-full">
-                <!-- Tabs Navigation -->
-                <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
+            <div x-data="floorPlanTabs()" class="w-full h-full flex gap-1.5">
+                <!-- Left Sidebar: Area Buttons (12%) -->
+                <div class="w-[12%] flex flex-col gap-2 overflow-y-auto bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 p-2">
                     <template x-for="(area, index) in areas" :key="index">
                         <button @click="activeTab = index"
-                                :class="activeTab === index ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'"
-                                class="px-4 py-2 border rounded-lg font-semibold text-sm transition whitespace-nowrap flex-shrink-0">
-                            <span x-text="area.name"></span>
-                            <span class="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded">
-                                <span x-text="area.table_count"></span> tables
-                            </span>
+                                :class="activeTab === index ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/50 scale-105' : 'bg-white text-gray-700 border border-gray-200 hover:border-blue-400 hover:shadow-md'"
+                                class="w-full px-2 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 transform hover:scale-105">
+                            <div class="flex flex-col items-center gap-2">
+                                <svg class="w-6 h-6" :class="activeTab === index ? 'text-white' : 'text-gray-500'" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path>
+                                </svg>
+                                <span class="text-center" x-text="area.name"></span>
+                                <span class="text-xs px-2 py-1 rounded-full" :class="activeTab === index ? 'bg-white/30' : 'bg-gray-100'">
+                                    <span x-text="area.table_count"></span> tables
+                                </span>
+                            </div>
                         </button>
                     </template>
                 </div>
 
-                <!-- Floor Plans (One per tab) -->
-                <template x-for="(area, index) in areas" :key="index">
-                    <div x-show="activeTab === index"
-                         x-transition:enter="transition ease-out duration-200"
-                         x-transition:enter-start="opacity-0"
-                         x-transition:enter-end="opacity-100"
-                         x-transition:leave="transition ease-in duration-150"
-                         x-transition:leave-start="opacity-100"
-                         x-transition:leave-end="opacity-0"
-                         class="w-full">
-                        
-                        <div class="bg-white/90 rounded-lg shadow border border-gray-200">
-                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200">
-                                <div class="flex justify-between items-center">
-                                    <div>
-                                        <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
-                                        <p class="text-xs text-gray-600 mt-1">
-                                            📍 Tables: <span x-text="area.table_count" class="font-semibold"></span> | 
-                                            📏 Floor: <span x-text="(area.floor_width || 1200) + 'x' + (area.floor_height || 800) + 'px'" class="font-semibold"></span>
-                                        </p>
-                                    </div>
-                                    <div class="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                        💡 Drag to reposition | Changes saved locally
+                <!-- Right Content: Floor Plan Canvas (82%) -->
+                <div class="w-[82%] flex flex-col">
+                    <!-- Floor Plans (One per area) -->
+                    <template x-for="(area, index) in areas" :key="index">
+                        <div x-show="activeTab === index"
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 transform translate-x-4"
+                             x-transition:enter-end="opacity-100 transform translate-x-0"
+                             x-transition:leave="transition ease-in duration-150"
+                             x-transition:leave-start="opacity-100"
+                             x-transition:leave-end="opacity-0"
+                             class="w-full h-full">
+                            
+                            <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 overflow-hidden h-full flex flex-col">
+                                <div class="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 px-3 py-2 border-b border-gray-200/50">
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                                                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path>
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
+                                                <div class="flex items-center gap-2 text-xs text-gray-600 mt-0.5">
+                                                    <span class="flex items-center gap-1">
+                                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path></svg>
+                                                        <span x-text="area.table_count"></span> tables
+                                                    </span>
+                                                    <span class="flex items-center gap-1">
+                                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
+                                                        <span x-text="(area.floor_width || 1200) + '×' + (area.floor_height || 800)"></span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div class="p-3 overflow-auto">
-                                <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
-                                     :style="'width: ' + (area.floor_width || 1200) + 'px; height: ' + (area.floor_height || 800) + 'px;'"
-                                     :data-area-id="area.id">
-                                     <!-- Tables will be rendered here by JavaScript -->
+                                <div class="overflow-auto flex-1">
+                                    <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
+                                         :style="'width: ' + (area.floor_width || 1200) + 'px; height: ' + (area.floor_height || 800) + 'px;'"
+                                         :data-area-id="area.id">
+                                         <!-- Tables will be rendered here by JavaScript -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </template>
+                    </template>
+                </div>
             </div>
         {% else %}
             <div class="backdrop-blur-md bg-white/60 rounded-2xl shadow-xl p-12 text-center">
@@ -259,7 +278,31 @@ function floorPlanTabs() {
         activeTab: 0,
         areas: [],
         
+        calculateScale(floorWidth, floorHeight) {
+            // Calculate scale to fit canvas in modal (70vw with padding)
+            const maxWidth = window.innerWidth * 0.70 - 60; // 70vw minus padding
+            const maxHeight = 450; // Fixed height from container
+            
+            const scaleX = maxWidth / floorWidth;
+            const scaleY = maxHeight / floorHeight;
+            
+            // Use the smaller scale to ensure it fits both dimensions
+            const scale = Math.min(scaleX, scaleY, 1); // Never scale up, only down
+            
+            // Double the scale to make it bigger
+            return (scale * 2).toFixed(3);
+        },
+        
         init() {
+            // Use global flag to prevent double initialization across multiple modal opens
+            if (window.floorPlanInitialized) {
+                console.log('⚠️ Floor plan already initialized globally, skipping init...');
+                return;
+            }
+            
+            window.floorPlanInitialized = true;
+            console.log('🎬 Initializing Alpine floorPlanTabs component (FIRST TIME)...');
+            
             // Delay initialization to ensure DOM is ready and JSON is parsed
             setTimeout(() => {
                 this.loadAreas();
@@ -284,8 +327,25 @@ function floorPlanTabs() {
             if (jsonData) {
                 try {
                     const data = JSON.parse(jsonData.textContent);
-                    this.areas = data.areas;
-                    console.log('✓ Loaded areas:', this.areas.length);
+                    console.log('📊 Raw data from JSON:', data.areas.length, 'areas');
+                    console.log('📊 Area names:', data.areas.map(a => a.name + ' (ID: ' + a.id + ')'));
+                    
+                    // Deduplicate areas by ID to prevent double rendering
+                    const uniqueAreas = [];
+                    const seenIds = new Set();
+                    
+                    data.areas.forEach(area => {
+                        if (!seenIds.has(area.id)) {
+                            seenIds.add(area.id);
+                            uniqueAreas.push(area);
+                        } else {
+                            console.warn('⚠️ Duplicate area detected and skipped:', area.name, 'ID:', area.id);
+                        }
+                    });
+                    
+                    this.areas = uniqueAreas;
+                    console.log('✓ Loaded areas:', this.areas.length, '(deduplicated)');
+                    console.log('✓ Final areas:', this.areas.map(a => a.name));
                 } catch (e) {
                     console.error('Error parsing JSON data:', e);
                 }
@@ -403,27 +463,68 @@ function createTableElement(table) {
         </div>
     `;
     
+    // Determine shape classes
+    const shape = table.shape || 'rect';
+    let shapeClasses = '';
+    if (shape === 'round') {
+        shapeClasses = 'w-24 h-24 rounded-full';
+    } else if (shape === 'rectangle') {
+        shapeClasses = 'w-36 h-24 rounded-lg';
+    } else {
+        shapeClasses = 'w-24 h-24 rounded-lg';
+    }
+    
     // Main button (form or open)
     if (table.status === 'dirty') {
         html += `
             <button type="button"
                     onclick="confirmCleanTable('${table.id}', '${table.number}')"
-                    class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg
-                    border-gray-300 bg-gradient-to-br from-gray-50 to-slate-50 hover:from-gray-100 hover:to-slate-100 cursor-pointer flex items-center justify-center">
-                <span class="text-gray-700 font-bold text-sm">${table.number}</span>
+                    class="table-button ${shapeClasses} border-3 transition-all transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl cursor-pointer flex items-center justify-center
+                    border-gray-500 bg-gray-200 hover:bg-gray-300 text-gray-900">
+                <div class="text-center">
+                    <div class="text-sm font-bold">${table.number}</div>
+                    <div class="text-xs">${table.capacity}p</div>
+                </div>
             </button>
         `;
     } else {
         const disabled = table.status === 'reserved' ? 'disabled' : '';
+        
+        // Status-based styling with inline styles for reliability
+        let bgColor = '';
+        let borderColor = '';
+        let textColor = '';
+        let hoverBg = '';
+        
+        if (table.status === 'available') {
+            bgColor = 'background-color: rgb(134 239 172);'; // bg-green-300
+            borderColor = 'border-color: rgb(22 163 74);'; // border-green-600
+            textColor = 'color: rgb(20 83 45);'; // text-green-900
+        } else if (table.status === 'occupied') {
+            bgColor = 'background-color: rgb(252 165 165);'; // bg-red-300
+            borderColor = 'border-color: rgb(220 38 38);'; // border-red-600
+            textColor = 'color: rgb(127 29 29);'; // text-red-900
+        } else if (table.status === 'reserved') {
+            bgColor = 'background-color: rgb(253 224 71);'; // bg-yellow-300
+            borderColor = 'border-color: rgb(202 138 4);'; // border-yellow-600
+            textColor = 'color: rgb(113 63 18);'; // text-yellow-900
+        } else {
+            bgColor = 'background-color: rgb(229 231 235);'; // bg-gray-200
+            borderColor = 'border-color: rgb(107 114 128);'; // border-gray-500
+            textColor = 'color: rgb(17 24 39);'; // text-gray-900
+        }
+        
         html += `
             <form method="POST" action="/tables/${table.id}/open/" class="table-form">
                 <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
                 <button type="submit"
                         ${disabled}
-                        class="table-button w-16 h-16 rounded-full border-2 transition-all transform hover:scale-105 active:scale-95 shadow hover:shadow-lg flex items-center justify-center ${statusColorClass}">
-                    <span class="text-sm font-black ${statusTextColor}">
-                        ${table.number}
-                    </span>
+                        style="${bgColor} ${borderColor} ${textColor}"
+                        class="table-button ${shapeClasses} border-3 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center">
+                    <div class="text-center">
+                        <div class="text-sm font-bold">${table.number}</div>
+                        <div class="text-xs">${table.capacity}p</div>
+                    </div>
                 </button>
             </form>
         `;
@@ -444,9 +545,6 @@ function createTableElement(table) {
             </div>
         `;
     }
-    
-    // Capacity
-    html += `<div class="mt-1 text-[10px] text-gray-600 font-semibold">👥 ${table.capacity}</div>`;
     
     div.innerHTML = html;
     return div;
@@ -487,13 +585,106 @@ function confirmClean() {
     .then(response => {
         console.log('Response status:', response.status);
         if (response.ok) {
-            // Reload page after successful clean
-            window.location.reload();
+            // Reload table data without full page reload
+            reloadFloorPlanData();
         } else {
             console.error('Clean failed with status:', response.status);
         }
     })
     .catch(err => console.error('Error cleaning table:', err));
+}
+
+// Reload floor plan data without page refresh
+function reloadFloorPlanData() {
+    console.log('🔄 Reloading floor plan data...');
+    
+    // Fetch from floor plan URL, not current page URL
+    const floorPlanUrl = '{% url "tables:floor_plan" %}';
+    
+    fetch(floorPlanUrl)
+    .then(response => {
+        console.log('✓ Response received:', response.status);
+        return response.text();
+    })
+    .then(html => {
+        console.log('✓ HTML received, parsing...');
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newTablesData = doc.getElementById('tables-data');
+        
+        if (!newTablesData) {
+            console.error('❌ tables-data not found in response');
+            return;
+        }
+        
+        console.log('✓ tables-data found, updating...');
+        
+        // Update tables data in current page
+        const currentTablesData = document.getElementById('tables-data');
+        if (currentTablesData) {
+            currentTablesData.textContent = newTablesData.textContent;
+            console.log('✓ tables-data updated');
+        }
+        
+        // Parse new data and re-render
+        try {
+            const newData = JSON.parse(newTablesData.textContent);
+            console.log('✓ New data parsed:', newData.areas.length, 'areas');
+            
+            // Clear all canvases first
+            const canvases = document.querySelectorAll('.floor-plan-canvas');
+            console.log('✓ Found', canvases.length, 'canvases to clear');
+            canvases.forEach(canvas => {
+                canvas.innerHTML = '';
+            });
+            
+            // Re-render each area
+            newData.areas.forEach((area, areaIndex) => {
+                console.log(`🔄 Rendering area ${areaIndex + 1}: ${area.name} with ${area.tables.length} tables`);
+                const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
+                
+                if (!canvas) {
+                    console.warn(`⚠️ Canvas not found for area ${area.id}`);
+                    return;
+                }
+                
+                // Set background if floor image exists
+                if (area.floor_image) {
+                    canvas.style.backgroundImage = `url('${area.floor_image}')`;
+                    canvas.style.backgroundSize = 'cover';
+                    canvas.style.backgroundPosition = 'center';
+                }
+                
+                // Render tables
+                area.tables.forEach((table, tableIndex) => {
+                    try {
+                        const tableEl = createTableElement(table);
+                        
+                        if (table.pos_x !== null && table.pos_y !== null) {
+                            tableEl.style.left = table.pos_x + 'px';
+                            tableEl.style.top = table.pos_y + 'px';
+                        } else {
+                            const index = area.tables.indexOf(table);
+                            tableEl.style.left = (50 + (index % 8) * 80) + 'px';
+                            tableEl.style.top = (100 + Math.floor(index / 8) * 80) + 'px';
+                        }
+                        
+                        canvas.appendChild(tableEl);
+                        console.log(`  ✓ Table ${table.number} rendered (status: ${table.status})`);
+                    } catch (err) {
+                        console.error(`  ❌ Error rendering table ${table.number}:`, err);
+                    }
+                });
+            });
+            
+            console.log('✅ Floor plan refreshed successfully!');
+        } catch (e) {
+            console.error('❌ Error re-rendering floor plan:', e);
+        }
+    })
+    .catch(err => {
+        console.error('❌ Error reloading floor plan data:', err);
+    });
 }
 
 // Initialize drag handlers

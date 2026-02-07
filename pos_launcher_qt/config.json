@@ -3,5 +3,6 @@
   "company_code": "YOGYA",
   "brand_code": "BOE",
   "store_code": "KPT",
-  "edge_server": "http://127.0.0.1:8001"
+  "edge_server": "http://127.0.0.1:8001",
+  "enable_customer_display": true
 }

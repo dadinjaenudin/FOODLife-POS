@@ -26,15 +26,21 @@ def table_map(request):
     areas = TableArea.objects.filter(
         brand=request.user.brand,
         is_active=True
-    ).prefetch_related(
-        Prefetch('tables', queryset=Table.objects.filter(is_active=True), to_attr='active_tables')
+    ).order_by('sort_order', 'name').prefetch_related(
+        Prefetch('tables', queryset=Table.objects.filter(is_active=True).order_by('number'), to_attr='active_tables')
     )
 
+    # Remove any potential duplicates at Python level
+    seen_ids = set()
+    unique_areas = []
     for area in areas:
-        tables = getattr(area, 'active_tables', [])
-        area.table_count = len(tables)
+        if area.id not in seen_ids:
+            seen_ids.add(area.id)
+            tables = getattr(area, 'active_tables', [])
+            area.table_count = len(tables)
+            unique_areas.append(area)
     
-    return render(request, 'tables/floor_plan.html', {'areas': areas})
+    return render(request, 'tables/floor_plan.html', {'areas': unique_areas})
 
 
 @login_required
@@ -158,7 +164,6 @@ def open_table(request, table_id):
 
 
 @login_required
-@login_required
 @require_http_methods(["POST"])
 def clean_table(request, table_id):
     """Clean table / mark as available - HTMX"""
@@ -167,7 +172,7 @@ def clean_table(request, table_id):
     table.save()
     
     # Render full floor plan with all context
-    areas = TableArea.objects.filter(brand=request.user.brand).prefetch_related('tables')
+    areas = TableArea.objects.filter(brand=request.user.brand, is_active=True).distinct().prefetch_related('tables')
     response = render(request, 'tables/floor_plan.html', {'areas': areas})
     return trigger_client_event(response, 'tableCleaned')
 

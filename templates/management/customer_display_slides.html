@@ -1,0 +1,655 @@
+{% extends 'management/base.html' %}
+{% load humanize %}
+
+{% block title %}Customer Display Slideshow{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Customer Display Slideshow</h1>
+    <p class="text-gray-500">Manage slideshow images displayed on customer-facing screens</p>
+</div>
+
+<!-- Upload Form -->
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-xl font-bold mb-4">📤 Upload New Slide</h2>
+    <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
+        {% csrf_token %}
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Image Upload -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Select Images <span class="text-red-500">*</span>
+                </label>
+                <input 
+                    type="file" 
+                    name="image" 
+                    id="imageInput"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    multiple
+                    required
+                    class="block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-lg file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-indigo-50 file:text-indigo-700
+                        hover:file:bg-indigo-100">
+                <p class="mt-1 text-sm text-gray-500">JPG, PNG, GIF, WebP (Max 10MB per file) - Recommended: 1920x1080px - <strong>Multiple files supported</strong></p>
+                
+                <!-- Image Preview -->
+                <div id="imagePreview" class="mt-4 hidden">
+                    <div id="previewContainer" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                    <p class="mt-2 text-sm text-gray-600"><span id="fileCount">0</span> file(s) selected</p>
+                </div>
+            </div>
+            
+            <!-- Title -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Title (Optional for bulk upload)
+                </label>
+                <input 
+                    type="text" 
+                    name="title"
+                    id="titleInput"
+                    maxlength="200"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="Leave empty to use filename as title">
+                <p class="mt-1 text-sm text-gray-500">For multiple files, filename will be used if title is empty</p>
+            </div>
+            
+            <!-- Description -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+                <textarea 
+                    name="description"
+                    id="descriptionInput"
+                    rows="2"
+                    maxlength="500"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="Additional information about this slide (for admin reference only)"></textarea>
+            </div>
+            
+            <!-- Brand Filter -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Brand (Optional)</label>
+                <select 
+                    name="brand_id"
+                    id="brandInput"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    <option value="">All Brands</option>
+                    {% for store_brand in store_brands %}
+                    <option value="{{ store_brand.brand.id }}">{{ store_brand.brand.name }}</option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-sm text-gray-500">Leave empty to show on all brands</p>
+            </div>
+            
+            <!-- Store Filter (Hidden for now) -->
+            <input type="hidden" name="store_id" id="storeInput" value="">
+            
+            <!-- Display Order -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Display Order</label>
+                <input 
+                    type="number" 
+                    name="order"
+                    id="orderInput"
+                    value="0"
+                    min="0"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <p class="mt-1 text-sm text-gray-500">Lower numbers appear first (0 = first)</p>
+            </div>
+            
+            <!-- Duration -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Duration (seconds)</label>
+                <input 
+                    type="number" 
+                    name="duration"
+                    id="durationInput"
+                    value="5"
+                    min="1"
+                    max="60"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <p class="mt-1 text-sm text-gray-500">How long to display (1-60 seconds)</p>
+            </div>
+            
+            <!-- Start Date -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Start Date (Optional)</label>
+                <input 
+                    type="date" 
+                    name="start_date"
+                    id="startDateInput"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <p class="mt-1 text-sm text-gray-500">Show from this date onwards</p>
+            </div>
+            
+            <!-- End Date -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">End Date (Optional)</label>
+                <input 
+                    type="date" 
+                    name="end_date"
+                    id="endDateInput"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <p class="mt-1 text-sm text-gray-500">Stop showing after this date</p>
+            </div>
+        </div>
+        
+        <div class="flex gap-3">
+            <button 
+                type="submit" 
+                id="uploadBtn"
+                class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
+                📤 Upload Slide
+            </button>
+            <button 
+                type="button" 
+                onclick="document.getElementById('uploadForm').reset(); document.getElementById('imagePreview').classList.add('hidden')"
+                class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
+                Clear Form
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Current Slides Grid -->
+<div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">Current Slides ({{ slides.count }})</h2>
+        <div class="text-sm text-gray-500">
+            {% if context_brand_id %}
+            Showing: Brand-specific + All brands
+            {% else %}
+            Showing: All slides
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if slides %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {% for slide in slides %}
+        <div class="group relative bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+            <!-- Image -->
+            <div class="aspect-[4/3] bg-gray-200 relative overflow-hidden flex items-center justify-center">
+                <img 
+                    src="{{ slide.image_url }}" 
+                    alt="{{ slide.title }}"
+                    class="w-full h-full object-contain absolute inset-0"
+                    onerror="this.style.display='none'">
+                <!-- Fallback icon if image fails to load -->
+                <svg class="w-12 h-12 text-gray-400 z-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                
+                <!-- Status Badge -->
+                <div class="absolute top-2 right-2 flex gap-2">
+                    {% if slide.is_active %}
+                    <span class="px-2 py-1 bg-green-600 text-white text-xs font-semibold rounded-full">
+                        Active
+                    </span>
+                    {% else %}
+                    <span class="px-2 py-1 bg-gray-600 text-white text-xs font-semibold rounded-full">
+                        Inactive
+                    </span>
+                    {% endif %}
+                    
+                    {% if slide.brand %}
+                    <span class="px-2 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-full">
+                        {{ slide.brand.code }}
+                    </span>
+                    {% else %}
+                    <span class="px-2 py-1 bg-purple-600 text-white text-xs font-semibold rounded-full">
+                        All Brands
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <!-- Order Badge -->
+                <div class="absolute top-2 left-2">
+                    <span class="px-2 py-1 bg-black bg-opacity-60 text-white text-xs font-semibold rounded-full">
+                        #{{ slide.order }}
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Info -->
+            <div class="p-4">
+                <h3 class="font-bold text-gray-900 text-lg mb-1 truncate">{{ slide.title }}</h3>
+                
+                {% if slide.description %}
+                <p class="text-gray-600 text-sm mb-3 line-clamp-2">{{ slide.description }}</p>
+                {% endif %}
+                
+                <div class="flex items-center gap-4 text-xs text-gray-500 mb-3">
+                    <span class="flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        {{ slide.duration_seconds }}s
+                    </span>
+                    
+                    {% if slide.start_date or slide.end_date %}
+                    <span class="flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        Scheduled
+                    </span>
+                    {% endif %}
+                </div>
+                
+                {% if slide.start_date or slide.end_date %}
+                <div class="text-xs text-gray-500 mb-3 space-y-1">
+                    {% if slide.start_date %}
+                    <div>Start: {{ slide.start_date|date:"d M Y" }}</div>
+                    {% endif %}
+                    {% if slide.end_date %}
+                    <div>End: {{ slide.end_date|date:"d M Y" }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <div class="text-xs text-gray-400 border-t pt-2 mt-2">
+                    <div>Created: {{ slide.created_at|date:"d M Y H:i" }}</div>
+                    {% if slide.created_by %}
+                    <div>By: {{ slide.created_by.get_full_name|default:slide.created_by.username }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="p-4 pt-0 flex gap-2">
+                <!-- Toggle Active -->
+                <button 
+                    onclick="toggleSlide({{ slide.id }}, this)"
+                    class="flex-1 px-3 py-2 {% if slide.is_active %}bg-yellow-100 text-yellow-700 hover:bg-yellow-200{% else %}bg-green-100 text-green-700 hover:bg-green-200{% endif %} rounded-lg text-sm font-medium transition"
+                    title="{% if slide.is_active %}Deactivate{% else %}Activate{% endif %}">
+                    {% if slide.is_active %}
+                    👁️ Hide
+                    {% else %}
+                    👁️ Show
+                    {% endif %}
+                </button>
+                
+                <!-- Edit -->
+                <button 
+                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|default:"" }}', '{{ slide.end_date|default:"" }}')"
+                    class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition"
+                    title="Edit">
+                    ✏️ Edit
+                </button>
+                
+                <!-- Delete -->
+                <button 
+                    onclick="deleteSlide({{ slide.id }}, '{{ slide.title|escapejs }}')"
+                    class="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-medium transition"
+                    title="Delete">
+                    🗑️
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <div class="text-6xl mb-4">🖼️</div>
+        <p class="text-gray-500 text-lg">No slides uploaded yet</p>
+        <p class="text-gray-400 text-sm">Upload your first slide above to get started</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Tips -->
+<div class="mt-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+    <h3 class="font-bold text-indigo-900 mb-2">💡 Slideshow Tips</h3>
+    <ul class="text-indigo-800 text-sm space-y-1">
+        <li>• <strong>Multi-file upload:</strong> Select multiple images at once for batch upload</li>
+        <li>• Recommended image size: 1920x1080px (Full HD) for best quality</li>
+        <li>• Use high-contrast colors and large text for readability from distance</li>
+        <li>• Lower order numbers appear first in the slideshow</li>
+        <li>• Duration controls how long each slide is displayed (recommended: 5-10 seconds)</li>
+        <li>• Use scheduling (start/end dates) for time-limited promotions</li>
+        <li>• Hide slides instead of deleting to preserve them for future reuse</li>
+        <li>• Brand filter: Leave empty to show on all brands, or select specific brand</li>
+        <li>• For bulk uploads: Leave title empty to auto-use filenames</li>
+    </ul>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="p-6">
+            <h3 class="text-xl font-bold mb-4">Edit Slide</h3>
+            <form id="editForm" class="space-y-4">
+                {% csrf_token %}
+                <input type="hidden" id="editSlideId" name="slide_id">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                    <input 
+                        type="text" 
+                        id="editTitle"
+                        name="title"
+                        required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea 
+                        id="editDescription"
+                        name="description"
+                        rows="2"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Order</label>
+                        <input 
+                            type="number" 
+                            id="editOrder"
+                            name="order"
+                            min="0"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Duration (s)</label>
+                        <input 
+                            type="number" 
+                            id="editDuration"
+                            name="duration"
+                            min="1"
+                            max="60"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                        <input 
+                            type="date" 
+                            id="editStartDate"
+                            name="start_date"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                        <input 
+                            type="date" 
+                            id="editEndDate"
+                            name="end_date"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                
+                <div class="flex items-center">
+                    <input 
+                        type="checkbox" 
+                        id="editIsActive"
+                        name="is_active"
+                        class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <label for="editIsActive" class="ml-2 text-sm text-gray-700">Active</label>
+                </div>
+                
+                <div class="flex gap-3 pt-2">
+                    <button 
+                        type="submit"
+                        class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                        Save Changes
+                    </button>
+                    <button 
+                        type="button"
+                        onclick="closeEditModal()"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Image preview for multiple files
+document.getElementById('imageInput').addEventListener('change', function(e) {
+    const files = e.target.files;
+    const previewContainer = document.getElementById('previewContainer');
+    const fileCountSpan = document.getElementById('fileCount');
+    
+    if (files.length > 0) {
+        previewContainer.innerHTML = '';
+        fileCountSpan.textContent = files.length;
+        
+        Array.from(files).forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const div = document.createElement('div');
+                div.className = 'relative aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-300';
+                div.innerHTML = `
+                    <img src="${e.target.result}" alt="Preview ${index + 1}" class="w-full h-full object-cover">
+                    <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 truncate">
+                        ${file.name}
+                    </div>
+                `;
+                previewContainer.appendChild(div);
+            };
+            reader.readAsDataURL(file);
+        });
+        
+        document.getElementById('imagePreview').classList.remove('hidden');
+    } else {
+        document.getElementById('imagePreview').classList.add('hidden');
+    }
+});
+
+// Upload form - Handle multiple files
+document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const btn = document.getElementById('uploadBtn');
+    const originalText = btn.innerHTML;
+    const files = document.getElementById('imageInput').files;
+    
+    if (files.length === 0) {
+        alert('❌ Please select at least one image');
+        return;
+    }
+    
+    btn.disabled = true;
+    
+    // Get common form data
+    const titleInput = document.getElementById('titleInput').value.trim();
+    const description = document.getElementById('descriptionInput').value;
+    const brandId = document.getElementById('brandInput').value;
+    const storeId = document.getElementById('storeInput').value;
+    const order = document.getElementById('orderInput').value;
+    const duration = document.getElementById('durationInput').value;
+    const startDate = document.getElementById('startDateInput').value;
+    const endDate = document.getElementById('endDateInput').value;
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    
+    // Upload files one by one
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        btn.innerHTML = `⏳ Uploading ${i + 1}/${files.length}...`;
+        
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        // Use filename as title if title is empty for multiple files
+        const fileTitle = titleInput || file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+        formData.append('title', fileTitle);
+        formData.append('description', description);
+        formData.append('brand_id', brandId);
+        formData.append('store_id', storeId);
+        formData.append('order', parseInt(order) + i); // Increment order for each file
+        formData.append('duration', duration);
+        formData.append('start_date', startDate);
+        formData.append('end_date', endDate);
+        
+        try {
+            const response = await fetch('{% url "management:customer_display_slide_upload" %}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                successCount++;
+            } else {
+                errorCount++;
+                errors.push(`${file.name}: ${data.error}`);
+            }
+        } catch (error) {
+            errorCount++;
+            errors.push(`${file.name}: ${error.message}`);
+        }
+    }
+    
+    // Show summary
+    let message = '';
+    if (successCount > 0) {
+        message += `✅ ${successCount} file(s) uploaded successfully!\n`;
+    }
+    if (errorCount > 0) {
+        message += `❌ ${errorCount} file(s) failed:\n${errors.join('\n')}`;
+    }
+    
+    alert(message);
+    
+    if (successCount > 0) {
+        location.reload();
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+});
+
+// Toggle slide
+async function toggleSlide(slideId, button) {
+    if (!confirm('Toggle slide status?')) return;
+    
+    button.disabled = true;
+    const originalText = button.innerHTML;
+    button.innerHTML = '⏳';
+    
+    try {
+        const response = await fetch(`/management/customer-display/slides/${slideId}/toggle/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+            button.disabled = false;
+            button.innerHTML = originalText;
+        }
+    } catch (error) {
+        alert('❌ Failed: ' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+// Edit slide
+function editSlide(id, title, description, order, duration, isActive, startDate, endDate) {
+    document.getElementById('editSlideId').value = id;
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editDescription').value = description;
+    document.getElementById('editOrder').value = order;
+    document.getElementById('editDuration').value = duration;
+    document.getElementById('editIsActive').checked = isActive;
+    document.getElementById('editStartDate').value = startDate;
+    document.getElementById('editEndDate').value = endDate;
+    
+    document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+
+// Edit form submit
+document.getElementById('editForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const slideId = document.getElementById('editSlideId').value;
+    const formData = new FormData(this);
+    
+    try {
+        const response = await fetch(`/management/customer-display/slides/${slideId}/update/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Slide updated successfully!');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('❌ Update failed: ' + error.message);
+    }
+});
+
+// Delete slide
+async function deleteSlide(slideId, title) {
+    if (!confirm(`Delete slide "${title}"?\n\nThis will permanently remove the slide and image from storage.`)) return;
+    
+    try {
+        const response = await fetch(`/management/customer-display/slides/${slideId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Slide deleted successfully!');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('❌ Delete failed: ' + error.message);
+    }
+}
+
+// Close modal on outside click
+document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditModal();
+    }
+});
+</script>
+{% endblock %}

@@ -608,3 +608,64 @@ class MemberTransaction(models.Model):
     def __str__(self):
         return f"{self.member.member_code} - {self.transaction_type} - {self.created_at.date()}"
 
+
+class CustomerDisplaySlide(models.Model):
+    """
+    Slideshow images for customer display
+    Images stored in MinIO, metadata in database
+    """
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='customer_slides')
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name='customer_slides', null=True, blank=True)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='customer_slides', null=True, blank=True)
+    
+    title = models.CharField(max_length=200, help_text="Slide title (for admin only)")
+    description = models.TextField(blank=True, help_text="Description (for admin only)")
+    
+    # MinIO storage
+    image_url = models.URLField(max_length=500, help_text="Full MinIO URL to image")
+    image_path = models.CharField(max_length=500, help_text="MinIO object path (bucket/key)")
+    
+    # Display settings
+    order = models.IntegerField(default=0, help_text="Display order (lower = first)")
+    duration_seconds = models.IntegerField(default=5, help_text="How long to show this slide")
+    
+    # Status and scheduling
+    is_active = models.BooleanField(default=True)
+    start_date = models.DateField(null=True, blank=True, help_text="Start showing from this date (optional)")
+    end_date = models.DateField(null=True, blank=True, help_text="Stop showing after this date (optional)")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='slides_created')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='slides_updated')
+    
+    class Meta:
+        ordering = ['order', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'is_active', 'order']),
+            models.Index(fields=['brand', 'is_active', 'order']),
+            models.Index(fields=['store', 'is_active', 'order']),
+        ]
+        verbose_name = 'Customer Display Slide'
+        verbose_name_plural = 'Customer Display Slides'
+    
+    def __str__(self):
+        scope = "All"
+        if self.store:
+            scope = f"Store: {self.store.code}"
+        elif self.brand:
+            scope = f"Brand: {self.brand.code}"
+        return f"{self.title} ({scope}) - Order: {self.order}"
+    
+    def is_valid_for_date(self, check_date=None):
+        """Check if slide should be shown on given date"""
+        if check_date is None:
+            check_date = timezone.now().date()
+        
+        if self.start_date and check_date < self.start_date:
+            return False
+        if self.end_date and check_date > self.end_date:
+            return False
+        return True
+

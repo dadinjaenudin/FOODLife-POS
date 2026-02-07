@@ -19,12 +19,18 @@
             box-sizing: border-box;
         }
         
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: white;
             color: #333;
-            height: 100vh;
-            overflow: hidden;
             position: relative;
         }
         
@@ -36,7 +42,7 @@
             width: 70%;
             background: #f8f9fa;
             border-bottom: 2px solid #e9ecef;
-            padding: 1rem 2rem;
+            padding: 0.75rem 1.5rem;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -77,28 +83,32 @@
         
         /* ========== MAIN CONTENT ========== */
         .main-content {
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            width: 100%;
+            width: 100vw;
+            height: 100vh;
             display: grid;
             grid-template-columns: 7fr 3fr;
             gap: 0;
+            margin: 0;
+            padding: 0;
             overflow: hidden;
         }
         
         /* ========== SLIDESHOW (LEFT 70%) ========== */
         .slideshow-container {
             background: #f8f9fa;
-            padding: 8rem 2rem 5rem 2rem;
+            padding: 5.5rem 1rem 3.5rem 1rem;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
             overflow: hidden;
-            border-right: 2px solid #e9ecef;
+            width: 100%;
+            height: 100vh;
         }
         
         .slide {
@@ -119,6 +129,23 @@
         @keyframes fadeIn {
             from { opacity: 0; transform: scale(0.95); }
             to { opacity: 1; transform: scale(1); }
+        }
+        
+        /* Slide Images from MinIO */
+        .slide-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            max-height: 100%;
+            border-radius: 10px;
+        }
+        
+        .slide-error {
+            padding: 4rem;
+            font-size: 2rem;
+            color: #dc3545;
+            background: #fff3cd;
+            border-radius: 10px;
         }
         
         .slide-content {
@@ -165,13 +192,18 @@
         /* ========== BILLING INFO (RIGHT 30% FULL HEIGHT) ========== */
         .billing-container {
             background: white;
-            padding: 1.5rem;
+            padding: 0.5rem;
             color: #333;
             display: flex;
             flex-direction: column;
             overflow-y: auto;
+            overflow-x: hidden;
             height: 100vh;
-            border-left: 2px solid #e9ecef;
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            border: none;
+            box-sizing: border-box;
         }
         
         .billing-header {
@@ -217,7 +249,7 @@
             width: 70%;
             background: #f8f9fa;
             border-top: 2px solid #e9ecef;
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 1rem;
             overflow: hidden;
             z-index: 10;
             display: flex;
@@ -475,49 +507,98 @@
         }
         
         // ========== SLIDESHOW ==========
-        function initSlideshow() {
-            if (!config || !config.slideshow || config.slideshow.length === 0) {
-                document.getElementById('slideshow-slides').innerHTML = `
-                    <div class="slide active">
-                        <div class="slide-content">
-                            <h2>Welcome!</h2>
-                            <p>Enjoy your visit</p>
-                        </div>
+        async function initSlideshow() {
+            console.log('[Customer Display] Initializing slideshow from Django API...');
+            
+            try {
+                // Build API URL with filters from config
+                const params = new URLSearchParams();
+                if (config.company_code) params.append('company', config.company_code);
+                if (config.brand_code) params.append('brand', config.brand_code);
+                if (config.store_code) params.append('store', config.store_code);
+                
+                const apiUrl = `${config.edge_server}/api/customer-display/slideshow/?${params.toString()}`;
+                console.log('[Customer Display] Fetching slideshow from:', apiUrl);
+                
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.success || !data.slides || data.slides.length === 0) {
+                    console.log('[Customer Display] No slides available, showing default');
+                    showDefaultSlide();
+                    return;
+                }
+                
+                console.log(`[Customer Display] Loaded ${data.slides.length} slides from MinIO`);
+                
+                // Update brand name if available
+                if (data.brand_name) {
+                    config.brand.name = data.brand_name;
+                }
+                
+                // Render slides with MinIO images
+                const slides = data.slides;
+                const slidesContainer = document.getElementById('slideshow-slides');
+                const indicatorsContainer = document.getElementById('slide-indicators');
+                
+                // Create slides with images from MinIO
+                slidesContainer.innerHTML = slides.map((slide, index) => `
+                    <div class="slide ${index === 0 ? 'active' : ''}" data-index="${index}" data-duration="${slide.duration * 1000}">
+                        <img src="${slide.image_url}" 
+                             alt="${slide.title}" 
+                             class="slide-image"
+                             loading="${index === 0 ? 'eager' : 'lazy'}"
+                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'slide-error\\'>Image failed to load</div>';">
                     </div>
-                `;
-                return;
+                `).join('');
+                
+                // Create indicators
+                indicatorsContainer.innerHTML = slides.map((_, index) => 
+                    `<div class="slide-indicator ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`
+                ).join('');
+                
+                // Start rotation
+                console.log('[Customer Display] Starting slideshow...');
+                startSlideshow(slides);
+                
+            } catch (error) {
+                console.error('[Customer Display] Failed to load slideshow:', error);
+                showDefaultSlide();
             }
-            
-            const slides = config.slideshow;
-            const slidesContainer = document.getElementById('slideshow-slides');
-            const indicatorsContainer = document.getElementById('slide-indicators');
-            
-            // Create slides
-            slidesContainer.innerHTML = slides.map((slide, index) => `
-                <div class="slide ${index === 0 ? 'active' : ''}" data-index="${index}">
-                    <div class="slide-content" style="background: ${slide.background_color || '#667eea'}">
-                        <h2>${slide.title || ''}</h2>
-                        <p>${slide.subtitle || ''}</p>
+        }
+        
+        function showDefaultSlide() {
+            // Show default welcome slide if no slides available
+            const brandName = config && config.brand && config.brand.name ? config.brand.name : 'YOGYA Food Life';
+            document.getElementById('slideshow-slides').innerHTML = `
+                <div class="slide active">
+                    <div class="slide-content" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <h2>🎉 Selamat datang di ${brandName}!</h2>
+                        <p>Nikmati berbagai menu pilihan terbaik</p>
                     </div>
                 </div>
-            `).join('');
-            
-            // Create indicators
-            indicatorsContainer.innerHTML = slides.map((_, index) => 
-                `<div class="slide-indicator ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`
-            ).join('');
-            
-            // Start rotation
-            startSlideshow(slides);
+            `;
         }
         
         function startSlideshow(slides) {
             if (slideInterval) clearInterval(slideInterval);
             
-            slideInterval = setInterval(() => {
+            function nextSlide() {
                 currentSlide = (currentSlide + 1) % slides.length;
                 showSlide(currentSlide);
-            }, slides[currentSlide].duration || 5000);
+                
+                // Use slide-specific duration or default 5 seconds
+                const duration = slides[currentSlide].duration ? slides[currentSlide].duration * 1000 : 5000;
+                slideInterval = setTimeout(nextSlide, duration);
+            }
+            
+            // Start with first slide's duration
+            const firstDuration = slides[0].duration ? slides[0].duration * 1000 : 5000;
+            slideInterval = setTimeout(nextSlide, firstDuration);
         }
         
         function showSlide(index) {
@@ -536,10 +617,20 @@
         
         // ========== RUNNING TEXT ==========
         function initRunningText() {
-            if (!config || !config.running_text) return;
-            
             const runningTextEl = document.getElementById('running-text');
-            runningTextEl.textContent = config.running_text;
+            const footer = document.querySelector('.footer');
+            
+            // Always show footer
+            if (footer) footer.style.display = 'flex';
+            
+            // Set running text from config or use default
+            if (config && config.running_text) {
+                runningTextEl.textContent = config.running_text;
+                console.log('[Customer Display] Running text loaded:', config.running_text);
+            } else {
+                runningTextEl.textContent = 'Selamat datang di YOGYA Food Life • Nikmati berbagai menu pilihan terbaik • Terima kasih atas kunjungan Anda';
+                console.log('[Customer Display] Using default running text');
+            }
         }
         
         // ========== DISPLAY UPDATE ==========
@@ -575,6 +666,8 @@
                 billPanelContainer.innerHTML = data.bill_panel_html;
                 // Remove the outer container styling to let bill panel styling take over
                 billPanelContainer.className = '';
+                // Keep white background to prevent body gradient from showing
+                billPanelContainer.style.background = 'white';
                 
                 // Show containers when there's an active order
                 if (billPanelContainer) billPanelContainer.style.display = 'block';
@@ -820,10 +913,12 @@
             
             if (slideshowContainer) slideshowContainer.style.display = 'none';
             if (billPanelContainer) billPanelContainer.style.display = 'none';
-            if (footer) footer.style.display = 'none';
+            // Keep footer visible for running text and connection status
+            // if (footer) footer.style.display = 'none';
             if (header) header.style.display = 'none';
             
             console.log('[Customer Display] UI containers cleared - Blank screen mode');
+            console.log('[Customer Display] Footer kept visible for running text');
             
             await loadConfig();
             connectSSE();

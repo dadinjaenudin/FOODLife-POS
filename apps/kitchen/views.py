@@ -352,17 +352,29 @@ def kitchen_dashboard(request):
     from .models import KitchenTicket, StationPrinter, KitchenTicketLog, PrinterHealthCheck
     from django.db.models import Count, Q, Avg
     from datetime import timedelta
+    from apps.core.models import Store, StoreBrand
+
+    store_config = Store.get_current()
+
+    # Get all brands for this store
+    store_brands = StoreBrand.objects.filter(store=store_config).select_related('brand')
+    brand_ids = [sb.brand_id for sb in store_brands]
+
+    # Apply global brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        brand_ids = [context_brand_id]
     
     # Get counts
-    total_tickets = KitchenTicket.objects.count()
-    new_tickets = KitchenTicket.objects.filter(status='new').count()
-    printing_tickets = KitchenTicket.objects.filter(status='printing').count()
-    printed_tickets = KitchenTicket.objects.filter(status='printed').count()
-    failed_tickets = KitchenTicket.objects.filter(status='failed').count()
+    total_tickets = KitchenTicket.objects.filter(brand_id__in=brand_ids).count()
+    new_tickets = KitchenTicket.objects.filter(brand_id__in=brand_ids, status='new').count()
+    printing_tickets = KitchenTicket.objects.filter(brand_id__in=brand_ids, status='printing').count()
+    printed_tickets = KitchenTicket.objects.filter(brand_id__in=brand_ids, status='printed').count()
+    failed_tickets = KitchenTicket.objects.filter(brand_id__in=brand_ids, status='failed').count()
     
     # Today's stats
     today = timezone.now().date()
-    today_tickets = KitchenTicket.objects.filter(created_at__date=today)
+    today_tickets = KitchenTicket.objects.filter(brand_id__in=brand_ids, created_at__date=today)
     today_total = today_tickets.count()
     today_printed = today_tickets.filter(status='printed').count()
     today_failed = today_tickets.filter(status='failed').count()
@@ -374,7 +386,7 @@ def kitchen_dashboard(request):
         success_rate = 0
     
     # Printers status
-    printers = StationPrinter.objects.all().order_by('station_code', 'priority')
+    printers = StationPrinter.objects.filter(brand_id__in=brand_ids).order_by('station_code', 'priority')
     printer_stats = []
     
     for printer in printers:
@@ -392,10 +404,10 @@ def kitchen_dashboard(request):
         })
     
     # Recent activity (last 10 tickets)
-    recent_tickets = KitchenTicket.objects.select_related('bill').order_by('-created_at')[:10]
+    recent_tickets = KitchenTicket.objects.select_related('bill').filter(brand_id__in=brand_ids).order_by('-created_at')[:10]
     
     # Tickets by station
-    tickets_by_station = KitchenTicket.objects.values('printer_target').annotate(
+    tickets_by_station = KitchenTicket.objects.filter(brand_id__in=brand_ids).values('printer_target').annotate(
         total=Count('id'),
         new=Count('id', filter=Q(status='new')),
         printed=Count('id', filter=Q(status='printed')),

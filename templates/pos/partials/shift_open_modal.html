@@ -51,9 +51,7 @@
                     OK, Lanjutkan
                 </button>
                 <button type="button" 
-                        hx-get="{% url 'pos:shift_close_form' %}"
-                        hx-target="#modal-container"
-                        onclick="document.getElementById('shift-open-modal').remove()"
+                        onclick="closeShiftFromOpenModal()"
                         class="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition">
                     Close Shift
                 </button>
@@ -158,6 +156,15 @@
 
 <script>
 (function() {
+    // Close shift from open modal - removes modal then opens close form
+    window.closeShiftFromOpenModal = function() {
+        document.getElementById('shift-open-modal')?.remove();
+        // Small delay to ensure modal is removed
+        setTimeout(() => {
+            closeShiftModal();
+        }, 100);
+    };
+
     // Currency formatting functions
     function formatCurrency(value) {
         // Remove non-digits

@@ -83,6 +83,7 @@ class Table(models.Model):
     
     pos_x = models.IntegerField(null=True, blank=True)
     pos_y = models.IntegerField(null=True, blank=True)
+    shape = models.CharField(max_length=20, default='rect')
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

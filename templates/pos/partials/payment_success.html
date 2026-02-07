@@ -36,10 +36,20 @@
             </button>
             <button 
                 class="flex-1 py-3 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700"
-                onclick="document.getElementById('modal-container').innerHTML = ''; 
+                onclick="console.log('✅ Done button clicked - clearing modal');
+                    document.getElementById('modal-container').innerHTML = ''; 
+                    // Clear modal on customer display
+                    if (typeof sendModalToCustomerDisplay === 'function') {
+                        sendModalToCustomerDisplay();
+                        console.log('🧹 Sent clear modal to customer display');
+                    }
+                    // Clear customer display bill panel
+                    if (typeof updateCustomerDisplay === 'function') {
+                        updateCustomerDisplay([], 0, 0, 'cash', true);
+                    }
                     // Refresh product grid to show No Active Bill
                     htmx.ajax('GET', '{% url 'pos:products' %}?category=all', {target: '#product-grid', swap: 'innerHTML'});
-                    window.location.reload(true);">
+                    setTimeout(() => { window.location.reload(true); }, 300);">
                 Done
             </button>
         </div>
@@ -57,6 +67,33 @@
     if (!printWindow) {
         alert('Print preview blocked by popup blocker. Please allow popups for this site.');
     }
+    
+    // Dispatch payment complete event for listeners (printer, customer display)
+    document.body.dispatchEvent(new CustomEvent('paymentComplete', { 
+        detail: { billId: billId } 
+    }));
+    console.log('🎉 Payment complete event dispatched');
+    
+    // Clear modal on customer display (success modal only shows on main display)
+    setTimeout(() => {
+        if (typeof sendModalToCustomerDisplay === 'function') {
+            console.log('🧹 Clearing modal from customer display after payment');
+            // Temporarily clear modal-container to trigger clear on customer display
+            const modalContent = document.getElementById('modal-container').innerHTML;
+            document.getElementById('modal-container').innerHTML = '';
+            sendModalToCustomerDisplay();
+            // Restore modal for main display
+            setTimeout(() => {
+                document.getElementById('modal-container').innerHTML = modalContent;
+            }, 100);
+        }
+        
+        // Clear customer display bill panel (show waiting state)
+        if (typeof updateCustomerDisplay === 'function') {
+            console.log('🧹 Clearing customer display bill panel');
+            updateCustomerDisplay([], 0, 0, 'cash', true);
+        }
+    }, 500);
 })();
 
 function printReceipt(billId) {
