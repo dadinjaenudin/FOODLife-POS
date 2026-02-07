@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>POS Console Debug Helper</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 3px solid #0da;
+            background: #2a2a2a;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #0da;
+        }
+        .code {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #black;
+            border-radius: 4px;
+        }
+        button {
+            background: #0da;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0cf;
+        }
+        .error { color: #f44; }
+        .success { color: #0f0; }
+        .warning { color: #fa0; }
+    </style>
+</head>
+<body>
+    <h1>🔍 POS Console Debugger</h1>
+    <p>Paste ini di Console DevTools (F12) untuk debug updateCustomerDisplay</p>
+
+    <div class="step">
+        <h3>Step 1: Check URL Parameter</h3>
+        <div class="code">console.log('Kiosk mode:', new URLSearchParams(window.location.search).get('kiosk'));</div>
+        <p>Expected: "1" (string)</p>
+        <p class="warning">⚠️ Jika null, URL harus ada ?kiosk=1</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 2: Check Function Exists</h3>
+        <div class="code">console.log('updateCustomerDisplay exists:', typeof updateCustomerDisplay);</div>
+        <p>Expected: "function"</p>
+        <p class="error">❌ Jika "undefined", function belum loaded!</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 3: Check Bill Panel</h3>
+        <div class="code">console.log('Bill panel:', document.querySelector('#bill-panel'));</div>
+        <p>Expected: HTMLElement</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 4: Test Manual Update</h3>
+        <div class="code">if (typeof updateCustomerDisplay === 'function') {
+    updateCustomerDisplay([], 0);
+} else {
+    console.error('❌ updateCustomerDisplay is not defined!');
+}</div>
+        <p>Should trigger customer display update</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 5: Check for JavaScript Errors</h3>
+        <div class="code">// Check Console tab for RED errors
+// Look for syntax errors, missing files, etc.</div>
+        <p class="error">❌ RED errors will prevent scripts from loading</p>
+    </div>
+
+    <hr>
+
+    <div class="step">
+        <h3>🔥 One-Click Debug Script</h3>
+        <p>Copy dan paste ini ke Console:</p>
+        <div class="code" id="debugScript">(function() {
+    console.log('=== POS DIAGNOSTIC ===');
+    console.log('1. URL:', window.location.href);
+    console.log('2. Kiosk mode:', new URLSearchParams(window.location.search).get('kiosk'));
+    console.log('3. updateCustomerDisplay type:', typeof updateCustomerDisplay);
+    console.log('4. Bill panel exists:', !!document.querySelector('#bill-panel'));
+    console.log('5. Page loaded:', document.readyState);
+    
+    // Check for global objects
+    console.log('6. htmx:', typeof htmx);
+    console.log('7. Alpine:', typeof Alpine);
+    
+    // Try to find the function in window
+    console.log('8. window.updateCustomerDisplay:', typeof window.updateCustomerDisplay);
+    
+    // List all script tags
+    console.log('9. Script tags:', document.querySelectorAll('script').length);
+    
+    console.log('=== END DIAGNOSTIC ===');
+})();</div>
+        <button onclick="copyDebugScript()">📋 Copy to Clipboard</button>
+    </div>
+
+    <script>
+        function copyDebugScript() {
+            const script = document.getElementById('debugScript').textContent;
+            navigator.clipboard.writeText(script).then(() => {
+                alert('✅ Copied! Paste di POS Console');
+            });
+        }
+    </script>
+</body>
+</html>

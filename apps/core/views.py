@@ -56,11 +56,23 @@ def login_view(request):
 
 
 def logout_view(request):
-    """Logout and clear session"""
+    """Logout and clear session (but preserve launcher terminal for kiosk mode)"""
     from django.contrib.auth import logout as auth_logout
+    
+    # Backup launcher terminal code (from POS launcher config.json) before session flush
+    launcher_terminal = request.session.get('launcher_terminal_code')
+    
+    # Logout user and clear auth session
     auth_logout(request)
+    
     # Clear all session data
     request.session.flush()
+    
+    # Restore launcher terminal code for next login (kiosk mode support)
+    if launcher_terminal:
+        request.session['launcher_terminal_code'] = launcher_terminal
+        request.session.save()
+        
     return redirect('core:login')
 
 

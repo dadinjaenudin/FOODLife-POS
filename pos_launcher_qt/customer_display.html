@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Display</title>
+    
+    <!-- Disable caching to always show fresh content -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            color: #333;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* ========== HEADER ========== */
+        .header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 70%;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        
+        .header-logo {
+            width: 60px;
+            height: 60px;
+            margin-right: 1rem;
+            border-radius: 50%;
+            background: #667eea;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+        
+        .header-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 50%;
+        }
+        
+        .header-text h1 {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+        
+        .header-text p {
+            font-size: 1rem;
+            color: #666;
+        }
+        
+        /* ========== MAIN CONTENT ========== */
+        .main-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 7fr 3fr;
+            gap: 0;
+            overflow: hidden;
+        }
+        
+        /* ========== SLIDESHOW (LEFT 70%) ========== */
+        .slideshow-container {
+            background: #f8f9fa;
+            padding: 8rem 2rem 5rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            border-right: 2px solid #e9ecef;
+        }
+        
+        .slide {
+            display: none;
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        
+        .slide.active {
+            display: flex;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        .slide-content {
+            padding: 2rem;
+            border-radius: 15px;
+            width: 100%;
+        }
+        
+        .slide h2 {
+            font-size: 3.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #667eea;
+        }
+        
+        .slide p {
+            font-size: 2rem;
+            color: #333;
+        }
+        
+        .slide-indicators {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .slide-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #d1d5db;
+            transition: all 0.3s;
+        }
+        
+        .slide-indicator.active {
+            background: #667eea;
+            width: 30px;
+            border-radius: 6px;
+        }
+        
+        /* ========== BILLING INFO (RIGHT 30% FULL HEIGHT) ========== */
+        .billing-container {
+            background: white;
+            padding: 1.5rem;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            height: 100vh;
+            border-left: 2px solid #e9ecef;
+        }
+        
+        .billing-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .items-list {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+        }
+        
+        .empty-bill {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+        
+        .empty-bill svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+        
+        .empty-bill p {
+            font-size: 1.1rem;
+        }
+        
+        /* ========== FOOTER (RUNNING TEXT + STATUS) ========== */
+        .footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 70%;
+            background: #f8f9fa;
+            border-top: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            overflow: hidden;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .running-text {
+            flex: 1;
+            display: inline-block;
+            white-space: nowrap;
+            animation: marquee 30s linear infinite;
+            font-size: 1.4rem;
+            font-weight: 500;
+            padding-left: 100%;
+            color: #666;
+        }
+        
+        @keyframes marquee {
+            from { transform: translateX(0); }
+            to { transform: translateX(-100%); }
+        }
+        
+        /* ========== CONNECTION STATUS ========== */
+        .connection-status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 1rem;
+        }
+        
+        .status-connected {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+        }
+        
+        .status-disconnected {
+            background: rgba(244, 67, 54, 0.9);
+            color: white;
+        }
+        
+        /* ========== SCROLLBAR ========== */
+        .billing-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .billing-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        .billing-container::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+        
+        .billing-container::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+        
+        /* ========== QR CODE MODAL ========== */
+        .qr-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .qr-modal.active {
+            display: flex;
+        }
+        
+        .qr-content {
+            background: white;
+            padding: 3rem;
+            border-radius: 30px;
+            text-align: center;
+            animation: scaleIn 0.3s ease-out;
+        }
+        
+        @keyframes scaleIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        .qr-content h2 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .qr-content p {
+            color: #666;
+            font-size: 1.4rem;
+            margin-bottom: 2rem;
+        }
+        
+        .qr-code-container {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+        }
+        
+        .qr-code-container img {
+            width: 300px;
+            height: 300px;
+            border: 5px solid #667eea;
+            border-radius: 15px;
+        }
+        
+        .qr-amount {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-top: 1.5rem;
+        }
+        
+        .qr-timer {
+            font-size: 1.2rem;
+            color: #999;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-logo" id="header-logo">
+            🏪
+        </div>
+        <div class="header-text">
+            <h1 id="brand-name">Loading...</h1>
+            <p id="brand-tagline"></p>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Slideshow (Left 40%) -->
+        <div class="slideshow-container">
+            <div id="slideshow-slides">
+                <!-- Slides will be loaded here -->
+            </div>
+            <div class="slide-indicators" id="slide-indicators"></div>
+        </div>
+        
+        <!-- Billing Info (Right 55%) - Bill Panel Mirror -->
+        <div id="bill-panel-container" class="billing-container">
+            <div class="billing-header">
+                📋 Your Order
+            </div>
+            
+            <div class="items-list" id="items-list">
+                <div class="empty-bill">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                    </svg>
+                    <p>Waiting for items...</p>
+                </div>
+            </div>
+            
+
+        </div>
+    </div>
+    
+    <!-- Footer (Running Text + Connection Status) -->
+    <div class="footer">
+        <div class="running-text" id="running-text">Loading...</div>
+        <span class="connection-status status-disconnected" id="connection-status">Connecting...</span>
+    </div>
+    
+    <!-- Modal Overlay for Customer Display -->
+    <div id="customer-modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99999; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); align-items: center; justify-content: center; padding: 2rem;">
+        <div id="customer-modal-content" style="background: white; border-radius: 1rem; max-width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+            <!-- Modal content will be injected here -->
+        </div>
+    </div>
+    
+    <!-- QR Code Modal (for payment) -->
+    <div class="qr-modal" id="qr-modal">
+        <div class="qr-content">
+            <h2>💳 Scan to Pay</h2>
+            <p>Scan QR code dengan aplikasi pembayaran Anda</p>
+            <div class="qr-code-container">
+                <img id="qr-code-image" src="" alt="QR Code" style="display: none;">
+                <div id="qr-loading" style="font-size: 3rem; color: #667eea;">
+                    ⏳ Generating...
+                </div>
+            </div>
+            <div class="qr-amount" id="qr-amount">Rp 0</div>
+            <div class="qr-timer" id="qr-timer">Expires in 5:00</div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://127.0.0.1:5000';
+        let eventSource = null;
+        let config = null;
+        let currentSlide = 0;
+        let slideInterval = null;
+        
+        // ========== UTILITY FUNCTIONS ==========
+        function formatCurrency(amount) {
+            return 'Rp ' + Math.floor(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+        
+        // ========== LOAD CONFIGURATION ==========
+        async function loadConfig() {
+            try {
+                const response = await fetch(`${API_URL}/api/customer-display/config`);
+                config = await response.json();
+                console.log('Config loaded:', config);
+                
+                // Apply config
+                applyBrandConfig();
+                initSlideshow();
+                initRunningText();
+            } catch (error) {
+                console.error('Failed to load config:', error);
+                // Use defaults
+                document.getElementById('brand-name').textContent = 'POS System';
+                document.getElementById('running-text').textContent = 'Welcome!';
+            }
+        }
+        
+        function applyBrandConfig() {
+            if (!config || !config.brand) return;
+            
+            const brand = config.brand;
+            document.getElementById('brand-name').textContent = brand.name || 'POS System';
+            document.getElementById('brand-tagline').textContent = brand.tagline || '';
+            
+            // Logo
+            if (brand.logo_url) {
+                document.getElementById('header-logo').innerHTML = `<img src="${brand.logo_url}" alt="Logo">`;
+            }
+            
+            // Theme colors
+            if (config.theme) {
+                const theme = config.theme;
+                if (theme.primary_color && theme.secondary_color) {
+                    document.body.style.background = `linear-gradient(135deg, ${theme.primary_color} 0%, ${theme.secondary_color} 100%)`;
+                }
+            }
+        }
+        
+        // ========== SLIDESHOW ==========
+        function initSlideshow() {
+            if (!config || !config.slideshow || config.slideshow.length === 0) {
+                document.getElementById('slideshow-slides').innerHTML = `
+                    <div class="slide active">
+                        <div class="slide-content">
+                            <h2>Welcome!</h2>
+                            <p>Enjoy your visit</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const slides = config.slideshow;
+            const slidesContainer = document.getElementById('slideshow-slides');
+            const indicatorsContainer = document.getElementById('slide-indicators');
+            
+            // Create slides
+            slidesContainer.innerHTML = slides.map((slide, index) => `
+                <div class="slide ${index === 0 ? 'active' : ''}" data-index="${index}">
+                    <div class="slide-content" style="background: ${slide.background_color || '#667eea'}">
+                        <h2>${slide.title || ''}</h2>
+                        <p>${slide.subtitle || ''}</p>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Create indicators
+            indicatorsContainer.innerHTML = slides.map((_, index) => 
+                `<div class="slide-indicator ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`
+            ).join('');
+            
+            // Start rotation
+            startSlideshow(slides);
+        }
+        
+        function startSlideshow(slides) {
+            if (slideInterval) clearInterval(slideInterval);
+            
+            slideInterval = setInterval(() => {
+                currentSlide = (currentSlide + 1) % slides.length;
+                showSlide(currentSlide);
+            }, slides[currentSlide].duration || 5000);
+        }
+        
+        function showSlide(index) {
+            // Update slides
+            const slides = document.querySelectorAll('.slide');
+            slides.forEach((slide, i) => {
+                slide.classList.toggle('active', i === index);
+            });
+            
+            // Update indicators
+            const indicators = document.querySelectorAll('.slide-indicator');
+            indicators.forEach((indicator, i) => {
+                indicator.classList.toggle('active', i === index);
+            });
+        }
+        
+        // ========== RUNNING TEXT ==========
+        function initRunningText() {
+            if (!config || !config.running_text) return;
+            
+            const runningTextEl = document.getElementById('running-text');
+            runningTextEl.textContent = config.running_text;
+        }
+        
+        // ========== DISPLAY UPDATE ==========
+        function updateDisplay(data) {
+            console.log('Updating display:', data);
+            console.log('🔍 Debug - bill_panel_html exists:', !!data.bill_panel_html);
+            console.log('🔍 Debug - has_bill:', data.has_bill);
+            console.log('🔍 Debug - show_modal:', data.show_modal);
+            if (data.bill_panel_html) {
+                console.log('🔍 Debug - HTML length:', data.bill_panel_html.length);
+            }
+            
+            // Handle modal display
+            if (data.show_modal !== undefined) {
+                handleModalDisplay(data.show_modal, data.modal_html);
+            }
+            
+            // Check if showing QR code for payment
+            if (data.show_qr && data.qr_code) {
+                showQRCode(data);
+                return;
+            } else {
+                hideQRCode();
+            }
+            
+            const billPanelContainer = document.getElementById('bill-panel-container');
+            const slideshowContainer = document.querySelector('.slideshow-container');
+            const header = document.querySelector('.header');
+            
+            // Check if we have bill panel HTML (new format - mirror POS bill panel)
+            if (data.bill_panel_html && data.has_bill) {
+                console.log('📋 Rendering bill panel HTML mirror');
+                billPanelContainer.innerHTML = data.bill_panel_html;
+                // Remove the outer container styling to let bill panel styling take over
+                billPanelContainer.className = '';
+                
+                // Show containers when there's an active order
+                if (billPanelContainer) billPanelContainer.style.display = 'block';
+                if (slideshowContainer) slideshowContainer.style.display = 'block';
+                if (header) header.style.display = 'flex';
+                
+                return;
+            }
+            
+            console.log('⚠️ No bill panel HTML, showing fallback/empty state');
+            
+            // Fallback to legacy JSON format or empty state
+            const itemsList = document.getElementById('items-list');
+            const billingTotal = document.getElementById('billing-total');
+            
+            // Restore billing container styling if it was removed
+            if (!billPanelContainer.classList.contains('billing-container')) {
+                billPanelContainer.className = 'billing-container';
+                billPanelContainer.innerHTML = `
+                    <div class="billing-header">📋 Your Order</div>
+                    <div class="items-list" id="items-list"></div>
+                    <div class="billing-total" id="billing-total" style="display: none;">
+                        <div class="total-row"><span>Subtotal</span><span id="subtotal-value">Rp 0</span></div>
+                        <div class="total-row grand-total"><span>TOTAL</span><span id="total-value">Rp 0</span></div>
+                    </div>
+                `;
+            }
+            
+            const itemsListEl = document.getElementById('items-list');
+            const billingTotalEl = document.getElementById('billing-total');
+            
+            if (!data.items || data.items.length === 0) {
+                // Show empty state - hide all UI for blank screen
+                itemsListEl.innerHTML = `
+                    <div class="empty-bill">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                        </svg>
+                        <p>Waiting for items...</p>
+                    </div>
+                `;
+                billingTotalEl.style.display = 'none';
+                
+                // Hide containers for blank screen when no items
+                if (billPanelContainer) billPanelContainer.style.display = 'none';
+                if (slideshowContainer) slideshowContainer.style.display = 'none';
+                if (header) header.style.display = 'none';
+                
+            } else {
+                // Show items (legacy format)
+                itemsListEl.innerHTML = data.items.map(item => `
+                    <div class="item-row">
+                        <div class="item-info">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-details">${item.quantity} × ${formatCurrency(item.price)}</div>
+                        </div>
+                        <div class="item-price">${formatCurrency(item.quantity * item.price)}</div>
+                    </div>
+                `).join('');
+                
+                // Show total
+                billingTotalEl.style.display = 'block';
+                document.getElementById('subtotal-value').textContent = formatCurrency(data.subtotal || data.total || 0);
+                document.getElementById('total-value').textContent = formatCurrency(data.total || 0);
+                
+                // Show containers when there are items
+                if (billPanelContainer) billPanelContainer.style.display = 'block';
+                if (slideshowContainer) slideshowContainer.style.display = 'block';
+                if (header) header.style.display = 'flex';
+            }
+        }
+        
+        // ========== MODAL DISPLAY ==========
+        function handleModalDisplay(showModal, modalHTML) {
+            const modalOverlay = document.getElementById('customer-modal-overlay');
+            const modalContent = document.getElementById('customer-modal-content');
+            
+            if (showModal && modalHTML) {
+                const timestamp = Date.now();
+                console.log('🎭 Showing modal on customer display at:', timestamp);
+                console.log('📏 Modal HTML length:', modalHTML.length);
+                console.log('📄 Modal HTML preview:', modalHTML.substring(0, 200));
+                
+                // Force refresh by clearing first, then setting
+                modalContent.innerHTML = '';
+                setTimeout(() => {
+                    modalContent.innerHTML = modalHTML;
+                    console.log('✅ Modal HTML injected at:', Date.now());
+                }, 10);
+                
+                modalOverlay.style.display = 'flex';
+                modalOverlay.style.alignItems = 'center';
+                modalOverlay.style.justifyContent = 'center';
+            } else {
+                console.log('🎭 Hiding modal on customer display');
+                modalOverlay.style.display = 'none';
+                modalContent.innerHTML = '';
+            }
+        }
+        
+        // ========== QR CODE DISPLAY ==========
+        let qrTimer = null;
+        let qrTimeRemaining = 300; // 5 minutes
+        
+        function showQRCode(data) {
+            const modal = document.getElementById('qr-modal');
+            const qrImage = document.getElementById('qr-code-image');
+            const qrLoading = document.getElementById('qr-loading');
+            const qrAmount = document.getElementById('qr-amount');
+            
+            modal.classList.add('active');
+            qrAmount.textContent = formatCurrency(data.total || 0);
+            
+            // Show QR code image
+            if (data.qr_code) {
+                qrImage.src = data.qr_code;
+                qrImage.style.display = 'block';
+                qrLoading.style.display = 'none';
+            }
+            
+            // Start countdown timer
+            qrTimeRemaining = 300;
+            startQRTimer();
+        }
+        
+        function hideQRCode() {
+            const modal = document.getElementById('qr-modal');
+            modal.classList.remove('active');
+            if (qrTimer) {
+                clearInterval(qrTimer);
+                qrTimer = null;
+            }
+        }
+        
+        function startQRTimer() {
+            if (qrTimer) clearInterval(qrTimer);
+            
+            qrTimer = setInterval(() => {
+                qrTimeRemaining--;
+                
+                const minutes = Math.floor(qrTimeRemaining / 60);
+                const seconds = qrTimeRemaining % 60;
+                document.getElementById('qr-timer').textContent = 
+                    `Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (qrTimeRemaining <= 0) {
+                    clearInterval(qrTimer);
+                    hideQRCode();
+                }
+            }, 1000);
+        }
+        
+        // ========== SSE CONNECTION ==========
+        function connectSSE() {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.textContent = 'Connecting...';
+            statusEl.className = 'connection-status status-disconnected';
+            
+            console.log('Attempting SSE connection...');
+            
+            // First, check if API is available
+            fetch(`${API_URL}/health`)
+                .then(response => response.json())
+                .then(health => {
+                    console.log('API health check OK:', health);
+                    startSSE();
+                })
+                .catch(error => {
+                    console.error('API not available:', error.message);
+                    statusEl.textContent = 'API not available';
+                    setTimeout(connectSSE, 3000);
+                });
+        }
+        
+        function startSSE() {
+            const statusEl = document.getElementById('connection-status');
+            
+            try {
+                eventSource = new EventSource(`${API_URL}/api/customer-display/stream`);
+            } catch (e) {
+                console.error('Failed to create EventSource:', e);
+                setTimeout(connectSSE, 3000);
+                return;
+            }
+            
+            eventSource.onopen = function() {
+                console.log('SSE connected');
+                statusEl.textContent = '● Connected';
+                statusEl.className = 'connection-status status-connected';
+            };
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateDisplay(data);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('SSE connection failed');
+                console.log('Event source readyState:', eventSource.readyState);
+                
+                statusEl.textContent = 'Reconnecting...';
+                statusEl.className = 'connection-status status-disconnected';
+                
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                
+                console.log('Will retry in 3 seconds...');
+                setTimeout(connectSSE, 3000);
+            };
+        }
+        
+        // ========== INITIALIZATION ==========
+        async function init() {
+            // Clear browser storage to prevent stale data
+            try {
+                localStorage.clear();
+                sessionStorage.clear();
+                console.log('[Customer Display] Browser storage cleared');
+            } catch (e) {
+                console.warn('[Customer Display] Could not clear storage:', e);
+            }
+            
+            // Force clear bill panel and modal containers (with null checks)
+            const billPanel = document.getElementById('bill-panel');
+            const modalOverlay = document.getElementById('modal-overlay');
+            const modalContent = document.getElementById('modal-content');
+            
+            if (billPanel) billPanel.innerHTML = '';
+            if (modalOverlay) modalOverlay.style.display = 'none';
+            if (modalContent) modalContent.innerHTML = '';
+            
+            // Hide all default content for completely blank screen
+            const slideshowContainer = document.querySelector('.slideshow-container');
+            const billPanelContainer = document.getElementById('bill-panel-container');
+            const footer = document.querySelector('.footer');
+            const header = document.querySelector('.header');
+            
+            if (slideshowContainer) slideshowContainer.style.display = 'none';
+            if (billPanelContainer) billPanelContainer.style.display = 'none';
+            if (footer) footer.style.display = 'none';
+            if (header) header.style.display = 'none';
+            
+            console.log('[Customer Display] UI containers cleared - Blank screen mode');
+            
+            await loadConfig();
+            connectSSE();
+        }
+        
+        // Start after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+        
+        // ========== STUB FUNCTIONS (Prevent errors from cloned HTML) ==========
+        // These functions are called from the main POS display but don't need to work here
+        window.checkShiftActive = function() { 
+            console.log('[Customer Display] checkShiftActive stub called'); 
+            return false; 
+        };
+        window.openFloorPlanModal = function() { 
+            console.log('[Customer Display] openFloorPlanModal stub called'); 
+        };
+        window.updateCustomerDisplay = function() { 
+            console.log('[Customer Display] updateCustomerDisplay stub called'); 
+        };
+        window.closeModal = function() { 
+            console.log('[Customer Display] closeModal stub called'); 
+        };
+        window.printReceipt = function() { 
+            console.log('[Customer Display] printReceipt stub called'); 
+        };
+        
+        // Cleanup
+        window.addEventListener('beforeunload', function() {
+            if (slideInterval) clearInterval(slideInterval);
+            if (eventSource) eventSource.close();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# POS Launcher Qt - Requirements
+# Cross-platform (Windows & Linux)
+
+# GUI Framework (includes Chromium engine)
+PyQt6==6.6.1
+PyQt6-WebEngine==6.6.0
+
+# Local API Server
+Flask==3.0.0
+Flask-Cors==4.0.0
+
+# QR Code Generation
+qrcode[pil]==7.4.2
+
+# HTTP Client
+requests==2.31.0
+
+# Windows-only dependencies (auto-skipped on Linux)
+pywin32>=311; sys_platform == 'win32'
+
+# Linux-only dependencies (auto-skipped on Windows)
+pycups==2.0.1; sys_platform == 'linux'

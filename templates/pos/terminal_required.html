@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Setup Required - YOGYA POS</title>
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
+            <!-- Icon -->
+            <div class="flex justify-center mb-6">
+                <div class="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center">
+                    <svg class="w-12 h-12 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Title -->
+            <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">
+                Terminal Setup Required
+            </h1>
+            
+            <!-- Message -->
+            <div class="space-y-4 text-gray-600 mb-6">
+                <p class="text-center">
+                    No terminal configuration detected. This POS application requires proper terminal setup.
+                </p>
+                
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 class="font-semibold text-blue-900 mb-2">📋 Setup Instructions:</h3>
+                    <ol class="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+                        <li>Register this device as a terminal in the system</li>
+                        <li>Create <code class="bg-blue-100 px-1 rounded">terminal-config.json</code> file</li>
+                        <li>Launch POS using the desktop launcher</li>
+                    </ol>
+                </div>
+                
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h3 class="font-semibold text-yellow-900 mb-2">⚠️ Important:</h3>
+                    <p class="text-sm text-yellow-800">
+                        Web-based access without terminal binding is not supported for cashier operations.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="space-y-3">
+                <a href="{% url 'core:terminal_setup' %}" 
+                   class="block w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg text-center transition-colors">
+                    Setup Terminal Now
+                </a>
+                
+                <a href="{% url 'core:logout' %}" 
+                   class="block w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-3 px-4 rounded-lg text-center transition-colors">
+                    Logout
+                </a>
+            </div>
+            
+            <!-- Footer -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                <p class="text-xs text-center text-gray-500">
+                    Need help? Contact your system administrator
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

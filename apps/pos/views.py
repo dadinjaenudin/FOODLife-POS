@@ -48,14 +48,168 @@ def render_bill_panel(request, bill):
     return render(request, 'pos/partials/bill_panel.html', context)
 
 
-@login_required
 @ensure_csrf_cookie
 def pos_main(request):
     """Main POS interface"""
-    from apps.core.models import Store, ProductPhoto
+    from apps.core.models import Store, ProductPhoto, POSTerminal
     from django.db.models import Prefetch
+    from django.contrib.auth import authenticate, login
+    import logging
+    logger = logging.getLogger(__name__)
     
     store_config = Store.get_current()
+    
+    # ========== KIOSK MODE AUTO-LOGIN (DISABLED) ==========
+    # Auto-login disabled - require manual login for security & audit trail
+    # Terminal will be set in session after successful login
+    # Check for token parameter (from POS launcher terminal validation)
+    session_token = request.GET.get('token')
+    terminal_code_param = request.GET.get('terminal')
+    kiosk_mode = request.GET.get('kiosk')
+    
+    # Store terminal code in session PERSISTENTLY (survive logout)
+    # Use different key to distinguish from active terminal
+    if terminal_code_param:
+        request.session['launcher_terminal_code'] = terminal_code_param
+        logger.info(f"Launcher terminal code stored persistently: {terminal_code_param}")
+    
+    if False and session_token and terminal_code_param and not request.user.is_authenticated:
+        # Verify token matches session storage (simple validation)
+        # In production, you'd want to store tokens in database with expiry
+        try:
+            terminal = POSTerminal.objects.get(
+                terminal_code=terminal_code_param,
+                is_active=True
+            )
+            
+            # Auto-login with a default cashier user for this terminal
+            # Try to find a user associated with this terminal's store/brand
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            
+            # Try to find cashier for this brand
+            cashier_user = User.objects.filter(
+                brand=terminal.brand,
+                role__in=['cashier', 'admin'],
+                is_active=True
+            ).first()
+            
+            if cashier_user:
+                # Bypass password authentication for terminal session
+                login(request, cashier_user, backend='django.contrib.auth.backends.ModelBackend')
+                logger.info(f"Auto-login successful for terminal {terminal_code_param} with user {cashier_user.username}")
+                
+                # Store terminal info in session
+                request.session['terminal_code'] = terminal_code_param
+                request.session['terminal_id'] = str(terminal.id)
+                request.session['kiosk_mode'] = True
+                request.session['session_token'] = session_token
+                
+                # IMPORTANT: Set request.terminal so it's available immediately
+                request.terminal = terminal
+                logger.info(f"Terminal attached to request: {terminal_code_param}")
+                
+                # DON'T redirect - just continue with the request
+                # Session cookie will be set in response
+                # Fall through to normal POS rendering below
+            else:
+                logger.warning(f"No cashier user found for terminal {terminal_code_param}")
+                return render(request, 'pos/terminal_not_found.html', {
+                    'terminal_code': terminal_code_param,
+                    'store_config': store_config,
+                    'error': 'No cashier user found for this terminal'
+                })
+        except POSTerminal.DoesNotExist:
+            logger.warning(f"Terminal not found during token auth: {terminal_code_param}")
+            return render(request, 'pos/terminal_not_found.html', {
+                'terminal_code': terminal_code_param,
+                'store_config': store_config
+            })
+    
+    # Standard login check (if not in kiosk mode or already authenticated)
+    if not request.user.is_authenticated:
+        # Debug: Check if launcher terminal is in session before redirect
+        launcher_terminal = request.session.get('launcher_terminal_code')
+        logger.info(f"[Before Login] launcher_terminal_code in session: {launcher_terminal}")
+        
+        # Store current URL for redirect after login
+        from django.contrib.auth.views import redirect_to_login
+        return redirect_to_login(request.get_full_path())
+    
+    # ========== TERMINAL DETECTION ==========
+    # Priority: 1) Already set by auto-login, 2) URL parameter, 3) Session
+    
+    # Check if terminal already set by auto-login (kiosk mode)
+    if hasattr(request, 'terminal') and request.terminal:
+        logger.info(f"Terminal already set from auto-login: {request.terminal.terminal_code}")
+    else:
+        # Check URL parameter first
+        terminal_code = request.GET.get('terminal')
+        
+        if terminal_code:
+            # Validate terminal exists and is active
+            try:
+                terminal = POSTerminal.objects.get(terminal_code=terminal_code, is_active=True)
+                # Store in session for subsequent requests
+                request.session['terminal_code'] = terminal_code
+                request.session['terminal_id'] = str(terminal.id)
+                request.terminal = terminal  # Attach to request
+                logger.info(f"Terminal detected from URL: {terminal_code}")
+            except POSTerminal.DoesNotExist:
+                logger.warning(f"Terminal not found: {terminal_code}")
+                return render(request, 'pos/terminal_not_found.html', {
+                    'terminal_code': terminal_code,
+                    'store_config': store_config
+                })
+        else:
+            # Check session for existing terminal
+            terminal_code = request.session.get('terminal_code')
+            terminal_id = request.session.get('terminal_id')
+            
+            # Debug: Check launcher terminal in session
+            launcher_terminal_check = request.session.get('launcher_terminal_code')
+            logger.info(f"[Terminal Detection] terminal_code={terminal_code}, launcher_terminal_code={launcher_terminal_check}")
+            
+            # If no terminal in session, check launcher terminal (persistent across logout)
+            if not terminal_code:
+                launcher_terminal = request.session.get('launcher_terminal_code')
+                if launcher_terminal:
+                    logger.info(f"Using launcher terminal code (from config.json): {launcher_terminal}")
+                    terminal_code = launcher_terminal
+                    # Try to lookup terminal
+                    try:
+                        terminal = POSTerminal.objects.get(terminal_code=terminal_code, is_active=True)
+                        request.session['terminal_code'] = terminal_code
+                        request.session['terminal_id'] = str(terminal.id)
+                        request.terminal = terminal
+                        logger.info(f"Terminal set from launcher config: {terminal_code}")
+                        # Set variables so the check below passes
+                        terminal_id = str(terminal.id)
+                    except POSTerminal.DoesNotExist:
+                        logger.warning(f"Launcher terminal not found in DB: {launcher_terminal}")
+                        # Clear invalid launcher terminal
+                        request.session.pop('launcher_terminal_code', None)
+            
+            if terminal_code and terminal_id:
+                try:
+                    terminal = POSTerminal.objects.get(id=terminal_id, terminal_code=terminal_code, is_active=True)
+                    request.terminal = terminal
+                    logger.info(f"Terminal from session: {terminal_code}")
+                except POSTerminal.DoesNotExist:
+                    # Terminal in session but not in DB or not active
+                    logger.warning(f"Terminal in session not found in DB: {terminal_code}")
+                    request.session.pop('terminal_code', None)
+                    request.session.pop('terminal_id', None)
+                    return render(request, 'pos/terminal_required.html', {
+                        'store_config': store_config
+                    })
+            else:
+                # No terminal detected at all
+                logger.warning("No terminal detected - showing setup prompt")
+                return render(request, 'pos/terminal_required.html', {
+                    'store_config': store_config
+                })
+    # ========================================
 
     brand = request.user.brand
     if not brand and store_config and store_config.brand:
@@ -138,6 +292,15 @@ def pos_main(request):
     
     held_count = Bill.objects.filter(brand=brand, status='hold').count()
     
+    # Build a dictionary of product quantities in the current bill
+    bill_items_dict = {}
+    if bill:
+        for item in bill.items.filter(status='pending', is_void=False):
+            if item.product_id in bill_items_dict:
+                bill_items_dict[item.product_id] += item.quantity
+            else:
+                bill_items_dict[item.product_id] = item.quantity
+    
     # MinIO settings for product images
     minio_endpoint = 'http://localhost:9002'
     minio_bucket = 'product-images'
@@ -150,10 +313,12 @@ def pos_main(request):
         'tables': tables,
         'products': products,
         'bill': bill,
+        'bill_items_dict': bill_items_dict,
         'active_items_count': active_items_count,
         'has_sent_items': has_sent_items,
         'held_count': held_count,
         'store_config': store_config,
+        'terminal': terminal,  # Add terminal to context
         'minio_endpoint': minio_endpoint,
         'minio_bucket': minio_bucket,
     }
@@ -574,6 +739,170 @@ def add_item(request, bill_id):
         logger = logging.getLogger(__name__)
         logger.error(f"Error adding item: {str(e)}", exc_info=True)
         return HttpResponse(f'<div class="p-3 bg-red-100 text-red-700 rounded">Error: {str(e)}</div>', status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def quick_add_product(request, bill_id, product_id):
+    """Quick add product from product grid - adds 1 quantity of simple product (no modifiers)"""
+    try:
+        bill = Bill.objects.select_related('table', 'table__area', 'brand').get(id=bill_id, status__in=['open', 'hold'])
+        
+        # If bill was on hold, resume it
+        if bill.status == 'hold':
+            bill.status = 'open'
+            bill.save()
+        
+        product = Product.objects.get(id=product_id)
+        
+        # Find existing pending item without modifiers and notes
+        existing_item = BillItem.objects.filter(
+            bill=bill,
+            product=product,
+            notes='',
+            modifiers=[],
+            is_void=False,
+            status='pending'
+        ).first()
+        
+        if existing_item:
+            existing_item.quantity += 1
+            existing_item.save()
+        else:
+            BillItem.objects.create(
+                bill=bill,
+                product=product,
+                quantity=1,
+                unit_price=product.price,
+                modifier_price=0,
+                notes='',
+                modifiers=[],
+                printer_target=product.printer_target,
+                created_by=request.user,
+            )
+        
+        bill.calculate_totals()
+        
+        # Build updated bill_items_dict
+        bill_items_dict = {}
+        for item in bill.items.filter(status='pending', is_void=False):
+            if item.product_id in bill_items_dict:
+                bill_items_dict[item.product_id] += item.quantity
+            else:
+                bill_items_dict[item.product_id] = item.quantity
+        
+        # Return updated product card and bill panel
+        from django.template.loader import render_to_string
+        from apps.core.models import ProductPhoto
+        from django.db.models import Prefetch
+        
+        product = Product.objects.filter(id=product_id).select_related('category', 'category__parent').prefetch_related(
+            'product_modifiers__modifier',
+            Prefetch(
+                'photos',
+                queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
+                to_attr='primary_photos'
+            )
+        ).first()
+        
+        minio_endpoint = 'http://localhost:9002'
+        minio_bucket = 'product-images'
+        
+        product_card_html = render_to_string('pos/partials/product_card.html', {
+            'product': product,
+            'bill': bill,
+            'bill_items_dict': bill_items_dict,
+            'minio_endpoint': minio_endpoint,
+            'minio_bucket': minio_bucket,
+        }, request=request)
+        
+        bill_panel_html = render_bill_panel(request, bill).content.decode('utf-8')
+        
+        return JsonResponse({
+            'product_card_html': product_card_html,
+            'bill_panel_html': bill_panel_html,
+        })
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in quick_add_product: {str(e)}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def quick_remove_product(request, bill_id, product_id):
+    """Quick remove product from product grid - removes 1 quantity"""
+    try:
+        bill = Bill.objects.select_related('table', 'table__area', 'brand').get(id=bill_id, status__in=['open', 'hold'])
+        product = Product.objects.get(id=product_id)
+        
+        # Find existing pending item without modifiers and notes
+        existing_item = BillItem.objects.filter(
+            bill=bill,
+            product=product,
+            notes='',
+            modifiers=[],
+            is_void=False,
+            status='pending'
+        ).first()
+        
+        if existing_item:
+            if existing_item.quantity > 1:
+                existing_item.quantity -= 1
+                existing_item.save()
+            else:
+                existing_item.is_void = True
+                existing_item.save()
+            
+            bill.calculate_totals()
+        
+        # Build updated bill_items_dict
+        bill_items_dict = {}
+        for item in bill.items.filter(status='pending', is_void=False):
+            if item.product_id in bill_items_dict:
+                bill_items_dict[item.product_id] += item.quantity
+            else:
+                bill_items_dict[item.product_id] = item.quantity
+        
+        # Return updated product card and bill panel
+        from django.template.loader import render_to_string
+        from apps.core.models import ProductPhoto
+        from django.db.models import Prefetch
+        
+        product = Product.objects.filter(id=product_id).select_related('category', 'category__parent').prefetch_related(
+            'product_modifiers__modifier',
+            Prefetch(
+                'photos',
+                queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
+                to_attr='primary_photos'
+            )
+        ).first()
+        
+        minio_endpoint = 'http://localhost:9002'
+        minio_bucket = 'product-images'
+        
+        product_card_html = render_to_string('pos/partials/product_card.html', {
+            'product': product,
+            'bill': bill,
+            'bill_items_dict': bill_items_dict,
+            'minio_endpoint': minio_endpoint,
+            'minio_bucket': minio_bucket,
+        }, request=request)
+        
+        bill_panel_html = render_bill_panel(request, bill).content.decode('utf-8')
+        
+        return JsonResponse({
+            'product_card_html': product_card_html,
+            'bill_panel_html': bill_panel_html,
+        })
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in quick_remove_product: {str(e)}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 @login_required
@@ -1847,6 +2176,50 @@ def print_preview(request, bill_id):
 
 
 @login_required
+def bill_data_json(request, bill_id):
+    """Return bill data as JSON for local printer integration"""
+    bill = get_object_or_404(Bill, id=bill_id)
+    
+    items = bill.items.filter(is_void=False)
+    payments = bill.payments.all()
+    
+    data = {
+        'outlet_name': bill.outlet.name if bill.outlet else '',
+        'outlet_address': getattr(bill.outlet, 'address', '') if bill.outlet else '',
+        'outlet_phone': getattr(bill.outlet, 'phone', '') if bill.outlet else '',
+        'bill_number': bill.bill_number,
+        'date': bill.created_at.isoformat() if bill.created_at else '',
+        'cashier': bill.server.get_full_name() if bill.server else '',
+        'customer_name': bill.customer_name or '',
+        'table': bill.table.number if bill.table else None,
+        'items': [
+            {
+                'name': item.product.name,
+                'qty': item.quantity,
+                'price': float(item.unit_price),
+                'subtotal': float(item.total)
+            }
+            for item in items
+        ],
+        'payments': [
+            {
+                'method': payment.get_method_display(),
+                'amount': float(payment.amount)
+            }
+            for payment in payments
+        ],
+        'subtotal': float(bill.subtotal),
+        'discount': float(bill.discount_amount) if bill.discount_amount else 0,
+        'tax': float(bill.tax_amount) if bill.tax_amount else 0,
+        'service': float(bill.service_charge) if bill.service_charge else 0,
+        'total': float(bill.total),
+        'footer': bill.brand.receipt_footer if bill.brand and bill.brand.receipt_footer else 'Terima Kasih!'
+    }
+    
+    return JsonResponse(data)
+
+
+@login_required
 @require_http_methods(["POST"])
 def reprint_kitchen(request, bill_id):
     """Reprint kitchen order - HTMX"""
@@ -2223,12 +2596,17 @@ def shift_open(request):
     # Store shift in session
     request.session['active_shift_id'] = str(shift.id)
     
-    return JsonResponse({
+    response = JsonResponse({
         'success': True,
         'message': 'Shift opened successfully',
         'shift_id': str(shift.id),
         'opening_cash': float(opening_cash)
     })
+    
+    # Trigger client event to update UI
+    response['HX-Trigger'] = json.dumps({'shiftStatusChanged': {'hasActiveShift': True}})
+    
+    return response
 
 
 @login_required
@@ -2236,9 +2614,15 @@ def shift_close_form(request):
     """Show shift close modal with reconciliation"""
     shift_id = request.session.get('active_shift_id')
     if not shift_id:
-        return JsonResponse({'error': 'No active shift'}, status=400)
+        # Return empty div instead of error to prevent HTMX error popup
+        return HttpResponse('<div></div>', content_type='text/html')
     
-    shift = get_object_or_404(CashierShift, id=shift_id, status='open')
+    try:
+        shift = CashierShift.objects.get(id=shift_id, status='open')
+    except CashierShift.DoesNotExist:
+        # Shift not found or already closed, clear session and return empty
+        request.session.pop('active_shift_id', None)
+        return HttpResponse('<div></div>', content_type='text/html')
     
     # Calculate expected amounts per payment method
     from django.db.models import Sum, Count
@@ -2340,13 +2724,18 @@ def shift_close(request):
         logger = logging.getLogger(__name__)
         logger.info(f"Shift {shift.id} closed. Session cleared. Shift status: {shift.status}")
         
-        return JsonResponse({
+        response = JsonResponse({
             'success': True,
             'message': 'Shift closed successfully',
             'cash_difference': float(difference),
             'shift_id': str(shift.id),
             'print_url': f'/pos/shift/{shift.id}/print-reconciliation/'
         })
+        
+        # Trigger client event to update UI
+        response['HX-Trigger'] = json.dumps({'shiftStatusChanged': {'hasActiveShift': False}})
+        
+        return response
     
     except Exception as e:
         import logging
@@ -2929,3 +3318,68 @@ def cash_drop_print(request, drop_id):
     
     return render(request, 'pos/partials/cash_drop_receipt.html', context)
 
+
+@login_required
+def shift_status_header(request):
+    """Return shift status header partial for HTMX polling"""
+    active_shift_id = request.session.get('active_shift_id')
+    active_shift = None
+    duration_str = ""
+    
+    if active_shift_id:
+        try:
+            active_shift = CashierShift.objects.get(id=active_shift_id, status='open')
+        except CashierShift.DoesNotExist:
+            active_shift = None
+            request.session.pop('active_shift_id', None)
+
+    if not active_shift:
+        active_shift = CashierShift.objects.filter(
+            cashier=request.user,
+            status='open'
+        ).first()
+        if active_shift:
+            request.session['active_shift_id'] = str(active_shift.id)
+            request.session.modified = True
+
+    if active_shift:
+        duration = timezone.now() - active_shift.shift_start
+        hours = int(duration.total_seconds() // 3600)
+        minutes = int((duration.total_seconds() % 3600) // 60)
+        duration_str = f"{hours}h {minutes}m"
+    
+    context = {
+        'active_shift': active_shift,
+        'duration_str': duration_str if active_shift else None,
+    }
+    
+    return render(request, 'pos/partials/shift_status_header.html', context)
+
+
+@login_required
+def shift_status_check(request):
+    """API endpoint to check if cashier has active shift"""
+    active_shift_id = request.session.get('active_shift_id')
+    has_active_shift = False
+    active_shift = None
+    
+    if active_shift_id:
+        try:
+            active_shift = CashierShift.objects.get(id=active_shift_id, status='open')
+        except CashierShift.DoesNotExist:
+            request.session.pop('active_shift_id', None)
+
+    if not active_shift:
+        active_shift = CashierShift.objects.filter(
+            cashier=request.user,
+            status='open'
+        ).first()
+        if active_shift:
+            request.session['active_shift_id'] = str(active_shift.id)
+            request.session.modified = True
+
+    has_active_shift = active_shift is not None
+    
+    return JsonResponse({
+        'has_active_shift': has_active_shift,
+    })

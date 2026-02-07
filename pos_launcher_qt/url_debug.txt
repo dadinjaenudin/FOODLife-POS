@@ -1,0 +1,3 @@
+pos_url before kiosk: http://127.0.0.1:8001/pos/?terminal=BOE-001&token=b027c07d-494a-4ec6-a80e-d14c959be21c
+separator: &
+final pos_url: http://127.0.0.1:8001/pos/?terminal=BOE-001&token=b027c07d-494a-4ec6-a80e-d14c959be21c&kiosk=1

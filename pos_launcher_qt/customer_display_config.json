@@ -1,0 +1,39 @@
+{
+  "brand": {
+    "name": "YOGYA Food Life",
+    "logo_url": null,
+    "tagline": "Nikmati Kelezatan Setiap Hari"
+  },
+  "slideshow": [
+    {
+      "type": "placeholder",
+      "title": "Promo Spesial Hari Ini!",
+      "subtitle": "Beli 2 Gratis 1 untuk menu pilihan",
+      "background_color": "#FF6B6B",
+      "duration": 5000
+    },
+    {
+      "type": "placeholder",
+      "title": "Menu Baru!",
+      "subtitle": "Coba menu spesial kami sekarang",
+      "background_color": "#4ECDC4",
+      "duration": 5000
+    },
+    {
+      "type": "placeholder",
+      "title": "Member Card",
+      "subtitle": "Dapatkan poin di setiap transaksi",
+      "background_color": "#FFE66D",
+      "duration": 5000
+    }
+  ],
+  "running_text": "🎉 Selamat datang di YOGYA Food Life! ⭐ Promo hari ini: Beli 2 Gratis 1 untuk menu pilihan! 🍽️ Nikmati kelezatan di setiap hidangan kami! ❤️",
+  "running_text_speed": 80,
+  "theme": {
+    "primary_color": "#667eea",
+    "secondary_color": "#764ba2",
+    "text_color": "#ffffff",
+    "billing_bg": "rgba(255,255,255,0.95)",
+    "billing_text": "#333333"
+  }
+}

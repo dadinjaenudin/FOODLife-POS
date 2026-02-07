@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .items-container {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            overflow-y: auto;
+        }
+        
+        .item {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(5px);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-radius: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .item-info {
+            flex: 1;
+        }
+        
+        .item-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .item-qty {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .item-price {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: right;
+        }
+        
+        .total-section {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .total-label {
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+        
+        .total-value {
+            font-size: 4rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .payment-info {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 2px solid rgba(255,255,255,0.3);
+            font-size: 1.5rem;
+        }
+        
+        .empty-message {
+            text-align: center;
+            font-size: 2rem;
+            opacity: 0.7;
+            padding: 4rem 0;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        
+        .status-connected {
+            background: rgba(16, 185, 129, 0.8);
+        }
+        
+        .status-disconnected {
+            background: rgba(239, 68, 68, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status" class="connection-status status-disconnected">
+        Connecting...
+    </div>
+    
+    <div class="header">
+        <h1>🛒 Customer Display</h1>
+    </div>
+    
+    <div class="items-container" id="items-container">
+        <div class="empty-message">Waiting for items...</div>
+    </div>
+    
+    <div class="total-section">
+        <div class="total-row">
+            <div class="total-label">TOTAL</div>
+            <div class="total-value" id="total-value">Rp 0</div>
+        </div>
+        <div class="payment-info" id="payment-info" style="display: none;">
+            <!-- Payment details will appear here -->
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://127.0.0.1:5000';
+        let eventSource = null;
+        
+        function formatCurrency(amount) {
+            return 'Rp ' + Math.floor(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+        
+        function updateDisplay(data) {
+            console.log('Update received:', data);
+            
+            // Update items
+            const container = document.getElementById('items-container');
+            
+            if (!data.items || data.items.length === 0) {
+                container.innerHTML = '<div class="empty-message">Waiting for items...</div>';
+            } else {
+                container.innerHTML = data.items.map(item => `
+                    <div class="item">
+                        <div class="item-info">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-qty">${item.quantity} × ${formatCurrency(item.price)}</div>
+                        </div>
+                        <div class="item-price">${formatCurrency(item.quantity * item.price)}</div>
+                    </div>
+                `).join('');
+            }
+            
+            // Update total
+            document.getElementById('total-value').textContent = formatCurrency(data.total || 0);
+            
+            // Update payment info
+            const paymentInfo = document.getElementById('payment-info');
+            if (data.payment_method) {
+                paymentInfo.style.display = 'block';
+                paymentInfo.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>Payment:</span>
+                        <span>${data.payment_method.toUpperCase()}</span>
+                    </div>
+                    ${data.change ? `
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Change:</span>
+                        <span>${formatCurrency(data.change)}</span>
+                    </div>
+                    ` : ''}
+                `;
+            } else {
+                paymentInfo.style.display = 'none';
+            }
+        }
+        
+        function connectSSE() {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.textContent = 'Connecting...';
+            statusEl.className = 'connection-status status-disconnected';
+            
+            console.log('Attempting SSE connection to:', `${API_URL}/api/customer-display/stream`);
+            
+            // First, check if API is available
+            fetch(`${API_URL}/health`)
+                .then(response => response.json())
+                .then(health => {
+                    console.log('API health check:', health);
+                    startSSE();
+                })
+                .catch(error => {
+                    console.error('API not available:', error.message);
+                    statusEl.textContent = 'API not available';
+                    setTimeout(connectSSE, 3000);
+                });
+        }
+        
+        function startSSE() {
+            const statusEl = document.getElementById('connection-status');
+            
+            try {
+                eventSource = new EventSource(`${API_URL}/api/customer-display/stream`);
+            } catch (e) {
+                console.error('Failed to create EventSource:', e);
+                setTimeout(connectSSE, 3000);
+                return;
+            }
+            
+            eventSource.onopen = function() {
+                console.log('SSE connected');
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'connection-status status-connected';
+            };
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateDisplay(data);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('SSE connection failed');
+                console.log('Event source readyState:', eventSource.readyState);
+                
+                statusEl.textContent = 'Reconnecting...';
+                statusEl.className = 'connection-status status-disconnected';
+                
+                // Close existing connection
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                
+                // Reconnect after 3 seconds
+                console.log('Will retry in 3 seconds...');
+                setTimeout(connectSSE, 3000);
+            };
+        }
+        
+        // Start SSE connection
+        connectSSE();
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+</body>
+</html>

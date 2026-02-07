@@ -1,53 +1,152 @@
 {% load humanize %}
-<!-- Payment Modal v2.0 -->
+<!-- Payment Modal v2.1 - Refactored for Flexibility -->
 <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto animate-fadeIn"
      x-data="{
+         // ==========================================
+         // 🔧 CONFIGURATION - Easy to modify!
+         // ==========================================
+         paymentMethods: [
+             { id: 'cash', label: 'Cash', icon: '💵', requiresReference: false },
+             { id: 'card', label: 'Card', icon: '💳', requiresReference: true, referencePlaceholder: 'Last 4 digits / Approval code' },
+             { id: 'qris', label: 'QRIS', icon: '📱', requiresReference: true, referencePlaceholder: 'Transaction ID' },
+             { id: 'ewallet', label: 'E-Wallet', icon: '🏦', requiresReference: true, referencePlaceholder: 'Reference number' },
+             { id: 'transfer', label: 'Transfer', icon: '🔄', requiresReference: true, referencePlaceholder: 'Transfer reference' },
+             { id: 'voucher', label: 'Voucher', icon: '🎟️', requiresReference: true, referencePlaceholder: 'Voucher code' }
+         ],
+         
+         quickAmounts: [
+             { label: 'Exact', getValue: (remaining) => remaining, color: 'green' },
+             { label: '50K', getValue: () => 50000, color: 'gray' },
+             { label: '100K', getValue: () => 100000, color: 'gray' },
+             { label: 'Round', getValue: (remaining) => Math.ceil(remaining/50000)*50000, color: 'gray' }
+         ],
+         
+         // ==========================================
+         // 💾 STATE
+         // ==========================================
          method: 'cash',
          amount: 0,
          amountDisplay: '',
          reference: '',
+         updateAmountDebounceTimer: null,
          total: parseInt('{{ total_int|escapejs }}'),
          paid: parseInt('{{ paid_int|escapejs }}'),
          payments: [],
-         get remaining() { return this.total - this.paid - this.payments.reduce((sum, p) => sum + p.amount, 0); },
+         
+         // ==========================================
+         // 🧮 COMPUTED PROPERTIES
+         // ==========================================
+         get remaining() { 
+             return this.total - this.paid - this.payments.reduce((sum, p) => sum + p.amount, 0); 
+         },
+         
          get change() { 
              if (this.method !== 'cash') return 0;
              return Math.max(0, this.amount - this.remaining); 
          },
+         
+         get selectedMethod() {
+             return this.paymentMethods.find(m => m.id === this.method);
+         },
+         
+         get canAddSplitPayment() {
+             return this.remaining > this.amount && this.amount > 0;
+         },
+         
+         get canSubmit() {
+             return this.amount >= 1 || this.payments.length > 0;
+         },
+         
+         // ==========================================
+         // 🔧 UTILITY FUNCTIONS
+         // ==========================================
          formatNumber(num) {
              if (!num && num !== 0) return '0';
              const str = Math.floor(num).toString();
-             const result = str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-             console.log('formatNumber input:', num, 'output:', result);
-             return result;
+             return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
          },
+         
+         getMethodLabel(methodId) {
+             const method = this.paymentMethods.find(m => m.id === methodId);
+             return method ? `${method.icon} ${method.label}` : methodId;
+         },
+         
+         // ==========================================
+         // 📝 AMOUNT MANAGEMENT
+         // ==========================================
          updateAmount(value) {
              // Remove non-digits
              const cleanValue = value.replace(/\D/g, '');
              this.amount = cleanValue ? parseInt(cleanValue) : 0;
              this.amountDisplay = this.amount ? this.formatNumber(this.amount) : '';
+             
+             // Debounce customer display update
+             clearTimeout(this.updateAmountDebounceTimer);
+             this.updateAmountDebounceTimer = setTimeout(() => {
+                 this.$nextTick(() => {
+                     if (typeof sendModalToCustomerDisplay === 'function') {
+                         sendModalToCustomerDisplay();
+                         console.log('🔄 Customer display refreshed after typing:', this.amount);
+                     }
+                 });
+             }, 500);
          },
-         init() {
-             console.log('Payment Modal Init - amount:', this.amount, 'remaining:', this.remaining);
-             this.amountDisplay = this.formatNumber(this.amount);
+         
+         setQuickAmount(newAmount) {
+             this.amount = newAmount;
+             this.amountDisplay = this.formatNumber(newAmount);
+             this.$nextTick(() => {
+                 setTimeout(() => {
+                     if (typeof sendModalToCustomerDisplay === 'function') {
+                         sendModalToCustomerDisplay();
+                         console.log('🔄 Customer display refreshed - Quick amount:', newAmount);
+                     }
+                 }, 200);
+             });
          },
-         addPayment() {
+         
+         // ==========================================
+         // 💳 METHOD MANAGEMENT
+         // ==========================================
+         setMethod(newMethod) {
+             this.method = newMethod;
+             this.reference = ''; // Clear reference when switching methods
+             this.$nextTick(() => {
+                 setTimeout(() => {
+                     if (typeof sendModalToCustomerDisplay === 'function') {
+                         sendModalToCustomerDisplay();
+                         console.log('🔄 Customer display refreshed - Method:', newMethod);
+                     }
+                 }, 200);
+             });
+         },
+         
+         // ==========================================
+         // 💰 PAYMENT MANAGEMENT
+         // ==========================================
+         validatePayment() {
              if (this.amount <= 0) {
                  alert('Please enter an amount');
-                 return;
+                 return false;
              }
              
-             // Non-cash payment methods cannot exceed remaining balance
+             // Non-cash cannot exceed remaining
              if (this.method !== 'cash' && this.amount > this.remaining) {
-                 alert('Non-cash payment cannot exceed remaining balance of Rp ' + this.formatNumber(this.remaining));
-                 return;
+                 alert(`Non-cash payment cannot exceed remaining balance of Rp ${this.formatNumber(this.remaining)}`);
+                 return false;
              }
              
-             // Cash can overpay only for single payment (no split)
+             // Cash overpayment only for single payment
              if (this.method === 'cash' && this.payments.length > 0 && this.amount > this.remaining) {
                  alert('Cash overpayment only allowed for single payment');
-                 return;
+                 return false;
              }
+             
+             return true;
+         },
+         
+         addPayment() {
+             if (!this.validatePayment()) return;
              
              this.payments.push({
                  method: this.method,
@@ -61,41 +160,24 @@
              this.amountDisplay = '';
              this.reference = '';
              
-             // Show success feedback
+             this.notifyCustomerDisplay('payment added');
+             
              if (this.remaining > 0) {
                  console.log('Payment added. Remaining: Rp ' + this.formatNumber(this.remaining));
              }
          },
+         
          removePayment(index) {
+             console.log('🔔 Removing payment at index:', index);
              this.payments.splice(index, 1);
+             this.notifyCustomerDisplay('payment removed');
          },
-         getMethodLabel(method) {
-             const labels = {
-                 'cash': '💵 Cash',
-                 'card': '💳 Card',
-                 'qris': '📱 QRIS',
-                 'ewallet': '🏦 E-Wallet',
-                 'transfer': '🔄 Transfer',
-                 'voucher': '🎟️ Voucher'
-             };
-             return labels[method] || method;
-         },
+         
          submitPayment() {
-             // If user entered amount but didn't click Add Payment yet, add it now
+             // If user entered amount but didn't add it yet, add it now
              if (this.amount > 0) {
-                 // Validate before adding
-                 if (this.method !== 'cash' && this.amount > this.remaining) {
-                     alert('Non-cash payment cannot exceed remaining balance of Rp ' + this.formatNumber(this.remaining));
-                     return false;
-                 }
+                 if (!this.validatePayment()) return false;
                  
-                 // For split payment, cash cannot overpay
-                 if (this.method === 'cash' && this.payments.length > 0 && this.amount > this.remaining) {
-                     alert('Cash overpayment only allowed for single payment. Current remaining: Rp ' + this.formatNumber(this.remaining));
-                     return false;
-                 }
-                 
-                 // Add the current payment
                  this.payments.push({
                      method: this.method,
                      amount: this.amount,
@@ -104,22 +186,50 @@
                  });
              }
              
-             // Check if we have any payments
              if (this.payments.length === 0) {
                  alert('Please add at least one payment or enter an amount');
                  return false;
              }
              
-             // Update hidden input values before submit (untuk ensure data terkirim)
              console.log('Submitting payments:', this.payments);
-             console.log('Current amount:', this.amount);
-             console.log('Current method:', this.method);
+             this.notifyCustomerDisplay('payment submitting');
              
              return true;
+         },
+         
+         // ==========================================
+         // 🖥️ CUSTOMER DISPLAY INTEGRATION
+         // ==========================================
+         notifyCustomerDisplay(action) {
+             if (typeof updateCustomerDisplay === 'function') {
+                 const totalPaid = this.payments.reduce((sum, p) => sum + p.amount, 0);
+                 console.log(`🔔 Customer display notify [${action}]:`, {
+                     totalPaid,
+                     remaining: this.remaining,
+                     paymentsCount: this.payments.length
+                 });
+                 setTimeout(() => {
+                     updateCustomerDisplay([], this.total, totalPaid, this.payments[0]?.method || 'cash');
+                 }, 100);
+             }
+         },
+         
+         // ==========================================
+         // 🚀 INITIALIZATION
+         // ==========================================
+         init() {
+             console.log('💳 Payment Modal v2.1 initialized');
+             console.log('   Total:', this.total, 'Remaining:', this.remaining);
+             console.log('   Payment methods:', this.paymentMethods.length);
+             
+             this.amountDisplay = this.formatNumber(this.amount);
+             this.notifyCustomerDisplay('modal opened');
          }
      }"
      @click.self="closeModal()">
+    
     <div class="bg-white/95 backdrop-blur-lg rounded-2xl w-full max-w-xl m-4 shadow-2xl border border-white/20 animate-slideUp overflow-hidden" @click.stop>
+        <!-- Header -->
         <div class="px-5 py-3.5 flex justify-between items-center bg-gradient-to-br from-slate-50/90 via-blue-50/90 to-indigo-50/90 backdrop-blur-sm">
             <div>
                 <h2 class="text-lg font-bold text-gray-900">Payment - {{ bill.bill_number }}</h2>
@@ -180,46 +290,19 @@
                     </div>
                 </div>
                 
-                <!-- Payment Method Selection -->
+                <!-- Payment Method Selection - DYNAMIC -->
                 <div class="mb-3">
                     <label class="block text-xs font-semibold text-gray-700 mb-2">Payment Method</label>
                     <div class="grid grid-cols-3 gap-2">
-                        <button type="button" @click="method = 'cash'" 
-                                :class="method === 'cash' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                class="p-3 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                                <div class="text-xl mb-0.5">💵</div>
-                            <div class="font-semibold text-sm">Cash</div>
-                        </button>
-                        <button type="button" @click="method = 'card'" 
-                                :class="method === 'card' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                            <div class="text-2xl mb-1">💳</div>
-                            <div class="font-semibold">Card</div>
-                        </button>
-                        <button type="button" @click="method = 'qris'" 
-                                :class="method === 'qris' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                            <div class="text-2xl mb-1">📱</div>
-                            <div class="font-semibold">QRIS</div>
-                        </button>
-                        <button type="button" @click="method = 'ewallet'" 
-                                :class="method === 'ewallet' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                            <div class="text-2xl mb-1">🏦</div>
-                            <div class="font-semibold text-sm">E-Wallet</div>
-                        </button>
-                        <button type="button" @click="method = 'transfer'" 
-                                :class="method === 'transfer' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                            <div class="text-2xl mb-1">🔄</div>
-                            <div class="font-semibold text-sm">Transfer</div>
-                        </button>
-                        <button type="button" @click="method = 'voucher'" 
-                                :class="method === 'voucher' ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                class="p-4 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                            <div class="text-2xl mb-1">🎟️</div>
-                            <div class="font-semibold text-sm">Voucher</div>
-                        </button>
+                        <template x-for="pm in paymentMethods" :key="pm.id">
+                            <button type="button" 
+                                    @click="setMethod(pm.id)" 
+                                    :class="method === pm.id ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
+                                    class="p-3 rounded-lg border-2 text-center hover:bg-gray-50 transition">
+                                <div class="text-xl mb-0.5" x-text="pm.icon"></div>
+                                <div class="font-semibold text-sm" x-text="pm.label"></div>
+                            </button>
+                        </template>
                     </div>
                 </div>
                 
@@ -229,6 +312,7 @@
                     <div class="relative">
                         <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 text-lg font-semibold">Rp</span>
                         <input type="text" 
+                               name="amount_display"
                                x-model="amountDisplay"
                                @input="updateAmount($event.target.value)"
                                class="w-full pl-12 pr-3 py-3 border-2 border-gray-300 rounded-lg text-right text-2xl font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
@@ -236,40 +320,25 @@
                                inputmode="numeric">
                     </div>
                     
-                    <!-- Quick Amount Buttons (Cash only) -->
+                    <!-- Quick Amount Buttons - DYNAMIC (Cash only) -->
                     <div x-show="method === 'cash'" class="grid grid-cols-4 gap-2 mt-2">
-                        <button type="button" @click="amount = remaining; amountDisplay = formatNumber(amount)" 
-                                class="py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg font-semibold transition">
-                            Exact
-                        </button>
-                        <button type="button" @click="amount = 50000; amountDisplay = formatNumber(amount)" 
-                                class="py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition">
-                            50K
-                        </button>
-                        <button type="button" @click="amount = 100000; amountDisplay = formatNumber(amount)" 
-                                class="py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition">
-                            100K
-                        </button>
-                        <button type="button" @click="amount = Math.ceil(remaining/50000)*50000; amountDisplay = formatNumber(amount)" 
-                                class="py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition">
-                            Round
-                        </button>
+                        <template x-for="qa in quickAmounts" :key="qa.label">
+                            <button type="button" 
+                                    @click="setQuickAmount(qa.getValue(remaining))" 
+                                    :class="`py-2 bg-${qa.color}-100 hover:bg-${qa.color}-200 text-${qa.color}-800 rounded-lg font-semibold transition`">
+                                <span x-text="qa.label"></span>
+                            </button>
+                        </template>
                     </div>
                 </div>
                 
-                <!-- Reference for non-cash -->
-                <div x-show="method !== 'cash'" class="mb-3">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                        <span x-show="method === 'card'">Card Last 4 Digits / Approval Code</span>
-                        <span x-show="method === 'qris'">Transaction ID</span>
-                        <span x-show="method === 'ewallet'">Reference Number</span>
-                        <span x-show="method === 'transfer'">Transfer Reference</span>
-                        <span x-show="method === 'voucher'">Voucher Code</span>
-                    </label>
+                <!-- Reference Input - DYNAMIC (Non-cash only) -->
+                <div x-show="selectedMethod?.requiresReference" class="mb-3">
+                    <label class="block text-xs font-semibold text-gray-700 mb-1.5" x-text="selectedMethod?.referencePlaceholder || 'Reference'"></label>
                     <input type="text" 
                            x-model="reference"
-                           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                           placeholder="Enter reference...">
+                           :placeholder="selectedMethod?.referencePlaceholder || 'Enter reference...'"
+                           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 
                 <!-- Change Display (Cash only) -->
@@ -288,7 +357,7 @@
                     </div>
                 </template>
                 
-                <!-- Current payment (will be added on submit if remaining > 0) -->
+                <!-- Current payment -->
                 <input type="hidden" name="method" x-model="method">
                 <input type="hidden" name="amount" x-model="amount">
                 <input type="hidden" name="reference" x-model="reference">
@@ -303,14 +372,14 @@
                     <!-- Add Payment Button (for split payment) -->
                     <button type="button" 
                             @click="addPayment()"
-                            x-show="remaining > amount && amount > 0"
+                            x-show="canAddSplitPayment"
                             class="flex-1 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold hover:from-blue-700 hover:to-blue-800 transition shadow-lg">
                         + Add Payment
                     </button>
                     
                     <!-- Submit Button -->
                     <button type="submit"
-                            :disabled="amount < 1 && payments.length === 0"
+                            :disabled="!canSubmit"
                             class="flex-1 py-3 rounded-lg bg-gradient-to-r from-green-600 to-green-700 text-white font-bold hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
                         <span x-show="payments.length > 0">Complete Payment</span>
                         <span x-show="payments.length === 0">Pay Now</span>
@@ -347,6 +416,12 @@
 <script>
 function closeModal() {
     document.getElementById('modal-container').innerHTML = '';
+    
+    // Clear modal on customer display
+    if (typeof sendModalToCustomerDisplay === 'function') {
+        console.log('🔔 Modal closed, clearing from customer display...');
+        sendModalToCustomerDisplay();
+    }
 }
 </script>
 
