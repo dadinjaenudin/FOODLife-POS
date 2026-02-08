@@ -467,21 +467,69 @@
         }
         
         // ========== LOAD CONFIGURATION ==========
-        async function loadConfig() {
-            try {
-                const response = await fetch(`${API_URL}/api/customer-display/config`);
-                config = await response.json();
-                console.log('Config loaded:', config);
-                
-                // Apply config
-                applyBrandConfig();
-                initSlideshow();
-                initRunningText();
-            } catch (error) {
-                console.error('Failed to load config:', error);
-                // Use defaults
-                document.getElementById('brand-name').textContent = 'POS System';
-                document.getElementById('running-text').textContent = 'Welcome!';
+        async function loadConfig(retries = 10, delay = 2000) {
+            console.log('[Config] Starting config load process...');
+            console.log(`[Config] API URL: ${API_URL}/api/customer-display/config`);
+            
+            for (let i = 0; i < retries; i++) {
+                try {
+                    console.log(`[Config] Attempt ${i + 1}/${retries}: Fetching config...`);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    
+                    const response = await fetch(`${API_URL}/api/customer-display/config`, {
+                        signal: controller.signal,
+                        cache: 'no-cache',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    clearTimeout(timeoutId);
+                    
+                    console.log(`[Config] Response status: ${response.status}`);
+                    console.log(`[Config] Response type: ${response.type}`);
+                    console.log(`[Config] Response OK: ${response.ok}`);
+                    
+                    // Check if response is actually JSON
+                    const contentType = response.headers.get('content-type');
+                    console.log(`[Config] Content-Type: ${contentType}`);
+                    
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw new Error(`Expected JSON, got ${contentType}`);
+                    }
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    config = await response.json();
+                    console.log('[Config] ✅ Config loaded successfully');
+                    console.log('[Config] Source: Django API Database');
+                    console.log('[Config] Brand:', config.brand?.name || 'N/A');
+                    console.log('[Config] Slides:', config.slideshow?.length || 0);
+                    console.log('[Config] Running Text Speed:', config.running_text_speed || 'N/A');
+                    console.log('[Config] Theme:', config.theme ? 'Custom' : 'Default');
+                    
+                    // Apply config
+                    applyBrandConfig();
+                    initSlideshow();
+                    initRunningText();
+                    return; // Success!
+                } catch (error) {
+                    console.error(`[Config] ❌ Attempt ${i + 1} failed:`, error.message);
+                    console.error('[Config] Error details:', error);
+                    
+                    if (i < retries - 1) {
+                        console.log(`[Config] Retrying in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        console.error('[Config] ❌ All retries failed. Using defaults.');
+                        // Use defaults
+                        document.getElementById('brand-name').textContent = 'POS System';
+                        document.getElementById('running-text').textContent = 'Welcome!';
+                    }
+                }
             }
         }
         

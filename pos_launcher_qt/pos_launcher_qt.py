@@ -26,14 +26,20 @@ from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage, QWebEngine
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 # Global process trackers
-api_server_process = None
+api_server_thread = None
+flask_app = None
 
 
 def get_launcher_dir():
     """Get launcher directory"""
     if getattr(sys, 'frozen', False):
         # Running as compiled exe
-        return Path(os.path.dirname(sys.executable))
+        # PyInstaller puts data files in _internal subdirectory
+        exe_dir = Path(os.path.dirname(sys.executable))
+        internal_dir = exe_dir / '_internal'
+        if internal_dir.exists():
+            return internal_dir
+        return exe_dir
     else:
         # Running as script
         return Path(os.path.dirname(os.path.abspath(__file__)))
@@ -97,69 +103,233 @@ def validate_terminal(config):
         return None
 
 
-def start_local_api_server():
-    """Start Flask API server in background"""
-    global api_server_process
+def fetch_terminal_config_from_api(config):
+    """
+    Fetch terminal device configuration from Edge Server API.
     
-    launcher_dir = get_launcher_dir()
-    api_script = launcher_dir / 'local_api.py'
+    This retrieves all device settings (customer display, printer config, kitchen config, etc.)
+    from the centralized database, eliminating the need for manual JSON configuration.
     
-    if not api_script.exists():
-        print("[API Server] local_api.py not found")
-        return False
+    Args:
+        config (dict): Local config containing terminal_code and edge_server
+        
+    Returns:
+        dict: Device configuration from API, or None if API unavailable
+    """
+    if not config or 'terminal_code' not in config:
+        return None
     
-    print("[API Server] Starting...")
+    edge_server = config.get('edge_server', 'http://127.0.0.1:8001')
+    terminal_code = config.get('terminal_code')
+    
+    print(f"[Config] Fetching device config from API for {terminal_code}...")
     
     try:
-        # Start Flask server as subprocess
-        api_server_process = subprocess.Popen(
-            [sys.executable, str(api_script)],
-            cwd=str(launcher_dir),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+        response = requests.get(
+            f"{edge_server}/api/terminal/config",
+            params={'terminal_code': terminal_code},
+            timeout=5
         )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                device_config = data.get('terminal', {}).get('device_config', {})
+                print(f"[Config] Device config loaded from API")
+                print(f"[Config]   - Customer Display: {device_config.get('enable_customer_display', False)}")
+                print(f"[Config]   - Printer Type: {device_config.get('printer_type', 'N/A')}")
+                print(f"[Config]   - Kitchen Printer: {device_config.get('enable_kitchen_printer', False)}")
+                
+                # Payment Configuration
+                payment_methods = device_config.get('default_payment_methods', [])
+                edc_mode = device_config.get('edc_integration_mode', 'manual')
+                if payment_methods:
+                    print(f"[Config]   - Payment Methods: {', '.join(payment_methods)}")
+                    print(f"[Config]   - EDC Mode: {edc_mode}")
+                
+                return device_config
+        
+        print(f"[Config] API returned status {response.status_code}")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"[Config] API fetch failed: {e}")
+        return None
+    except Exception as e:
+        print(f"[Config] Unexpected error: {e}")
+        return None
+
+
+def kill_process_on_port(port=5000):
+    """Kill any process using the specified port"""
+    import platform
+    
+    try:
+        if platform.system() == 'Windows':
+            # Windows: Use netstat to find PID using the port
+            print(f"[Port Check] Checking if port {port} is in use...")
+            result = subprocess.run(
+                ['netstat', '-ano', '-p', 'TCP'],
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+            
+            for line in result.stdout.splitlines():
+                if f':{port}' in line and 'LISTENING' in line:
+                    # Extract PID (last column)
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        pid = parts[-1]
+                        print(f"[Port Check] Port {port} is in use by PID {pid}")
+                        
+                        # Kill the process
+                        try:
+                            subprocess.run(
+                                ['taskkill', '/F', '/PID', pid],
+                                capture_output=True,
+                                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                            )
+                            print(f"[Port Check] Killed process {pid}")
+                            time.sleep(1)  # Wait for port to be released
+                            return True
+                        except Exception as e:
+                            print(f"[Port Check] Failed to kill process {pid}: {e}")
+                            return False
+            
+            print(f"[Port Check] Port {port} is free")
+            return True
+            
+        else:
+            # Linux: Use lsof to find and kill process
+            print(f"[Port Check] Checking if port {port} is in use...")
+            result = subprocess.run(
+                ['lsof', '-ti', f':{port}'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.stdout.strip():
+                pid = result.stdout.strip()
+                print(f"[Port Check] Port {port} is in use by PID {pid}")
+                
+                # Kill the process
+                try:
+                    subprocess.run(['kill', '-9', pid], check=True)
+                    print(f"[Port Check] Killed process {pid}")
+                    time.sleep(1)  # Wait for port to be released
+                    return True
+                except Exception as e:
+                    print(f"[Port Check] Failed to kill process {pid}: {e}")
+                    return False
+            
+            print(f"[Port Check] Port {port} is free")
+            return True
+            
+    except Exception as e:
+        print(f"[Port Check] Error checking port: {e}")
+        return True  # Continue anyway
+
+
+def start_local_api_server():
+    """Start Flask API server in background thread"""
+    global api_server_thread, flask_app
+    
+    # Kill any existing process on port 5000
+    kill_process_on_port(5000)
+    
+    launcher_dir = get_launcher_dir()
+    
+    print("[API Server] Starting Flask server as background thread...")
+    
+    try:
+        # Import Flask app from local_api module
+        # Add launcher_dir to sys.path so we can import local_api
+        if str(launcher_dir) not in sys.path:
+            sys.path.insert(0, str(launcher_dir))
+        
+        # Import the Flask app and run function from local_api
+        try:
+            from local_api import app as flask_app, run_server
+            print("[API Server] Flask app imported successfully")
+        except ImportError as e:
+            print(f"[API Server] Failed to import local_api: {e}")
+            return False
+        
+        # Start Flask server in daemon thread (will shut down when main app exits)
+        def run_flask():
+            try:
+                print("[API Server] Flask thread starting...")
+                run_server()  # This is the Flask app.run() wrapper
+            except Exception as e:
+                print(f"[API Server] Flask thread error: {e}")
+        
+        api_server_thread = Thread(target=run_flask, daemon=True)
+        api_server_thread.start()
         
         # Wait for server to be ready (check multiple times)
         print("[API Server] Waiting for startup...")
-        for i in range(10):
+        for i in range(15):  # Increased to 15 attempts
             time.sleep(1)
             try:
                 response = requests.get('http://127.0.0.1:5000/health', timeout=1)
                 if response.status_code == 200:
-                    print(f"[API Server] Started successfully on http://127.0.0.1:5000")
-                    return True
+                    print(f"[API Server] Health check passed")
+                    
+                    # Extra verification: Check customer-display endpoint
+                    print("[API Server] Verifying customer-display HTML endpoint...")
+                    time.sleep(1)  # Brief delay
+                    try:
+                        cd_response = requests.get('http://127.0.0.1:5000/customer-display', timeout=2)
+                        if cd_response.status_code == 200:
+                            print("[API Server] ✓ Customer display HTML endpoint ready")
+                            
+                            # CRITICAL: Also test the config API endpoint that JavaScript will fetch
+                            print("[API Server] Verifying customer-display config API endpoint...")
+                            time.sleep(1)
+                            try:
+                                config_response = requests.get('http://127.0.0.1:5000/api/customer-display/config', timeout=2)
+                                if config_response.status_code == 200:
+                                    print("[API Server] ✓ Customer display config API endpoint ready")
+                                    print(f"[API Server] ✓ All endpoints verified - server is FULLY ready")
+                                    return True
+                                else:
+                                    print(f"[API Server] Config API returned {config_response.status_code}, retrying...")
+                            except Exception as e:
+                                print(f"[API Server] Config API not ready yet: {e}")
+                                continue
+                        else:
+                            print(f"[API Server] Customer display HTML returned {cd_response.status_code}, retrying...")
+                    except Exception as e:
+                        print(f"[API Server] Customer display HTML not ready yet: {e}")
+                        continue
             except:
-                print(f"[API Server] Attempt {i+1}/10...")
+                print(f"[API Server] Attempt {i+1}/15...")
         
-        print("[API Server] Failed to start after 10 seconds")
-        
-        # Check if process is still running
-        if api_server_process.poll() is not None:
-            # Process died, get error output
-            stderr = api_server_process.stderr.read().decode('utf-8', errors='ignore')
-            print(f"[API Server] Error output: {stderr[:500]}")
-        
+        print("[API Server] Failed to start after 15 seconds")
         return False
+        
     except Exception as e:
         print(f"[API Server] Error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
 def cleanup():
     """Clean up resources on exit"""
-    global api_server_process
+    global api_server_thread
     
     print("\n[Launcher] Shutting down...")
     
-    if api_server_process:
-        try:
-            api_server_process.terminate()
-            api_server_process.wait(timeout=5)
-            print("[API Server] Stopped")
-        except:
-            api_server_process.kill()
-            print("[API Server] Killed")
+    # Flask server thread is daemon, so it will automatically shut down with main process
+    if api_server_thread and api_server_thread.is_alive():
+        print("[API Server] Flask server will shut down with main process (daemon thread)")
+    
+    # Ensure port 5000 is released
+    print("[Cleanup] Releasing port 5000...")
+    kill_process_on_port(5000)
+    
+    print("[Launcher] Goodbye!")
 
 
 class POSWindow(QWebEngineView):
@@ -286,6 +456,7 @@ class CustomerDisplayWindow(QWebEngineView):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Customer Display')
+        self.api_url = 'http://127.0.0.1:5000/customer-display'
         
         # Create SEPARATE in-memory profile for customer display
         # Store as instance variable to prevent premature deletion
@@ -310,8 +481,13 @@ class CustomerDisplayWindow(QWebEngineView):
         # Enable console message output for debugging
         print("[Customer Display] JavaScript enabled with full permissions")
         
-        # Load customer display from local API server (not local file to avoid CORS issues)
-        self.load(QUrl('http://127.0.0.1:5000/'))
+        # DO NOT load URL here - will be loaded after API server is confirmed ready
+        print("[Customer Display] Window initialized, waiting for API server...")
+    
+    def load_display(self):
+        """Load customer display URL after API server is ready"""
+        print(f"[Customer Display] Loading: {self.api_url}")
+        self.load(QUrl(self.api_url))
         
         # Move to secondary monitor if available
         screens = QApplication.screens()
@@ -353,19 +529,35 @@ def main():
     # Load configuration
     config = load_config()
     
-    # Check if customer display is enabled
-    enable_customer_display = config.get('enable_customer_display', False)
+    # Fetch device configuration from API (centralized settings management)
+    device_config = fetch_terminal_config_from_api(config)
+    
+    if device_config:
+        # API available - use centralized configuration
+        print("[Config] Using device configuration from API (centralized management)")
+        config['device_config'] = device_config
+    else:
+        # API unavailable - disable customer display (requires API)
+        print("[Config] API unavailable, customer display will be disabled")
+        config['device_config'] = {
+            'enable_customer_display': False,  # Customer display requires API connection
+            # Other device settings would come from API
+        }
+    
+    # Check if customer display is enabled (from API only)
+    enable_customer_display = config['device_config'].get('enable_customer_display', False)
     
     # Start local API server (REQUIRED for customer display)
+    api_server_ready = False
     if enable_customer_display:
         print("\n[*] Starting Local API Server...")
-        if not start_local_api_server():
-            print("[ERROR] API server failed to start!")
-            print("[ERROR] Customer display and print features will not work")
-            print("[ERROR] Check if port 5000 is already in use")
-            
-            # Wait for user acknowledgment
-            input("\nPress Enter to continue anyway (or Ctrl+C to cancel)...")
+        api_server_ready = start_local_api_server()
+        if not api_server_ready:
+            print("[WARNING] API server failed to start!")
+            print("[WARNING] Customer display and print features may not work")
+            print("[WARNING] Continuing without customer display...")
+            time.sleep(2)  # Brief pause to show warning
+            enable_customer_display = False  # Disable customer display if API fails
     else:
         print("\n[INFO] Local API Server: SKIPPED (customer display disabled)")
     
@@ -395,13 +587,35 @@ def main():
         f.write(f"separator: {separator}\n")
         f.write(f"final pos_url: {pos_url}\n")
     
-    # Create customer display window if enabled
+    # Create customer display window if enabled AND API server is ready
     customer_window = None
-    if enable_customer_display:
+    if enable_customer_display and api_server_ready:
         print("[INFO] Customer display: ENABLED")
         customer_window = CustomerDisplayWindow()
+        
+        # Give extra time for API server to fully stabilize
+        print("[Customer Display] Waiting 3 seconds for API server to stabilize...")
+        time.sleep(3)
+        
+        # Final verification: Test the config endpoint one more time before loading
+        print("[Customer Display] Final verification of config endpoint...")
+        try:
+            test_response = requests.get('http://127.0.0.1:5000/api/customer-display/config', timeout=2)
+            if test_response.status_code == 200:
+                print("[Customer Display] ✓ Config endpoint confirmed working")
+                print(f"[Customer Display] Config data length: {len(test_response.content)} bytes")
+            else:
+                print(f"[Customer Display] ⚠️ Config endpoint returned status {test_response.status_code}")
+        except Exception as e:
+            print(f"[Customer Display] ⚠️ Config endpoint test failed: {e}")
+        
+        # Load display URL after window is created and API is ready
+        customer_window.load_display()
     else:
-        print("[INFO] Customer display: DISABLED (config.enable_customer_display = false)")
+        if enable_customer_display and not api_server_ready:
+            print("[INFO] Customer display: DISABLED (API server not ready)")
+        else:
+            print("[INFO] Customer display: DISABLED (config.enable_customer_display = false)")
     
     # Create main POS window (with reference to customer window)
     pos_window = POSWindow(pos_url, customer_window)
@@ -411,7 +625,8 @@ def main():
     print("[INFO] Main POS: Fullscreen on primary monitor")
     if enable_customer_display:
         print("[INFO] Customer Display: Fullscreen on secondary monitor (if available)")
-        print("[INFO] Local API: http://127.0.0.1:5000")
+        print("[INFO] API Dashboard: http://127.0.0.1:5000")
+        print("[INFO] Customer Display: http://127.0.0.1:5000/customer-display")
     print("[INFO] Press Alt+F4 to exit")
     print("=" * 60)
     
