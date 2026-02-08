@@ -100,3 +100,14 @@ media/users/*
 # Node modules (if any)
 node_modules/
 package-lock.json
+
+# POS Launcher builds and outputs
+pos_launcher_qt/dist/
+pos_launcher_qt/build/
+pos_launcher_qt/releases/
+pos_launcher_qt/receipts_output/
+pos_launcher_qt/*.spec
+pos_launcher_qt/*.pyc
+
+# Browser cache and profiles
+kiosk-profile/

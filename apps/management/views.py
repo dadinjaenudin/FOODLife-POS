@@ -649,7 +649,7 @@ def dashboard_refresh(request):
     # This will be called every 30 seconds via HTMX polling
     
     store_config = Store.get_current()
-    current_session = StoreSession.objects.filter(is_closed=False).first()
+    current_session = StoreSession.get_current(store_config) if store_config else None
     
     # Similar logic as dashboard view...
     # (abbreviated for now, will extract to service function)

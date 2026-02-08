@@ -1072,6 +1072,338 @@ def retry_print_job(job_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def fetch_receipt_template(edge_server, terminal_code, company_code=None, brand_code=None, store_code=None):
+    """Fetch receipt template from Django API"""
+    try:
+        import requests
+        
+        # Build query params with all identifiers
+        params = {'terminal_code': terminal_code}
+        if company_code:
+            params['company_code'] = company_code
+        if brand_code:
+            params['brand_code'] = brand_code
+        if store_code:
+            params['store_code'] = store_code
+        
+        response = requests.get(
+            f"{edge_server}/api/terminal/receipt-template",
+            params=params,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                return data.get('template')
+        
+        return None
+    except Exception as e:
+        print(f"[Receipt Template] Error fetching template: {e}")
+        return None
+
+
+def format_receipt_text(bill_data, template):
+    """Generate formatted receipt text from bill data and template"""
+    lines = []
+    paper_width = template.get('paper_width', 42)
+    
+    # Helper functions
+    def center_text(text):
+        text = str(text)
+        if len(text) >= paper_width:
+            return text[:paper_width]
+        padding = (paper_width - len(text)) // 2
+        return ' ' * padding + text
+    
+    def left_right_text(left, right):
+        left = str(left)
+        right = str(right)
+        space = paper_width - len(left) - len(right)
+        if space < 1:
+            return left[:paper_width - len(right)] + right
+        return left + ' ' * space + right
+    
+    def separator():
+        return '=' * paper_width
+    
+    # Header with logo indicator
+    if template.get('show_logo'):
+        lines.append(center_text('[LOGO]'))
+        lines.append('')
+    
+    # Header lines
+    if template.get('header_line_1'):
+        lines.append(center_text(template['header_line_1']))
+    if template.get('header_line_2'):
+        lines.append(center_text(template['header_line_2']))
+    if template.get('header_line_3'):
+        lines.append(center_text(template['header_line_3']))
+    if template.get('header_line_4'):
+        lines.append(center_text(template['header_line_4']))
+    
+    lines.append(separator())
+    
+    # Receipt info - aligned labels with consistent colon position
+    label_width = 10  # Fixed width for labels to align colons
+    
+    if template.get('show_receipt_number'):
+        lines.append(f"{'No':<{label_width}}: {bill_data.get('bill_number', '-')}")
+    
+    if template.get('show_date_time'):
+        lines.append(f"{'Date':<{label_width}}: {bill_data.get('date', '-')}")
+        lines.append(f"{'Time':<{label_width}}: {bill_data.get('time', '-')}")
+    
+    if template.get('show_cashier_name'):
+        lines.append(f"{'Cashier':<{label_width}}: {bill_data.get('cashier', '-')}")
+    
+    if template.get('show_customer_name') and bill_data.get('customer_name'):
+        lines.append(f"{'Customer':<{label_width}}: {bill_data['customer_name']}")
+    
+    if template.get('show_table_number') and bill_data.get('table_number'):
+        lines.append(f"{'Table':<{label_width}}: {bill_data['table_number']}")
+    
+    lines.append(separator())
+    
+    # Items
+    currency_symbol = 'Rp ' if template.get('show_currency_symbol') else ''
+    
+    for item in bill_data.get('items', []):
+        # Item name
+        item_name = item.get('name', '')
+        if template.get('show_item_code') and item.get('code'):
+            item_name = f"[{item['code']}] {item_name}"
+        
+        lines.append(item_name[:paper_width])
+        
+        # Quantity x Price = Total
+        qty = item.get('quantity', 1)
+        price = item.get('price', 0)
+        total = qty * price
+        
+        if template.get('price_alignment') == 'right':
+            qty_price = f"{qty} x {currency_symbol}{price:,.0f}"
+            total_text = f"{currency_symbol}{total:,.0f}"
+            lines.append(left_right_text(f"  {qty_price}", total_text))
+        else:
+            lines.append(f"  {qty} x {currency_symbol}{price:,.0f} = {currency_symbol}{total:,.0f}")
+        
+        # Modifiers
+        if template.get('show_modifiers') and item.get('modifiers'):
+            for mod in item['modifiers']:
+                lines.append(f"    + {mod['name']}")
+        
+        # Category
+        if template.get('show_item_category') and item.get('category'):
+            lines.append(f"    ({item['category']})")
+    
+    lines.append(separator())
+    
+    # Totals
+    if template.get('show_subtotal'):
+        subtotal = bill_data.get('subtotal', 0)
+        lines.append(left_right_text('Subtotal:', f"{currency_symbol}{subtotal:,.0f}"))
+    
+    if template.get('show_tax') and bill_data.get('tax', 0) > 0:
+        tax = bill_data.get('tax', 0)
+        lines.append(left_right_text('Tax:', f"{currency_symbol}{tax:,.0f}"))
+    
+    if template.get('show_service_charge') and bill_data.get('service_charge', 0) > 0:
+        service = bill_data.get('service_charge', 0)
+        lines.append(left_right_text('Service:', f"{currency_symbol}{service:,.0f}"))
+    
+    if template.get('show_discount') and bill_data.get('discount', 0) > 0:
+        discount = bill_data.get('discount', 0)
+        lines.append(left_right_text('Discount:', f"-{currency_symbol}{discount:,.0f}"))
+    
+    # Grand Total (always show)
+    total = bill_data.get('total', 0)
+    lines.append('')
+    lines.append(left_right_text('TOTAL:', f"{currency_symbol}{total:,.0f}"))
+    lines.append('')
+    
+    # Payment info
+    if template.get('show_payment_method') and bill_data.get('payment_method'):
+        lines.append(f"Payment: {bill_data['payment_method']}")
+    
+    if template.get('show_paid_amount') and bill_data.get('paid_amount'):
+        paid = bill_data.get('paid_amount', 0)
+        lines.append(left_right_text('Paid:', f"{currency_symbol}{paid:,.0f}"))
+    
+    if template.get('show_change') and bill_data.get('change', 0) > 0:
+        change = bill_data.get('change', 0)
+        lines.append(left_right_text('Change:', f"{currency_symbol}{change:,.0f}"))
+    
+    lines.append(separator())
+    
+    # Footer
+    if template.get('footer_line_1'):
+        lines.append(center_text(template['footer_line_1']))
+    if template.get('footer_line_2'):
+        lines.append(center_text(template['footer_line_2']))
+    if template.get('footer_line_3'):
+        lines.append(center_text(template['footer_line_3']))
+    
+    # QR code placeholder
+    if template.get('show_qr_payment') and bill_data.get('qr_code'):
+        lines.append('')
+        lines.append(center_text('[QR CODE]'))
+        lines.append(center_text(bill_data.get('qr_code', '')))
+    
+    # Feed lines
+    feed_lines = template.get('feed_lines', 3)
+    lines.extend([''] * feed_lines)
+    
+    return '\n'.join(lines)
+
+
+@app.route('/api/print/receipt', methods=['POST'])
+def api_print_receipt():
+    """Print receipt with template from database"""
+    try:
+        data = request.json
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Get connection config (use cwd for PyInstaller bundle compatibility)
+        config_path = Path(os.getcwd()) / 'config.json'
+        edge_server = 'http://127.0.0.1:8001'
+        terminal_code = None
+        company_code = None
+        brand_code = None
+        store_code = None
+        
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                json_config = json.load(f)
+                edge_server = json_config.get('edge_server', edge_server)
+                terminal_code = json_config.get('terminal_code')
+                company_code = json_config.get('company_code')
+                brand_code = json_config.get('brand_code')
+                store_code = json_config.get('store_code')
+        except Exception as e:
+            print(f"[Print Receipt] Warning: Could not load config.json: {e}")
+        
+        # Fetch terminal config to get print_to setting
+        print(f"[Print Receipt] Fetching terminal config: {terminal_code}")
+        print_to_destination = 'printer'  # default
+        
+        try:
+            import requests
+            params = {'terminal_code': terminal_code}
+            if company_code:
+                params['company_code'] = company_code
+            if brand_code:
+                params['brand_code'] = brand_code
+            if store_code:
+                params['store_code'] = store_code
+            
+            response = requests.get(f"{edge_server}/api/terminal/config", params=params, timeout=5)
+            if response.status_code == 200:
+                config_data = response.json()
+                if config_data.get('success'):
+                    print_to_destination = config_data.get('terminal', {}).get('device_config', {}).get('print_to', 'printer')
+                    print(f"[Print Receipt] Print destination: {print_to_destination}")
+        except Exception as e:
+            print(f"[Print Receipt] Warning: Could not fetch terminal config: {e}")
+        
+        # Fetch receipt template
+        print(f"[Print Receipt] Fetching template for terminal: {terminal_code}")
+        template = fetch_receipt_template(edge_server, terminal_code, company_code, brand_code, store_code)
+        
+        if not template:
+            return jsonify({
+                'success': False, 
+                'error': 'Receipt template not found'
+            }), 404
+        
+        print(f"[Print Receipt] Template loaded: {template.get('template_name')}")
+        print(f"[Print Receipt] Paper width: {template.get('paper_width')} chars")
+        
+        # Generate formatted receipt text
+        receipt_text = format_receipt_text(data, template)
+        
+        print(f"[Print Receipt] Generated receipt ({len(receipt_text)} chars)")
+        print("[Print Receipt] Preview:")
+        print(receipt_text[:500])  # Print first 500 chars
+        
+        # Check print destination
+        if print_to_destination == 'file':
+            # Save to file instead (in same directory as POSLauncher.exe)
+            from datetime import datetime
+            
+            # Use current working directory (where POSLauncher.exe is located)
+            receipts_dir = Path(os.getcwd()) / 'receipts_output'
+            
+            # Get business date from bill data (format: DD/MM/YYYY -> YYYYMMDD)
+            business_date_str = data.get('date', '')
+            try:
+                if business_date_str and '/' in business_date_str:
+                    # Parse DD/MM/YYYY format
+                    day, month, year = business_date_str.split('/')
+                    business_date_folder = f"{year}{month}{day}"
+                else:
+                    # Fallback to current date if parsing fails
+                    business_date_folder = datetime.now().strftime('%Y%m%d')
+            except:
+                business_date_folder = datetime.now().strftime('%Y%m%d')
+            
+            # Create date-based folder structure
+            date_receipts_dir = receipts_dir / business_date_folder
+            date_receipts_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.now().strftime('%H%M%S')
+            receipt_number = data.get('receipt_number', 'UNKNOWN')
+            filename = f"receipt_{receipt_number}_{timestamp}.txt"
+            filepath = date_receipts_dir / filename
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(receipt_text)
+            
+            print(f"[Print Receipt] SUCCESS - Saved to: {filepath}")
+            return jsonify({
+                'success': True,
+                'print_to': 'file',
+                'file_path': str(filepath),
+                'business_date': business_date_folder,
+                'template': template.get('template_name')
+            }), 200
+        else:
+            # Print to printer
+            # Get printer name from data or use default
+            printer_name = data.get('printer_name')
+            
+            # Prepare print data
+            print_data = {
+                'type': 'receipt',
+                'text': receipt_text,
+                'auto_cut': template.get('auto_cut', True),
+                'printer_name': printer_name
+            }
+            
+            # Print using existing function
+            result = print_to_local_printer(print_data)
+            
+            if result['success']:
+                print(f"[Print Receipt] SUCCESS - Printed to {result.get('printer', 'default printer')}")
+                return jsonify({
+                    'success': True,
+                    'print_to': 'printer',
+                    'printer': result.get('printer'),
+                    'template': template.get('template_name')
+                }), 200
+            else:
+                print(f"[Print Receipt] FAILED - {result.get('error')}")
+                return jsonify(result), 500
+    
+    except Exception as e:
+        print(f"[Print Receipt] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def run_server(host='127.0.0.1', port=5000):
     """Run Flask server"""
     print(f"[Local API] Starting on {host}:{port}")

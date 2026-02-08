@@ -231,6 +231,19 @@ class POSTerminal(models.Model):
         ('kitchen_display', 'Kitchen Display'),
     ]
     
+    PRINTER_TYPE_CHOICES = [
+        ('thermal', 'Thermal Printer (58mm/80mm)'),
+        ('dot_matrix', 'Dot Matrix'),
+        ('laser', 'Laser Printer'),
+        ('none', 'No Printer'),
+    ]
+    
+    EDC_MODE_CHOICES = [
+        ('none', 'No EDC Integration'),
+        ('manual', 'Manual Entry'),
+        ('api', 'API Integration'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='terminals', null=True, blank=True)
     brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name='terminals', null=True, blank=True,
@@ -247,7 +260,55 @@ class POSTerminal(models.Model):
     # Status tracking
     is_active = models.BooleanField(default=True)
     last_heartbeat = models.DateTimeField(null=True, blank=True, help_text='Last ping timestamp')
+    last_seen = models.DateTimeField(null=True, blank=True, help_text='Last activity timestamp')
     last_sync = models.DateTimeField(null=True, blank=True)
+    
+    # Session management for launcher authentication
+    session_token = models.UUIDField(null=True, blank=True, help_text='Launcher session token')
+    token_expires_at = models.DateTimeField(null=True, blank=True, help_text='Session token expiry')
+    
+    # Printer Configuration
+    printer_type = models.CharField(max_length=20, choices=PRINTER_TYPE_CHOICES, default='thermal')
+    receipt_printer_name = models.CharField(max_length=200, blank=True, help_text='Receipt printer name/path')
+    receipt_paper_width = models.IntegerField(default=80, help_text='Paper width in mm (58 or 80)')
+    kitchen_printer_name = models.CharField(max_length=200, blank=True, help_text='Kitchen printer name/path')
+    print_logo_on_receipt = models.BooleanField(default=True)
+    auto_print_receipt = models.BooleanField(default=False, help_text='Auto print after payment')
+    auto_print_kitchen_order = models.BooleanField(default=True, help_text='Auto print kitchen tickets')
+    
+    PRINT_TO_CHOICES = [
+        ('printer', 'Printer'),
+        ('file', 'File'),
+    ]
+    print_to = models.CharField(
+        max_length=20,
+        choices=PRINT_TO_CHOICES,
+        default='printer',
+        help_text='Print destination: printer or file (for development)'
+    )
+    
+    # Hardware Integration
+    cash_drawer_enabled = models.BooleanField(default=False)
+    barcode_scanner_enabled = models.BooleanField(default=False)
+    customer_pole_display_enabled = models.BooleanField(default=False)
+    
+    # Display Configuration
+    enable_customer_display = models.BooleanField(default=False, help_text='Enable dual display for customer')
+    enable_kitchen_display = models.BooleanField(default=False, help_text='Enable kitchen display screen')
+    enable_kitchen_printer = models.BooleanField(default=True, help_text='Enable kitchen printer')
+    
+    # Payment Configuration
+    default_payment_methods = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Default payment methods enabled for this terminal (e.g., ["cash", "qris", "card"])'
+    )
+    edc_integration_mode = models.CharField(
+        max_length=20,
+        choices=EDC_MODE_CHOICES,
+        default='none',
+        help_text='EDC/Card payment integration mode'
+    )
     
     registered_at = models.DateTimeField(auto_now_add=True)
     registered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
@@ -265,9 +326,28 @@ class POSTerminal(models.Model):
     def update_heartbeat(self, ip_address=None):
         """Update last heartbeat and optionally IP address"""
         self.last_heartbeat = timezone.now()
+        self.last_seen = timezone.now()
         if ip_address:
             self.ip_address = ip_address
-        self.save(update_fields=['last_heartbeat', 'ip_address'])
+        self.save(update_fields=['last_heartbeat', 'last_seen', 'ip_address'])
+    
+    def generate_session_token(self, expiry_hours=24):
+        """Generate new session token for launcher authentication"""
+        import uuid
+        self.session_token = uuid.uuid4()
+        self.token_expires_at = timezone.now() + timezone.timedelta(hours=expiry_hours)
+        self.save(update_fields=['session_token', 'token_expires_at'])
+        return self.session_token
+    
+    def validate_session_token(self, token):
+        """Validate session token and check expiry"""
+        if not self.session_token or not self.token_expires_at:
+            return False
+        if str(self.session_token) != str(token):
+            return False
+        if timezone.now() > self.token_expires_at:
+            return False
+        return True
     
     @property
     def is_online(self):

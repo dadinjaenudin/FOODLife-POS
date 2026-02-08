@@ -28,6 +28,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 # Global process trackers
 api_server_thread = None
 flask_app = None
+cleanup_done = False  # Flag to prevent cleanup from running multiple times
 
 
 def get_launcher_dir():
@@ -92,7 +93,7 @@ def validate_terminal(config):
         
         if response.status_code == 200:
             data = response.json()
-            if data.get('success'):
+            if data.get('valid'):
                 print(f"[Terminal] Validated: {terminal_code}")
                 return data
         
@@ -121,13 +122,25 @@ def fetch_terminal_config_from_api(config):
     
     edge_server = config.get('edge_server', 'http://127.0.0.1:8001')
     terminal_code = config.get('terminal_code')
+    company_code = config.get('company_code')
+    brand_code = config.get('brand_code')
+    store_code = config.get('store_code')
     
     print(f"[Config] Fetching device config from API for {terminal_code}...")
     
     try:
+        # Build query params with all identifiers
+        params = {'terminal_code': terminal_code}
+        if company_code:
+            params['company_code'] = company_code
+        if brand_code:
+            params['brand_code'] = brand_code
+        if store_code:
+            params['store_code'] = store_code
+        
         response = requests.get(
             f"{edge_server}/api/terminal/config",
-            params={'terminal_code': terminal_code},
+            params=params,
             timeout=5
         )
         
@@ -317,8 +330,13 @@ def start_local_api_server():
 
 def cleanup():
     """Clean up resources on exit"""
-    global api_server_thread
+    global api_server_thread, cleanup_done
     
+    # Prevent cleanup from running multiple times
+    if cleanup_done:
+        return
+    
+    cleanup_done = True
     print("\n[Launcher] Shutting down...")
     
     # Flask server thread is daemon, so it will automatically shut down with main process
@@ -420,9 +438,16 @@ class POSWindow(QWebEngineView):
         print(f"[POS Console] [{level_name}] {message} (line {lineNumber})", flush=True)
     
     def closeEvent(self, event):
-        """Close customer window when main window closes"""
+        """Close customer window and cleanup resources when main window closes"""
+        print("[POSWindow] Close event triggered - cleaning up...")
+        
+        # Close customer display window
         if self.customer_window:
             self.customer_window.close()
+        
+        # Run cleanup to release port 5000 and stop Flask server
+        cleanup()
+        
         event.accept()
 
 
@@ -573,13 +598,21 @@ def main():
         # Fallback to default
         pos_url = config.get('edge_server', 'http://127.0.0.1:8001') + '/pos/'
     
-    # Add kiosk mode parameter for local API integration
-    print(f"[DEBUG] pos_url BEFORE kiosk: {pos_url}", flush=True)
+    # Add terminal code and kiosk mode parameters
+    terminal_code = config.get('terminal_code')
+    print(f"[DEBUG] pos_url BEFORE params: {pos_url}", flush=True)
     separator = '&' if '?' in pos_url else '?'
+    
+    # Add terminal parameter first, then kiosk
+    if terminal_code:
+        pos_url = f"{pos_url}{separator}terminal={terminal_code}"
+        separator = '&'  # Next parameter uses & separator
+        print(f"[POS] Terminal parameter added: {terminal_code}")
+    
     pos_url = f"{pos_url}{separator}kiosk=1"
     
-    print(f"[POS] URL WITH KIOSK: {pos_url}", flush=True)
-    print(f"[DEBUG] separator used: '{separator}'", flush=True)
+    print(f"[POS] Final URL: {pos_url}", flush=True)
+    print(f"[DEBUG] Parameters: terminal={terminal_code}, kiosk=1", flush=True)
     
     # Write URL to debug file
     with open('url_debug.txt', 'w') as f:

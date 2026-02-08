@@ -1538,6 +1538,106 @@ def payment_modal(request, bill_id):
     return render(request, 'pos/partials/payment_modal.html', context)
 
 
+def send_receipt_to_local_printer(bill, terminal_id=None):
+    """Send receipt to local printer via POS Launcher API"""
+    try:
+        import requests
+        from datetime import datetime
+        
+        print(f"\n[Receipt Print] Starting for Bill #{bill.bill_number}")
+        
+        # Prepare receipt data
+        receipt_data = {
+            'bill_number': bill.bill_number,
+            'receipt_number': bill.bill_number,
+            'date': bill.created_at.strftime('%d/%m/%Y'),
+            'time': bill.created_at.strftime('%H:%M:%S'),
+            'cashier': bill.created_by.get_full_name() if bill.created_by else 'Cashier',
+            'customer_name': bill.customer_name or '',
+            'table_number': bill.table.number if bill.table else '',
+            'items': [],
+            'subtotal': float(bill.subtotal),
+            'tax': float(bill.tax_amount) if bill.tax_amount else 0,
+            'service_charge': float(bill.service_charge) if bill.service_charge else 0,
+            'discount': float(bill.discount_amount) if bill.discount_amount else 0,
+            'total': float(bill.total),
+            'payment_method': '',
+            'paid_amount': float(bill.get_paid_amount()),
+            'change': float(bill.get_paid_amount() - bill.total) if bill.get_paid_amount() > bill.total else 0
+        }
+        
+        # Get payment method (use first payment or combine multiple)
+        payments = bill.payments.all()
+        if payments.count() == 1:
+            receipt_data['payment_method'] = payments.first().get_method_display()
+        elif payments.count() > 1:
+            receipt_data['payment_method'] = 'Split Payment'
+        
+        # Add items
+        for item in bill.items.filter(is_void=False):
+            item_data = {
+                'code': item.product.sku if item.product else '',
+                'name': item.product.name if item.product else item.notes,
+                'quantity': int(item.quantity),
+                'price': float(item.unit_price),
+                'modifiers': []
+            }
+            
+            # Add modifiers
+            if item.modifiers:
+                try:
+                    modifiers_list = json.loads(item.modifiers) if isinstance(item.modifiers, str) else item.modifiers
+                    for mod in modifiers_list:
+                        item_data['modifiers'].append({
+                            'name': mod.get('name', '')
+                        })
+                except:
+                    pass
+            
+            receipt_data['items'].append(item_data)
+        
+        print(f"[Receipt Print] Data prepared: {len(receipt_data['items'])} items")
+        
+        # Send to local API (use host.docker.internal for Docker to reach host machine)
+        local_api_url = 'http://host.docker.internal:5000/api/print/receipt'
+        
+        try:
+            response = requests.post(
+                local_api_url,
+                json=receipt_data,
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    print_to = result.get('print_to', 'printer')
+                    if print_to == 'file':
+                        print(f"[Receipt Print] ✅ SUCCESS - Saved to file: {result.get('file_path')}")
+                    else:
+                        print(f"[Receipt Print] ✅ SUCCESS - Printed to: {result.get('printer')}")
+                    return True
+                else:
+                    print(f"[Receipt Print] ❌ FAILED - {result.get('error')}")
+                    return False
+            else:
+                print(f"[Receipt Print] ❌ HTTP {response.status_code}")
+                return False
+                
+        except requests.exceptions.ConnectionError:
+            print(f"[Receipt Print] ⚠️ Local API not running (port 5000)")
+            return False
+        except requests.exceptions.Timeout:
+            print(f"[Receipt Print] ⚠️ Request timeout")
+            return False
+            
+    except Exception as e:
+        print(f"[Receipt Print] ❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 @login_required
 @require_http_methods(["POST"])
 def process_payment(request, bill_id):
@@ -1723,6 +1823,17 @@ def process_payment(request, bill_id):
                 print(f"[VIEWS] ✅ queue_print_receipt completed")
             except Exception as e:
                 print(f"[VIEWS] ❌ Print queue failed: {e}")
+                import traceback
+                traceback.print_exc()
+                pass  # Don't fail if printing fails
+            
+            # Send receipt to local printer (POS Launcher)
+            print(f"\n[VIEWS] Calling send_receipt_to_local_printer for Bill #{bill.bill_number}")
+            try:
+                send_receipt_to_local_printer(bill, terminal_id=request.session.get('terminal_id'))
+                print(f"[VIEWS] ✅ send_receipt_to_local_printer completed")
+            except Exception as e:
+                print(f"[VIEWS] ❌ Local printer failed: {e}")
                 import traceback
                 traceback.print_exc()
                 pass  # Don't fail if printing fails
