@@ -286,6 +286,10 @@ class POSTerminal(models.Model):
         default='printer',
         help_text='Print destination: printer or file (for development)'
     )
+    print_checker_receipt = models.BooleanField(
+        default=False,
+        help_text='Print checker receipt when sending to kitchen (for marking completed items)'
+    )
     
     # Hardware Integration
     cash_drawer_enabled = models.BooleanField(default=False)

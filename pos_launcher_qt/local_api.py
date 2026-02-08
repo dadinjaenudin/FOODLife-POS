@@ -80,17 +80,14 @@ display_subscribers = []
 # Customer display config
 def load_display_config():
     """Load customer display configuration from Django API"""
-    # Reuse launcher config.json (no need for separate file)
-    config_path = Path(__file__).parent / 'config.json'
+    # Load config.json from same directory as POSLauncher.exe
+    config_path = Path(os.getcwd()) / 'config.json'
     
     # Default connection info (fallback)
     edge_server = 'http://127.0.0.1:8001'
     company_code = 'YOGYA'
     brand_code = 'BOE'
     store_code = 'KPT'
-    
-    print("=" * 70)
-    print("[Config] Loading Customer Display Configuration...")
     
     # Try to load connection info from config.json
     try:
@@ -100,10 +97,8 @@ def load_display_config():
             company_code = json_config.get('company_code', company_code)
             brand_code = json_config.get('brand_code', brand_code)
             store_code = json_config.get('store_code', store_code)
-            print(f"[Config] Connection info from config.json: {edge_server}")
     except Exception as e:
-        print(f"[Config] WARNING: Could not load config.json: {e}")
-        print(f"[Config] Using hardcoded defaults: {edge_server}")
+        print(f"[Config] Warning: Could not load config.json: {e}")
     
     # Try to fetch config from Django API (DATABASE)
     try:
@@ -115,20 +110,10 @@ def load_display_config():
             'store': store_code
         }
         
-        print(f"[Config] Fetching from Django API (Database)...")
-        print(f"[Config] URL: {api_url}")
-        print(f"[Config] Params: company={company_code}, brand={brand_code}, store={store_code}")
-        
         response = requests.get(api_url, params=params, timeout=3)
         if response.status_code == 200:
             api_data = response.json()
             if api_data.get('success'):
-                print(f"[Config] SUCCESS - Config loaded from DATABASE!")
-                print(f"[Config] Brand: {api_data.get('brand', {}).get('name', 'N/A')}")
-                print(f"[Config] Slides: {len(api_data.get('slides', []))} items")
-                print(f"[Config] Running Text: {len(api_data.get('running_text', ''))} chars")
-                print(f"[Config] Theme: {api_data.get('theme', {}).get('primary_color', 'N/A')}")
-                print("=" * 70)
                 return {
                     'edge_server': edge_server,
                     'company_code': company_code,
@@ -140,21 +125,15 @@ def load_display_config():
                     'running_text_speed': api_data.get('running_text_speed', 80),
                     'theme': api_data.get('theme', {})
                 }
-        print(f"[Config] WARNING: API returned status {response.status_code}")
     except Exception as e:
-        print(f"[Config] ERROR: Error fetching from Django API: {e}")
+        print(f"[Config] API error: {e}")
     
     # Fallback to JSON file
-    print(f"[Config] Falling back to JSON file...")
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
-            print(f"[Config] WARNING: Using STATIC JSON file config (not from database)")
-            print("=" * 70)
             return json.load(f)
     except Exception as e:
-        print(f"[Config] ERROR: Error loading JSON file: {e}")
-        print(f"[Config] Using hardcoded defaults")
-        print("=" * 70)
+        print(f"[Config] Error loading JSON: {e}")
         return {
             'edge_server': edge_server,
             'company_code': company_code,
@@ -1402,6 +1381,210 @@ def api_print_receipt():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/print/checker', methods=['POST'])
+def api_print_checker():
+    """Print checker receipt for kitchen staff to mark completed items"""
+    try:
+        data = request.json
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Get connection config (use cwd for PyInstaller bundle compatibility)
+        config_path = Path(os.getcwd()) / 'config.json'
+        edge_server = 'http://127.0.0.1:8001'
+        terminal_code = None
+        company_code = None
+        brand_code = None
+        store_code = None
+        
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                json_config = json.load(f)
+                edge_server = json_config.get('edge_server', edge_server)
+                terminal_code = json_config.get('terminal_code')
+                company_code = json_config.get('company_code')
+                brand_code = json_config.get('brand_code')
+                store_code = json_config.get('store_code')
+        except Exception as e:
+            print(f"[Checker Receipt] Warning: Could not load config.json: {e}")
+        
+        # Fetch terminal config to get print_to setting
+        print(f"[Checker Receipt] Fetching terminal config: {terminal_code}")
+        print_to_destination = 'printer'  # default
+        
+        try:
+            import requests
+            params = {'terminal_code': terminal_code}
+            if company_code:
+                params['company_code'] = company_code
+            if brand_code:
+                params['brand_code'] = brand_code
+            if store_code:
+                params['store_code'] = store_code
+            
+            response = requests.get(f"{edge_server}/api/terminal/config", params=params, timeout=5)
+            if response.status_code == 200:
+                config_data = response.json()
+                if config_data.get('success'):
+                    print_to_destination = config_data.get('terminal', {}).get('device_config', {}).get('print_to', 'printer')
+                    print(f"[Checker Receipt] Print destination: {print_to_destination}")
+        except Exception as e:
+            print(f"[Checker Receipt] Warning: Could not fetch terminal config: {e}")
+        
+        # Generate checker receipt text (simple format with checkboxes)
+        checker_text = format_checker_receipt_text(data)
+        
+        print(f"[Checker Receipt] Generated receipt ({len(checker_text)} chars)")
+        print("[Checker Receipt] Preview:")
+        print(checker_text)
+        
+        # Check print destination
+        if print_to_destination == 'file':
+            # Save to file instead (separate folder from payment receipts)
+            from datetime import datetime
+            
+            checker_receipts_dir = Path(os.getcwd()) / 'checker_receipts_output'
+            
+            # Get business date from data
+            business_date_str = data.get('date', '')
+            try:
+                if business_date_str and '/' in business_date_str:
+                    day, month, year = business_date_str.split('/')
+                    business_date_folder = f"{year}{month}{day}"
+                else:
+                    business_date_folder = datetime.now().strftime('%Y%m%d')
+            except:
+                business_date_folder = datetime.now().strftime('%Y%m%d')
+            
+            date_receipts_dir = checker_receipts_dir / business_date_folder
+            date_receipts_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.now().strftime('%H%M%S')
+            bill_number = data.get('bill_number', 'UNKNOWN')
+            filename = f"checker_{bill_number}_{timestamp}.txt"
+            filepath = date_receipts_dir / filename
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(checker_text)
+            
+            print(f"[Checker Receipt] SUCCESS - Saved to: {filepath}")
+            return jsonify({
+                'success': True,
+                'print_to': 'file',
+                'file_path': str(filepath),
+                'business_date': business_date_folder
+            }), 200
+        else:
+            # Print to printer
+            printer_name = data.get('printer_name')
+            
+            print_data = {
+                'type': 'checker',
+                'text': checker_text,
+                'auto_cut': True,
+                'printer_name': printer_name
+            }
+            
+            result = print_to_local_printer(print_data)
+            
+            if result['success']:
+                print(f"[Checker Receipt] SUCCESS - Printed to {result.get('printer', 'default printer')}")
+                return jsonify({
+                    'success': True,
+                    'print_to': 'printer',
+                    'printer': result.get('printer')
+                }), 200
+            else:
+                print(f"[Checker Receipt] FAILED - {result.get('error')}")
+                return jsonify(result), 500
+    
+    except Exception as e:
+        print(f"[Checker Receipt] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def format_checker_receipt_text(data):
+    """Format checker receipt with checkboxes for kitchen staff
+    
+    Simple format:
+    - Header with bill/table info
+    - List of items with checkbox [ ] for marking completion
+    - Compact format for easy checking
+    """
+    lines = []
+    width = 42  # Standard receipt width
+    
+    # Header
+    lines.append("=" * width)
+    lines.append("CHECKER RECEIPT".center(width))
+    lines.append("(Mark completed items)".center(width))
+    lines.append("=" * width)
+    lines.append("")
+    
+    # Bill info
+    bill_number = data.get('bill_number', '')
+    table_number = data.get('table_number', '')
+    date_str = data.get('date', '')
+    time_str = data.get('time', '')
+    
+    if bill_number:
+        lines.append(f"Bill     : {bill_number}")
+    if table_number:
+        lines.append(f"Table    : {table_number}")
+    lines.append(f"Time     : {date_str} {time_str}")
+    lines.append("")
+    lines.append("-" * width)
+    lines.append("")
+    
+    # Items with checkboxes
+    items = data.get('items', [])
+    for idx, item in enumerate(items, 1):
+        qty = item.get('quantity', 1)
+        name = item.get('name', '')
+        notes = item.get('notes', '')
+        
+        # Item line with checkbox
+        lines.append(f"[ ]  {qty}x {name}")
+        
+        # Add notes if any (indented)
+        if notes:
+            # Wrap notes if too long
+            note_width = width - 5  # Account for indent
+            if len(notes) <= note_width:
+                lines.append(f"     {notes}")
+            else:
+                # Simple word wrap
+                words = notes.split()
+                current_line = "     "
+                for word in words:
+                    if len(current_line) + len(word) + 1 <= width:
+                        current_line += word + " "
+                    else:
+                        lines.append(current_line.rstrip())
+                        current_line = "     " + word + " "
+                if current_line.strip():
+                    lines.append(current_line.rstrip())
+        
+        lines.append("")  # Space between items
+    
+    # Footer
+    lines.append("-" * width)
+    lines.append(f"Total Items: {len(items)}".center(width))
+    lines.append("=" * width)
+    lines.append("")
+    lines.append("CHECK ALL ITEMS BEFORE SERVING".center(width))
+    lines.append("")
+    
+    # Add extra lines for cutting
+    lines.append("")
+    lines.append("")
+    
+    return "\n".join(lines)
 
 
 def run_server(host='127.0.0.1', port=5000):

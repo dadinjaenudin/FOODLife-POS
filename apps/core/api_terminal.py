@@ -224,6 +224,7 @@ def get_terminal_config(request):
                 'auto_print_receipt': terminal.auto_print_receipt,
                 'auto_print_kitchen_order': terminal.auto_print_kitchen_order,
                 'print_to': terminal.print_to,  # printer or file (for development)
+                'print_checker_receipt': terminal.print_checker_receipt,  # print checker receipt for kitchen items
                 
                 # Hardware Configuration
                 'cash_drawer_enabled': terminal.cash_drawer_enabled,
