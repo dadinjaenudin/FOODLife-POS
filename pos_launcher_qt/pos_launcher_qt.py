@@ -353,10 +353,11 @@ def cleanup():
 class POSWindow(QWebEngineView):
     """Main POS window"""
     
-    def __init__(self, url, customer_window=None):
+    def __init__(self, url, customer_window=None, config=None):
         super().__init__()
         self.setWindowTitle('YOGYA POS')
         self.customer_window = customer_window
+        self.config = config
         
         print(f"[POSWindow] Loading URL: {url}", flush=True)
         
@@ -411,11 +412,25 @@ class POSWindow(QWebEngineView):
         if success:
             print("[POSWindow] ✅ Page loaded successfully", flush=True)
             
-            # Inject kiosk mode flag into localStorage
-            self.page().runJavaScript("""
+            # Inject kiosk mode flag and terminal/company/brand/store codes into localStorage
+            terminal_code = self.config.get('terminal_code', '') if self.config else ''
+            company_code = self.config.get('company_code', '') if self.config else ''
+            brand_code = self.config.get('brand_code', '') if self.config else ''
+            store_code = self.config.get('store_code', '') if self.config else ''
+            
+            js_code = f"""
                 localStorage.setItem('kiosk_mode', '1');
+                localStorage.setItem('terminal_code', '{terminal_code}');
+                localStorage.setItem('company_code', '{company_code}');
+                localStorage.setItem('brand_code', '{brand_code}');
+                localStorage.setItem('store_code', '{store_code}');
                 console.log('✅ Kiosk mode set via localStorage');
-            """)
+                console.log('✅ Terminal code set:', '{terminal_code}');
+                console.log('✅ Company code set:', '{company_code}');
+                console.log('✅ Brand code set:', '{brand_code}');
+                console.log('✅ Store code set:', '{store_code}');
+            """
+            self.page().runJavaScript(js_code)
         else:
             print("[POSWindow] ❌ Page failed to load!", flush=True)
             
@@ -650,8 +665,8 @@ def main():
         else:
             print("[INFO] Customer display: DISABLED (config.enable_customer_display = false)")
     
-    # Create main POS window (with reference to customer window)
-    pos_window = POSWindow(pos_url, customer_window)
+    # Create main POS window (with reference to customer window and config)
+    pos_window = POSWindow(pos_url, customer_window, config)
     
     print("=" * 60)
     print("[INFO] POS Launcher running")

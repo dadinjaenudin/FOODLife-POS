@@ -1,83 +1,387 @@
 {% extends 'management/base.html' %}
 
-{% block title %}{% if is_edit %}Edit Terminal{% else %}Create Terminal{% endif %} - Management{% endblock %}
+{% block page_title %}{% if is_edit %}Edit Terminal{% else %}New Terminal{% endif %}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .section-divider {
+        border-top: 2px solid #e5e7eb;
+        margin: 1.5rem 0;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-1.5">
-    <div class="flex justify-between items-center mb-1.5">
+<div class="container mx-auto px-3 py-2">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-3">
         <div>
-            <h1 class="text-xl font-bold text-gray-800">{% if is_edit %}Edit Terminal{% else %}Create Terminal{% endif %}</h1>
-            <p class="text-xs text-gray-600">Terminal configuration for this store</p>
+            <h1 class="text-2xl font-bold text-gray-800">
+                {% if is_edit %}
+                <span class="text-emerald-600">✏️</span> Edit Terminal
+                {% elif is_duplicate %}
+                <span class="text-blue-600">📋</span> Duplicate Terminal
+                {% else %}
+                <span class="text-emerald-600">+</span> New Terminal
+                {% endif %}
+            </h1>
+            {% if is_duplicate %}
+            <p class="text-sm text-gray-600 mt-1">Creating a copy from: <span class="font-semibold text-blue-600">{{ source_terminal_code }}</span></p>
+            {% else %}
+            <p class="text-sm text-gray-600 mt-1">Configure terminal settings and hardware integration</p>
+            {% endif %}
         </div>
-        <a href="{% url 'management:terminals' %}" class="px-2.5 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
-            ← Back to Terminals
+        <a href="{% url 'management:terminals' %}" 
+           class="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Back
         </a>
     </div>
 
     {% if messages %}
-    <div class="mb-2 space-y-2">
+    <div class="mb-3 space-y-2">
         {% for message in messages %}
-        <div class="px-3 py-2 rounded-lg text-xs border
+        <div class="px-3 py-2 rounded-lg text-sm border flex items-start gap-3
             {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-700
-            {% elif message.tags == 'success' %}bg-green-50 border-green-200 text-green-700
+            {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-700
             {% else %}bg-blue-50 border-blue-200 text-blue-700{% endif %}">
-            {{ message }}
+            {% if message.tags == 'error' %}❌{% elif message.tags == 'success' %}✅{% else %}ℹ️{% endif %}
+            <span class="flex-1">{{ message }}</span>
         </div>
         {% endfor %}
     </div>
     {% endif %}
 
     {% if error %}
-    <div class="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg mb-2 text-xs">
-        {{ error }}
+    <div class="bg-red-50 border-l-4 border-red-500 text-red-700 px-3 py-2 rounded mb-3 text-sm">
+        <strong>Error:</strong> {{ error }}
     </div>
     {% endif %}
 
-    <div class="bg-white rounded-lg shadow p-4">
-        <form method="post" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {% csrf_token %}
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Terminal Code</label>
-                <input type="text" name="terminal_code" value="{{ terminal.terminal_code|default:'' }}" required
-                       class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+    <form method="post" class="space-y-3">
+        {% csrf_token %}
+        
+        <!-- Core Information Section -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="bg-gradient-to-r from-slate-700 to-slate-800 px-3 py-2">
+                <h3 class="text-base font-semibold text-black flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    Core Information
+                </h3>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Terminal Name</label>
-                <input type="text" name="terminal_name" value="{{ terminal.terminal_name|default:'' }}" required
-                       class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <div class="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Terminal Code <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" name="terminal_code" value="{{ terminal.terminal_code|default:'' }}" 
+                           required maxlength="20" placeholder="e.g., TERM-001"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <p class="text-xs text-gray-500 mt-1">Unique identifier for this terminal</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Terminal Name <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" name="terminal_name" value="{{ terminal.terminal_name|default:'' }}" 
+                           required maxlength="100" placeholder="e.g., Cashier 1 - Main Floor"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <p class="text-xs text-gray-500 mt-1">Friendly name for identification</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Device Type <span class="text-red-500">*</span>
+                    </label>
+                    <select name="device_type" required
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="">— Select Device Type —</option>
+                        {% for value, label in device_types %}
+                        <option value="{{ value }}" {% if terminal.device_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Type of device running POS</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                    <select name="brand" disabled
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed">
+                        <option value="">Default Store Brand ({{ store_config.brand.name }})</option>
+                        {% for sb in store_brands %}
+                        <option value="{{ sb.brand.id }}" {% if terminal.brand_id == sb.brand.id %}selected{% endif %}>
+                            {{ sb.brand.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">
+                        <span class="inline-flex items-center gap-1">
+                            🔒 Brand is set from Global Filter
+                            <span class="font-medium text-emerald-600">({{ store_config.brand.name }})</span>
+                        </span>
+                    </p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
+                    <input type="text" name="ip_address" value="{{ terminal.ip_address|default:'' }}" 
+                           maxlength="45" placeholder="e.g., 192.168.1.100"
+                           pattern="^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <p class="text-xs text-gray-500 mt-1">Terminal's network IP address</p>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                        <input type="checkbox" name="is_active" value="1" 
+                               class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                               {% if terminal.is_active or not is_edit %}checked{% endif %}>
+                        <span>Active Terminal</span>
+                    </label>
+                    <p class="text-xs text-gray-500 ml-6">Enable this terminal for POS operations</p>
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Device Type</label>
-                <select name="device_type" required
-                        class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select device type</option>
-                    {% for value, label in device_types %}
-                    <option value="{{ value }}" {% if terminal.device_type == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
+        </div>
+
+        <!-- Printer Configuration Section -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="bg-gradient-to-r from-indigo-700 to-indigo-800 px-3 py-2">
+                <h3 class="text-base font-semibold text-black flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                    </svg>
+                    Printer Configuration
+                </h3>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Brand</label>
-                <select name="brand" class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                    <option value="">Default Store Brand</option>
-                    {% for sb in store_brands %}
-                    <option value="{{ sb.brand.id }}" {% if terminal.brand_id == sb.brand.id %}selected{% endif %}>{{ sb.brand.name }}</option>
-                    {% endfor %}
-                </select>
+            <div class="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Printer Type</label>
+                    <select name="printer_type"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="">— Select Printer Type —</option>
+                        {% for value, label in printer_types %}
+                        <option value="{{ value }}" {% if terminal.printer_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Print To :</label>
+                    <select name="print_to"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        {% for value, label in print_to_choices %}
+                        <option value="{{ value }}" {% if terminal.print_to == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Output destination for receipts</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receipt Printer Name (Optional)</label>
+                    <input type="text" name="receipt_printer_name" value="{{ terminal.receipt_printer_name|default:'' }}" 
+                           maxlength="200" placeholder="Leave empty for default printer"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <div class="mt-1.5 space-y-0.5">
+                        <p class="text-xs text-gray-600 font-medium">Examples:</p>
+                        <p class="text-xs text-gray-500">• Empty = Use default printer</p>
+                        <p class="text-xs text-gray-500">• <span class="font-mono bg-gray-100 px-1 rounded">EPSON TM-T82</span> = Local printer by name</p>
+                        <p class="text-xs text-gray-500">• <span class="font-mono bg-gray-100 px-1 rounded">\\SERVER\Receipt</span> = Shared network printer</p>
+                        <p class="text-xs text-gray-500">• <span class="font-mono bg-gray-100 px-1 rounded">\\192.168.1.100\Thermal</span> = IP-based printer</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receipt Paper Width (mm)</label>
+                    <input type="number" name="receipt_paper_width" value="{{ terminal.receipt_paper_width|default:80 }}" 
+                           min="58" max="80" step="1"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <p class="text-xs text-gray-500 mt-1">Usually 58mm or 80mm</p>
+                </div>
+                
+                <!-- Auto Print Options -->
+                <div class="md:col-span-2 space-y-3">
+                    <h4 class="text-sm font-semibold text-gray-700 border-b pb-2">Print Automation</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                                <input type="checkbox" name="auto_print_receipt" value="1"
+                                       class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                       {% if terminal.auto_print_receipt %}checked{% endif %}>
+                                🧾 Auto Print Receipt
+                            </label>
+                            <p class="text-xs text-gray-500 ml-6">Print customer receipt automatically after payment completed</p>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                                <input type="checkbox" name="auto_print_kitchen_order" value="1"
+                                       class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                       {% if terminal.auto_print_kitchen_order %}checked{% endif %}>
+                                🍳 Auto Print Kitchen
+                            </label>
+                            <p class="text-xs text-gray-500 ml-6">Print kitchen order ticket automatically when order is submitted</p>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                                <input type="checkbox" name="print_checker_receipt" value="1"
+                                       class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                       {% if terminal.print_checker_receipt %}checked{% endif %}>
+                                ✅ Print Checker Copy
+                            </label>
+                            <p class="text-xs text-gray-500 ml-6">Print additional copy for kitchen staff to check items before serving</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="md:col-span-2">
-                <label class="inline-flex items-center text-xs text-gray-700">
-                    <input type="checkbox" name="is_active" class="mr-2" {% if terminal.is_active or not is_edit %}checked{% endif %}>
-                    Active terminal
-                </label>
+        </div>
+
+        <!-- Hardware & Display Configuration Section -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="bg-gradient-to-r from-purple-700 to-purple-800 px-3 py-2">
+                <h3 class="text-base font-semibold text-black flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                    </svg>
+                    Hardware & Display Integration
+                </h3>
             </div>
-            <div class="md:col-span-2 flex justify-end gap-2">
-                <a href="{% url 'management:terminals' %}" class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs">Cancel</a>
-                <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold">
-                    {% if is_edit %}Save Changes{% else %}Create Terminal{% endif %}
+            <div class="p-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                    <div class="space-y-2">
+                        <h4 class="text-sm font-semibold text-gray-700 border-b pb-2">Hardware Peripherals</h4>
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="cash_drawer_enabled" value="1"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if terminal.cash_drawer_enabled %}checked{% endif %}>
+                            💵 Cash Drawer
+                        </label>
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="barcode_scanner_enabled" value="1"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if terminal.barcode_scanner_enabled %}checked{% endif %}>
+                            📷 Barcode Scanner
+                        </label>
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="customer_pole_display_enabled" value="1"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if terminal.customer_pole_display_enabled %}checked{% endif %}>
+                            📊 Customer Pole Display
+                        </label>
+                    </div>
+                    <div class="space-y-2">
+                        <h4 class="text-sm font-semibold text-gray-700 border-b pb-2">Display Configuration</h4>
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="enable_customer_display" value="1"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if terminal.enable_customer_display %}checked{% endif %}>
+                            🖥️ Customer Display Screen
+                        </label>
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="enable_kitchen_display" value="1"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if terminal.enable_kitchen_display %}checked{% endif %}>
+                            📺 Kitchen Display System
+                        </label>
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="enable_kitchen_printer" value="1"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if terminal.enable_kitchen_printer %}checked{% endif %}>
+                            🖨️ Kitchen Printer
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Configuration Section -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="bg-gradient-to-r from-amber-700 to-amber-800 px-3 py-2">
+                <h3 class="text-base font-semibold text-black flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
+                    Payment Configuration
+                </h3>
+            </div>
+            <div class="p-3">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">EDC Integration Mode</label>
+                    <select name="edc_integration_mode"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="">⛔ No EDC Hardware</option>
+                        {% for value, label in edc_modes %}
+                        <option value="{{ value }}" {% if terminal.edc_integration_mode == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">EDC hardware for card payment (optional)</p>
+                </div>
+                
+                <div class="border-t border-gray-200 pt-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        💳 Available Payment Methods
+                        <span class="text-xs font-normal text-gray-500 ml-1">(Select which payment buttons to show in POS)</span>
+                    </label>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                            <input type="checkbox" name="default_payment_methods" value="cash"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if 'cash' in terminal.default_payment_methods %}checked{% endif %}>
+                            <span class="text-sm font-medium text-gray-700">💵 Cash</span>
+                        </label>
+                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                            <input type="checkbox" name="default_payment_methods" value="card"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if 'card' in terminal.default_payment_methods %}checked{% endif %}>
+                            <span class="text-sm font-medium text-gray-700">💳 Card</span>
+                        </label>
+                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                            <input type="checkbox" name="default_payment_methods" value="qris"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if 'qris' in terminal.default_payment_methods %}checked{% endif %}>
+                            <span class="text-sm font-medium text-gray-700">📱 QRIS</span>
+                        </label>
+                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                            <input type="checkbox" name="default_payment_methods" value="transfer"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if 'transfer' in terminal.default_payment_methods %}checked{% endif %}>
+                            <span class="text-sm font-medium text-gray-700">🏦 Bank Transfer</span>
+                        </label>
+                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                            <input type="checkbox" name="default_payment_methods" value="ewallet"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if 'ewallet' in terminal.default_payment_methods %}checked{% endif %}>
+                            <span class="text-sm font-medium text-gray-700">💰 E-Wallet</span>
+                        </label>
+                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                            <input type="checkbox" name="default_payment_methods" value="debit"
+                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
+                                   {% if 'debit' in terminal.default_payment_methods %}checked{% endif %}>
+                            <span class="text-sm font-medium text-gray-700">💳 Debit</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">
+                        ℹ️ Only selected payment methods will appear as buttons in the POS payment screen
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="flex items-center justify-between bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2.5">
+            <div class="text-sm text-gray-600">
+                <span class="text-red-500">*</span> Required fields
+            </div>
+            <div class="flex gap-3">
+                <a href="{% url 'management:terminals' %}" 
+                   class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-all duration-200 text-sm font-medium shadow-lg shadow-emerald-500/30">
+                    {% if is_edit %}
+                    💾 Save Changes
+                    {% else %}
+                    ➕ Create Terminal
+                    {% endif %}
                 </button>
             </div>
-        </form>
-    </div>
+        </div>
+    </form>
 </div>
 {% endblock %}

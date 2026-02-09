@@ -1,109 +1,346 @@
 <div class="space-y-4">
-    <h3 class="text-lg font-semibold text-gray-900">Terminal Details</h3>
-    
-    <!-- Terminal Info -->
-    <div class="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+    <!-- Header with Status -->
+    <div class="flex items-start justify-between">
         <div>
-            <p class="text-sm text-gray-600">Terminal Code</p>
-            <p class="font-semibold text-gray-900">{{ terminal.terminal_code }}</p>
-        </div>
-        <div>
-            <p class="text-sm text-gray-600">Device Type</p>
-            <p class="font-semibold text-gray-900">{{ terminal.get_device_type_display }}</p>
-        </div>
-        <div>
-            <p class="text-sm text-gray-600">IP Address</p>
-            <p class="font-semibold text-gray-900">{{ terminal.ip_address|default:"—" }}</p>
-        </div>
-        <div>
-            <p class="text-sm text-gray-600">MAC Address</p>
-            <p class="font-semibold text-gray-900 text-xs">{{ terminal.mac_address|default:"—" }}</p>
-        </div>
-        <div>
-            <p class="text-sm text-gray-600">Created</p>
-            <p class="font-semibold text-gray-900">{{ terminal.registered_at|date:"d M Y H:i" }}</p>
-        </div>
-        <div>
-            <p class="text-sm text-gray-600">Last Heartbeat</p>
-            <p class="font-semibold text-gray-900">
-                {% if terminal.last_heartbeat %}
-                {{ terminal.last_heartbeat|timesince }} ago
+            <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                {{ terminal.terminal_name }}
+                {% if terminal.status == 'online' %}
+                <span class="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
+                    <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                    Online
+                </span>
+                {% elif terminal.status == 'inactive' %}
+                <span class="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">⏸️ Inactive</span>
                 {% else %}
-                Never
+                <span class="px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">⚫ Offline</span>
                 {% endif %}
-            </p>
+            </h3>
+            <p class="text-sm text-gray-600 font-mono mt-1">{{ terminal.terminal_code }}</p>
         </div>
-        <div class="col-span-2">
-            <p class="text-sm text-gray-600">Device Info (User Agent)</p>
-            <p class="text-sm text-gray-900 break-all">{{ terminal.user_agent|default:"—" }}</p>
+        <a href="{% url 'management:terminal_edit' terminal.id %}" 
+           class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg text-xs font-medium transition-colors">
+            ✏️ Edit
+        </a>
+    </div>
+
+    <!-- Core Information -->
+    <div class="bg-gradient-to-r from-slate-50 to-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+        <div class="bg-slate-700 px-3 py-2">
+            <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Core Information
+            </h4>
+        </div>
+        <div class="p-3 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+            <div>
+                <p class="text-gray-600 mb-0.5">Device Type</p>
+                <p class="font-semibold text-gray-900">{{ terminal.get_device_type_display }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Store</p>
+                <p class="font-semibold text-gray-900">{{ terminal.store.name }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Brand</p>
+                <p class="font-semibold text-gray-900">{{ terminal.brand.name }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">IP Address</p>
+                <p class="font-mono font-semibold text-gray-900">{{ terminal.ip_address|default:"—" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">MAC Address</p>
+                <p class="font-mono font-semibold text-gray-900 text-2xs">{{ terminal.mac_address|default:"—" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Registered</p>
+                <p class="font-semibold text-gray-900">{{ terminal.registered_at|date:"d M Y H:i" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Registered By</p>
+                <p class="font-semibold text-gray-900">{{ terminal.registered_by.get_full_name|default:"—" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Last Heartbeat</p>
+                <p class="font-semibold text-gray-900">
+                    {% if terminal.last_heartbeat %}
+                    {{ terminal.last_heartbeat|timesince }} ago
+                    {% else %}
+                    Never
+                    {% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Last Sync</p>
+                <p class="font-semibold text-gray-900">
+                    {% if terminal.last_sync %}
+                    {{ terminal.last_sync|timesince }} ago
+                    {% else %}
+                    Never
+                    {% endif %}
+                </p>
+            </div>
+            {% if terminal.user_agent %}
+            <div class="col-span-2 md:col-span-3">
+                <p class="text-gray-600 mb-0.5">User Agent</p>
+                <p class="text-gray-900 break-all text-2xs">{{ terminal.user_agent }}</p>
+            </div>
+            {% endif %}
         </div>
     </div>
-    
-    <!-- Stats -->
-    <div class="grid grid-cols-2 gap-4">
-        <div class="p-4 bg-blue-50 rounded-lg">
-            <p class="text-sm text-blue-600">Total Bills Processed</p>
-            <p class="text-2xl font-bold text-blue-900">{{ total_bills }}</p>
+
+    <!-- Printer Configuration -->
+    <div class="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-lg border border-indigo-200 overflow-hidden">
+        <div class="bg-indigo-700 px-3 py-2">
+            <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                </svg>
+                Printer Configuration
+            </h4>
         </div>
-        <div class="p-4 bg-green-50 rounded-lg">
-            <p class="text-sm text-green-600">Total Sales</p>
-            <p class="text-2xl font-bold text-green-900">Rp {{ total_sales|floatformat:0 }}</p>
-        </div>
-    </div>
-    
-    <!-- Recent Shifts -->
-    <div>
-        <h4 class="font-semibold text-gray-900 mb-2">Recent Shifts</h4>
-        <div class="space-y-2">
-            {% for shift in recent_shifts %}
-            <div class="p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+        <div class="p-3">
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs mb-3">
                 <div>
-                    <p class="font-medium text-gray-900">{{ shift.cashier.get_full_name }}</p>
-                    <p class="text-sm text-gray-600">
-                        {{ shift.shift_start|date:"d M Y H:i" }}
-                        {% if shift.shift_end %}
-                        - {{ shift.shift_end|date:"H:i" }}
-                        {% else %}
-                        - <span class="text-green-600">Active</span>
-                        {% endif %}
-                    </p>
+                    <p class="text-gray-600 mb-0.5">Printer Type</p>
+                    <p class="font-semibold text-gray-900">{{ terminal.get_printer_type_display|default:"—" }}</p>
                 </div>
-                <div class="text-right">
-                    <p class="font-semibold text-gray-900">Rp {{ shift.total_sales|floatformat:0 }}</p>
+                <div>
+                    <p class="text-gray-600 mb-0.5">Print To</p>
+                    <p class="font-semibold text-gray-900">{{ terminal.get_print_to_display }}</p>
+                </div>
+                <div>
+                    <p class="text-gray-600 mb-0.5">Paper Width</p>
+                    <p class="font-semibold text-gray-900">{{ terminal.receipt_paper_width }} mm</p>
+                </div>
+                <div class="col-span-2 md:col-span-3">
+                    <p class="text-gray-600 mb-0.5">Receipt Printer</p>
+                    <p class="font-semibold text-gray-900">{{ terminal.receipt_printer_name|default:"Not configured" }}</p>
                 </div>
             </div>
-            {% empty %}
-            <p class="text-gray-500 text-center py-4">No shifts yet</p>
-            {% endfor %}
+            <div class="flex flex-wrap gap-1.5">
+                {% if terminal.auto_print_receipt %}
+                <span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-2xs font-medium">✓ Auto Receipt</span>
+                {% endif %}
+                {% if terminal.auto_print_kitchen_order %}
+                <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-2xs font-medium">✓ Auto Kitchen</span>
+                {% endif %}
+                {% if terminal.print_logo_on_receipt %}
+                <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-2xs font-medium">✓ Print Logo</span>
+                {% endif %}
+                {% if terminal.print_checker_receipt %}
+                <span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-2xs font-medium">✓ Checker Copy</span>
+                {% endif %}
+                {% if not terminal.auto_print_receipt and not terminal.auto_print_kitchen_order and not terminal.print_logo_on_receipt and not terminal.print_checker_receipt %}
+                <span class="text-gray-500 text-2xs">No auto-print configured</span>
+                {% endif %}
+            </div>
         </div>
     </div>
-    
+
+    <!-- Hardware & Display -->
+    <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200 overflow-hidden">
+        <div class="bg-purple-700 px-3 py-2">
+            <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                </svg>
+                Hardware & Display Integration
+            </h4>
+        </div>
+        <div class="p-3 grid grid-cols-2 gap-3">
+            <div>
+                <p class="text-xs text-gray-600 mb-2 font-semibold">Hardware Peripherals</p>
+                <div class="space-y-1.5">
+                    <div class="flex items-center gap-2 text-xs">
+                        {% if terminal.cash_drawer_enabled %}
+                        <span class="w-5 h-5 bg-emerald-500 text-white rounded flex items-center justify-center text-2xs">✓</span>
+                        <span class="text-gray-900 font-medium">💵 Cash Drawer</span>
+                        {% else %}
+                        <span class="w-5 h-5 bg-gray-300 text-gray-500 rounded flex items-center justify-center text-2xs">✗</span>
+                        <span class="text-gray-500">💵 Cash Drawer</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        {% if terminal.barcode_scanner_enabled %}
+                        <span class="w-5 h-5 bg-emerald-500 text-white rounded flex items-center justify-center text-2xs">✓</span>
+                        <span class="text-gray-900 font-medium">📷 Barcode Scanner</span>
+                        {% else %}
+                        <span class="w-5 h-5 bg-gray-300 text-gray-500 rounded flex items-center justify-center text-2xs">✗</span>
+                        <span class="text-gray-500">📷 Barcode Scanner</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        {% if terminal.customer_pole_display_enabled %}
+                        <span class="w-5 h-5 bg-emerald-500 text-white rounded flex items-center justify-center text-2xs">✓</span>
+                        <span class="text-gray-900 font-medium">📊 Pole Display</span>
+                        {% else %}
+                        <span class="w-5 h-5 bg-gray-300 text-gray-500 rounded flex items-center justify-center text-2xs">✗</span>
+                        <span class="text-gray-500">📊 Pole Display</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div>
+                <p class="text-xs text-gray-600 mb-2 font-semibold">Display Systems</p>
+                <div class="space-y-1.5">
+                    <div class="flex items-center gap-2 text-xs">
+                        {% if terminal.enable_customer_display %}
+                        <span class="w-5 h-5 bg-emerald-500 text-white rounded flex items-center justify-center text-2xs">✓</span>
+                        <span class="text-gray-900 font-medium">🖥️ Customer Display</span>
+                        {% else %}
+                        <span class="w-5 h-5 bg-gray-300 text-gray-500 rounded flex items-center justify-center text-2xs">✗</span>
+                        <span class="text-gray-500">🖥️ Customer Display</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        {% if terminal.enable_kitchen_display %}
+                        <span class="w-5 h-5 bg-emerald-500 text-white rounded flex items-center justify-center text-2xs">✓</span>
+                        <span class="text-gray-900 font-medium">📺 Kitchen Display</span>
+                        {% else %}
+                        <span class="w-5 h-5 bg-gray-300 text-gray-500 rounded flex items-center justify-center text-2xs">✗</span>
+                        <span class="text-gray-500">📺 Kitchen Display</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        {% if terminal.enable_kitchen_printer %}
+                        <span class="w-5 h-5 bg-emerald-500 text-white rounded flex items-center justify-center text-2xs">✓</span>
+                        <span class="text-gray-900 font-medium">🖨️ Kitchen Printer</span>
+                        {% else %}
+                        <span class="w-5 h-5 bg-gray-300 text-gray-500 rounded flex items-center justify-center text-2xs">✗</span>
+                        <span class="text-gray-500">🖨️ Kitchen Printer</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Configuration -->
+    <div class="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200 overflow-hidden">
+        <div class="bg-amber-700 px-3 py-2">
+            <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                </svg>
+                Payment Configuration
+            </h4>
+        </div>
+        <div class="p-3 space-y-3 text-xs">
+            <div>
+                <p class="text-gray-600 mb-1">EDC Hardware Integration</p>
+                <p class="font-semibold text-gray-900">
+                    {% if terminal.edc_integration_mode %}
+                    ✅ {{ terminal.get_edc_integration_mode_display }}
+                    {% else %}
+                    ⛔ No EDC Hardware
+                    {% endif %}
+                </p>
+            </div>
+            <div class="pt-2 border-t border-gray-200">
+                <p class="text-gray-600 mb-2">💳 Available Payment Methods</p>
+                {% if terminal.default_payment_methods %}
+                <div class="flex flex-wrap gap-1.5">
+                    {% for method in terminal.default_payment_methods %}
+                    <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md text-xs font-medium border border-emerald-200">
+                        {% if method == 'cash' %}💵 Cash
+                        {% elif method == 'card' %}💳 Card
+                        {% elif method == 'qris' %}📱 QRIS
+                        {% elif method == 'transfer' %}🏦 Transfer
+                        {% elif method == 'ewallet' %}💰 E-Wallet
+                        {% elif method == 'debit' %}💳 Debit
+                        {% else %}{{ method }}
+                        {% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+                <p class="text-gray-500 text-2xs mt-1.5">Payment buttons shown in POS payment screen</p>
+                {% else %}
+                <p class="font-semibold text-gray-900">⚠️ No payment methods configured</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Information -->
+    {% if terminal.session_token %}
+    <div class="bg-gradient-to-r from-green-50 to-teal-50 rounded-lg border border-green-200 overflow-hidden">
+        <div class="bg-green-700 px-3 py-2">
+            <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                Active Session
+            </h4>
+        </div>
+        <div class="p-3 grid grid-cols-2 gap-3 text-xs">
+            <div>
+                <p class="text-gray-600 mb-0.5">Session Token</p>
+                <p class="font-mono font-semibold text-gray-900 text-2xs break-all">{{ terminal.session_token }}</p>
+            </div>
+            <div>
+                <p class="text-gray-600 mb-0.5">Token Expires</p>
+                <p class="font-semibold text-gray-900">
+                    {% if terminal.token_expires_at %}
+                    {{ terminal.token_expires_at|date:"d M Y H:i" }}
+                    {% else %}
+                    —
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Statistics -->
+    <div class="grid grid-cols-2 gap-3">
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-4 text-white">
+            <p class="text-xs opacity-90 mb-1">Total Bills Processed</p>
+            <p class="text-3xl font-bold">{{ total_bills|default:0 }}</p>
+        </div>
+        <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg p-4 text-white">
+            <p class="text-xs opacity-90 mb-1">Total Sales</p>
+            <p class="text-2xl font-bold">Rp {{ total_sales|floatformat:0 }}</p>
+        </div>
+    </div>
+
     <!-- Recent Bills -->
-    <div>
-        <h4 class="font-semibold text-gray-900 mb-2">Recent Bills</h4>
-        <div class="space-y-2">
+    {% if recent_bills %}
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div class="bg-slate-100 px-3 py-2 border-b border-gray-200">
+            <h4 class="text-sm font-semibold text-gray-900">Recent Bills (Last 10)</h4>
+        </div>
+        <div class="divide-y divide-gray-200">
             {% for bill in recent_bills %}
-            <div class="p-3 bg-gray-50 rounded-lg flex items-center justify-between">
-                <div>
-                    <p class="font-medium text-gray-900">{{ bill.bill_number }}</p>
-                    <p class="text-sm text-gray-600">
+            <div class="px-3 py-2.5 hover:bg-gray-50 flex items-center justify-between text-xs">
+                <div class="flex-1">
+                    <p class="font-semibold text-gray-900">{{ bill.bill_number }}</p>
+                    <p class="text-gray-600 text-2xs mt-0.5">
                         {{ bill.created_at|date:"d M Y H:i" }}
                         {% if bill.table %} • Table {{ bill.table.table_number }}{% endif %}
                     </p>
                 </div>
                 <div class="text-right">
-                    <p class="font-semibold text-gray-900">Rp {{ bill.grand_total|floatformat:0 }}</p>
-                    <span class="text-xs px-2 py-1 rounded-full 
-                        {% if bill.status == 'closed' %}bg-green-100 text-green-800
-                        {% elif bill.status == 'open' %}bg-blue-100 text-blue-800
-                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    <p class="font-bold text-gray-900">Rp {{ bill.grand_total|floatformat:0 }}</p>
+                    <span class="inline-block px-2 py-0.5 rounded-full text-2xs font-medium mt-1
+                        {% if bill.status == 'paid' %}bg-emerald-100 text-emerald-700
+                        {% elif bill.status == 'open' %}bg-blue-100 text-blue-700
+                        {% else %}bg-gray-100 text-gray-700{% endif %}">
                         {{ bill.get_status_display }}
                     </span>
                 </div>
             </div>
-            {% empty %}
-            <p class="text-gray-500 text-center py-4">No bills yet</p>
             {% endfor %}
         </div>
     </div>
+    {% endif %}
 </div>
+
+<style>
+    .text-2xs {
+        font-size: 0.625rem;
+        line-height: 0.75rem;
+    }
+</style>

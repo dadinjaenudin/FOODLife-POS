@@ -1,0 +1,240 @@
+{% extends 'management/base.html' %}
+
+{% block title %}Customer Display Configurations{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Customer Display Configurations</h1>
+    <p class="text-gray-500">Manage display branding, theme colors, and running text for customer screens</p>
+</div>
+
+<!-- Messages -->
+{% if messages %}
+<div class="mb-4 space-y-2" id="messages-container">
+    {% for message in messages %}
+    <div class="message-alert px-4 py-3 rounded-lg border flex items-start gap-3 shadow-sm
+        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+        {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+        {% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800
+        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        <span class="text-xl">
+            {% if message.tags == 'error' %}❌
+            {% elif message.tags == 'success' %}✅
+            {% elif message.tags == 'warning' %}⚠️
+            {% else %}ℹ️{% endif %}
+        </span>
+        <div class="flex-1">{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Main Content -->
+<div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold">Configurations ({{ configs.count }})</h2>
+        <a href="{% url 'management:display_config_create' %}" 
+           class="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all duration-300 shadow-lg">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add New Config
+        </a>
+    </div>
+
+    {% if configs %}
+    <!-- Configs Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for config in configs %}
+        <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+            <!-- Header with Status -->
+            <div class="p-4 {% if config.is_active %}bg-gradient-to-r from-indigo-50 to-purple-50{% else %}bg-gray-50{% endif %} border-b">
+                <div class="flex items-start justify-between mb-2">
+                    <h3 class="text-lg font-bold text-gray-900">{{ config.brand_name }}</h3>
+                    {% if config.is_active %}
+                    <span class="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                        ✅ Active
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-1 bg-gray-200 text-gray-600 text-xs font-semibold rounded-full">
+                        ⏸️ Inactive
+                    </span>
+                    {% endif %}
+                </div>
+                {% if config.brand_tagline %}
+                <p class="text-sm text-gray-600 italic">{{ config.brand_tagline }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Content -->
+            <div class="p-4 space-y-3">
+                <!-- Scope -->
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Scope</span>
+                    <div class="mt-1">
+                        {% if config.store %}
+                        <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                            🏪 Store: {{ config.store.code }}
+                        </span>
+                        {% elif config.brand %}
+                        <span class="inline-flex items-center px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">
+                            🏷️ Brand: {{ config.brand.code }}
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">
+                            🌐 Company-wide
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Running Text Preview -->
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Running Text</span>
+                    <p class="mt-1 text-sm text-gray-700 line-clamp-2">{{ config.running_text }}</p>
+                </div>
+
+                <!-- Theme Colors -->
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Theme Colors</span>
+                    <div class="mt-1 flex items-center gap-2">
+                        <div class="flex items-center gap-1">
+                            <div class="w-6 h-6 rounded border border-gray-300" style="background-color: {{ config.theme_primary_color }};"></div>
+                            <span class="text-xs text-gray-600">Primary</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-6 h-6 rounded border border-gray-300" style="background-color: {{ config.theme_secondary_color }};"></div>
+                            <span class="text-xs text-gray-600">Secondary</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metadata -->
+                <div class="pt-2 border-t text-xs text-gray-500">
+                    <div>Created: {{ config.created_at|date:"d M Y H:i" }}</div>
+                    {% if config.updated_at != config.created_at %}
+                    <div>Updated: {{ config.updated_at|date:"d M Y H:i" }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="p-4 pt-0 flex gap-2">
+                <button 
+                    onclick="toggleConfig({{ config.id }}, this)"
+                    class="flex-1 px-3 py-2 {% if config.is_active %}bg-amber-100 text-amber-700 hover:bg-amber-200{% else %}bg-green-100 text-green-700 hover:bg-green-200{% endif %} rounded-lg text-sm font-medium transition"
+                    title="{% if config.is_active %}Deactivate{% else %}Activate{% endif %}">
+                    {% if config.is_active %}⏸️ Deactivate{% else %}▶️ Activate{% endif %}
+                </button>
+                <a href="{% url 'management:display_config_edit' config.id %}"
+                   class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition text-center"
+                   title="Edit">
+                    ✏️ Edit
+                </a>
+                <button 
+                    onclick="deleteConfig({{ config.id }}, '{{ config.brand_name|escapejs }}')"
+                    class="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-medium transition"
+                    title="Delete">
+                    🗑️
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <div class="text-6xl mb-4">🎨</div>
+        <p class="text-gray-500 text-lg">No display configurations yet</p>
+        <p class="text-gray-400 text-sm">Create your first configuration to customize customer display appearance</p>
+        <a href="{% url 'management:display_config_create' %}" 
+           class="mt-4 inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Create First Config
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Tips -->
+<div class="mt-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+    <h3 class="font-bold text-indigo-900 mb-2">💡 Configuration Tips</h3>
+    <ul class="text-indigo-800 text-sm space-y-1">
+        <li>• <strong>Scope:</strong> Company-wide applies to all brands/stores, Brand-specific overrides company config</li>
+        <li>• <strong>Running Text:</strong> Displays as scrolling ticker at bottom of customer display</li>
+        <li>• <strong>Theme Colors:</strong> Customize primary, secondary, and billing section colors</li>
+        <li>• <strong>Brand Logo:</strong> Upload logo to MinIO and paste the URL here</li>
+        <li>• <strong>Active Status:</strong> Only active configs are used by customer displays</li>
+    </ul>
+</div>
+
+<script>
+// Toggle config active status
+async function toggleConfig(configId, button) {
+    if (!confirm('Toggle configuration status?')) return;
+    
+    button.disabled = true;
+    const originalText = button.innerHTML;
+    button.innerHTML = '⏳';
+    
+    try {
+        const response = await fetch(`/management/display-configs/${configId}/toggle/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+            button.disabled = false;
+            button.innerHTML = originalText;
+        }
+    } catch (error) {
+        alert('❌ Failed: ' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+// Delete config
+async function deleteConfig(configId, brandName) {
+    if (!confirm(`Delete configuration "${brandName}"?\n\nThis action cannot be undone.`)) return;
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/management/display-configs/${configId}/delete/`;
+    
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = '{{ csrf_token }}';
+    form.appendChild(csrfInput);
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Auto-dismiss messages
+document.addEventListener('DOMContentLoaded', function() {
+    const messages = document.querySelectorAll('.message-alert');
+    messages.forEach((message, index) => {
+        const isError = message.classList.contains('bg-red-50');
+        const delay = isError ? 8000 : 5000;
+        
+        setTimeout(() => {
+            message.style.transition = 'opacity 0.5s, transform 0.5s';
+            message.style.opacity = '0';
+            message.style.transform = 'translateX(100%)';
+            setTimeout(() => message.remove(), 500);
+        }, delay + (index * 200));
+    });
+});
+</script>
+{% endblock %}

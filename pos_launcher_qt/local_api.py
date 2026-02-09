@@ -31,6 +31,16 @@ except ImportError:
     print("[Warning] qrcode library not installed. QR code generation disabled.")
     print("[Warning] Install with: pip install qrcode[pil]")
 
+try:
+    from PIL import Image
+    import requests
+    from io import BytesIO
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("[Warning] PIL library not installed. Logo printing disabled.")
+    print("[Warning] Install with: pip install Pillow requests")
+
 app = Flask(__name__)
 CORS(app)  # Allow requests from webview
 
@@ -235,6 +245,127 @@ def print_linux(data):
         return {'success': False, 'error': str(e)}
 
 
+def image_to_escpos_bitmap(image, max_width=384):
+    """Convert PIL Image to ESC/POS bitmap format
+    
+    Args:
+        image: PIL Image object
+        max_width: Maximum width in pixels (58mm = ~384px, 80mm = ~576px)
+    
+    Returns:
+        bytes: ESC/POS bitmap commands
+    """
+    try:
+        # Convert to grayscale
+        image = image.convert('L')
+        
+        # Resize to fit paper width
+        width, height = image.size
+        if width > max_width:
+            ratio = max_width / width
+            new_size = (max_width, int(height * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            width, height = image.size
+        
+        # Convert to 1-bit (black and white)
+        image = image.convert('1')
+        
+        # Get pixel data
+        pixels = list(image.getdata())
+        
+        # ESC/POS bitmap command: ESC * m nL nH [data]
+        # m = mode (33 = 24-dot double density)
+        ESC = b'\x1b'
+        
+        # Build bitmap data line by line (24 dots vertical)
+        bitmap_data = b''
+        
+        # Process in bands of 24 pixels height
+        for y in range(0, height, 24):
+            # Line start: ESC * 33 (24-dot double density)
+            # Width in bytes
+            n = width
+            nL = n & 0xFF
+            nH = (n >> 8) & 0xFF
+            
+            line_data = ESC + b'*' + bytes([33, nL, nH])
+            
+            # Process each column (24 vertical pixels per column)
+            for x in range(width):
+                # Collect 24 vertical pixels into 3 bytes
+                bytes_data = [0, 0, 0]
+                
+                for k in range(24):
+                    if y + k < height:
+                        pixel_idx = (y + k) * width + x
+                        if pixel_idx < len(pixels):
+                            pixel = pixels[pixel_idx]
+                            # If pixel is black (0), set bit
+                            if pixel == 0:
+                                byte_idx = k // 8
+                                bit_idx = 7 - (k % 8)
+                                bytes_data[byte_idx] |= (1 << bit_idx)
+                
+                line_data += bytes(bytes_data)
+            
+            line_data += b'\n'
+            bitmap_data += line_data
+        
+        return bitmap_data
+        
+    except Exception as e:
+        print(f"[Error] Failed to convert image to ESC/POS: {e}")
+        return b''
+
+
+def download_and_process_logo(logo_url, edge_server, paper_width=58):
+    """Download logo from URL and convert to ESC/POS bitmap
+    
+    Args:
+        logo_url: Relative or absolute URL to download logo from
+        edge_server: Edge server base URL (from config.json)
+        paper_width: Paper width in mm (58 or 80)
+    
+    Returns:
+        bytes: ESC/POS bitmap commands or empty bytes if failed
+    """
+    if not PIL_AVAILABLE:
+        print("[Warning] PIL not available, cannot process logo")
+        return b''
+    
+    try:
+        # Build full URL if logo_url is relative path
+        if logo_url.startswith('/'):
+            full_url = edge_server + logo_url
+        else:
+            full_url = logo_url
+        
+        print(f"[Logo] Downloading from: {full_url}")
+        
+        # Download image
+        response = requests.get(full_url, timeout=5)
+        response.raise_for_status()
+        
+        # Open image
+        image = Image.open(BytesIO(response.content))
+        print(f"[Logo] Image loaded: {image.size[0]}x{image.size[1]} pixels")
+        
+        # Convert paper width to pixels (58mm = ~384px, 80mm = ~576px)
+        max_width = 384 if paper_width == 58 else 576
+        
+        # Convert to ESC/POS bitmap
+        bitmap_data = image_to_escpos_bitmap(image, max_width)
+        
+        if bitmap_data:
+            print(f"[Logo] Converted to ESC/POS bitmap ({len(bitmap_data)} bytes)")
+        
+        return bitmap_data
+        
+    except Exception as e:
+        print(f"[Error] Failed to download/process logo: {e}")
+        return b''
+
+
 def generate_receipt_escpos(data):
     """Generate ESC/POS commands for receipt"""
     # ESC/POS basic commands
@@ -253,12 +384,35 @@ def generate_receipt_escpos(data):
         print("[Print] Using pre-rendered receipt text")
         receipt_text = data.get('text', '')
         
-        # Process the rendered text
-        # Replace [CUT] marker with actual cut command
-        receipt_text = receipt_text.replace('[CUT]', '')
-        
-        # Encode to bytes
-        receipt += receipt_text.encode('utf-8', errors='replace')
+        # Check for logo marker and insert actual logo image
+        if '[LOGO_START]' in receipt_text and '[LOGO_END]' in receipt_text:
+            logo_data = data.get('logo_data', b'')
+            
+            if logo_data:
+                print("[Print] Inserting logo image into receipt")
+                # Split text at logo marker
+                parts = receipt_text.split('[LOGO_START]')
+                before_logo = parts[0]
+                after_logo = parts[1].split('[LOGO_END]')[1] if '[LOGO_END]' in parts[1] else parts[1]
+                
+                # Build receipt with logo
+                receipt += before_logo.encode('utf-8', errors='replace')
+                receipt += ALIGN_CENTER
+                receipt += logo_data
+                receipt += ALIGN_LEFT
+                receipt += after_logo.encode('utf-8', errors='replace')
+            else:
+                # No logo data, just remove markers
+                print("[Print] No logo data, removing markers")
+                receipt_text = receipt_text.replace('[LOGO_START]', '').replace('[LOGO_END]', '')
+                receipt += receipt_text.encode('utf-8', errors='replace')
+        else:
+            # Process the rendered text
+            # Replace [CUT] marker with actual cut command
+            receipt_text = receipt_text.replace('[CUT]', '')
+            
+            # Encode to bytes
+            receipt += receipt_text.encode('utf-8', errors='replace')
         
         # Auto-cut if requested
         if data.get('auto_cut', True):
@@ -1106,9 +1260,10 @@ def format_receipt_text(bill_data, template):
     def separator():
         return '=' * paper_width
     
-    # Header with logo indicator
-    if template.get('show_logo'):
-        lines.append(center_text('[LOGO]'))
+    # Header with logo placeholder (will be replaced with actual image in ESC/POS generation)
+    if template.get('show_logo') and template.get('logo_url'):
+        lines.append('[LOGO_START]')
+        lines.append('[LOGO_END]')
         lines.append('')
     
     # Header lines
@@ -1307,6 +1462,17 @@ def api_print_receipt():
         print("[Print Receipt] Preview:")
         print(receipt_text[:500])  # Print first 500 chars
         
+        # Download and process logo if available
+        logo_data = b''
+        if template.get('show_logo') and template.get('logo_url'):
+            logo_url = template.get('logo_url')
+            paper_width = template.get('paper_width', 58)
+            logo_data = download_and_process_logo(logo_url, edge_server, paper_width)
+            if logo_data:
+                print(f"[Print Receipt] Logo processed successfully ({len(logo_data)} bytes)")
+            else:
+                print("[Print Receipt] Logo processing failed or disabled")
+        
         # Check print destination
         if print_to_destination == 'file':
             # Save to file instead (in same directory as POSLauncher.exe)
@@ -1357,6 +1523,7 @@ def api_print_receipt():
             print_data = {
                 'type': 'receipt',
                 'text': receipt_text,
+                'logo_data': logo_data,
                 'auto_cut': template.get('auto_cut', True),
                 'printer_name': printer_name
             }

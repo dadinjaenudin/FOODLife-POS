@@ -1,0 +1,329 @@
+{% extends 'management/base.html' %}
+
+{% block title %}{% if is_edit %}Edit{% elif is_duplicate %}Duplicate{% else %}Create{% endif %} Receipt Template{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">{% if is_edit %}Edit{% elif is_duplicate %}Duplicate{% else %}Create{% endif %} Receipt Template</h1>
+    <p class="text-gray-500">Configure receipt printing layout and content</p>
+</div>
+
+<!-- Messages -->
+{% if messages %}
+<div class="mb-4 space-y-2">
+    {% for message in messages %}
+    <div class="px-4 py-3 rounded-lg border flex items-start gap-3
+        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+        {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        <span class="text-xl">
+            {% if message.tags == 'error' %}❌
+            {% elif message.tags == 'success' %}✅
+            {% else %}ℹ️{% endif %}
+        </span>
+        <div>{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Form -->
+<form method="post" enctype="multipart/form-data" class="bg-white rounded-lg shadow" x-data="{ showLogo: {% if not is_edit or template.show_logo %}true{% else %}false{% endif %} }">
+    {% csrf_token %}
+    
+    <div class="p-6 space-y-6">
+        <!-- Basic Info -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">📋 Basic Information</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Template Name *</label>
+                    <input type="text" name="template_name" value="{% if is_edit %}{{ template.template_name }}{% endif %}" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" 
+                           required>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Paper Width</label>
+                    <select name="paper_width" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="58" {% if is_edit and template.paper_width == 58 %}selected{% endif %}>58mm (Small)</option>
+                        <option value="80" {% if is_edit and template.paper_width == 80 %}selected{% endif %}>80mm (Large)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scope -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">🎯 Scope</h3>
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Brand (Optional)</label>
+                    <select name="brand" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">Company-wide (All brands)</option>
+                        {% for sb in store_brands %}
+                        <option value="{{ sb.brand.id }}" {% if is_edit and template.brand_id == sb.brand.id %}selected{% endif %}>
+                            {{ sb.brand.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <!-- Store field hidden -->
+                <input type="hidden" name="store" value="">
+            </div>
+        </div>
+
+        <!-- Header Section -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">📄 Header</h3>
+            <div class="space-y-3">
+                <div class="flex items-center gap-2 mb-3">
+                    <input type="checkbox" name="show_logo" value="1" id="show_logo" 
+                           {% if not is_edit or template.show_logo %}checked{% endif %}
+                           x-model="showLogo"
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <label for="show_logo" class="text-sm font-medium text-gray-700">Show Logo</label>
+                </div>
+                
+                <!-- Logo Upload (shown when show_logo is checked) -->
+                <div x-show="showLogo" x-transition class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Upload Logo Image</label>
+                    {% if is_edit and template.logo %}
+                    <div class="mb-3 flex items-center gap-4">
+                        <img src="{{ template.logo.url }}" alt="Current Logo" class="h-20 w-auto border border-gray-300 rounded">
+                        <div class="text-sm text-gray-600">
+                            <p class="font-medium">Current logo</p>
+                            <p class="text-xs">Upload new file to replace</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <input type="file" name="logo" accept="image/*" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                    <p class="text-xs text-gray-500 mt-1">Recommended: PNG or JPG, max 2MB</p>
+                </div>
+                <div>
+                    <input type="text" name="header_line_1" value="{% if is_edit %}{{ template.header_line_1 }}{% endif %}" 
+                           placeholder="Header Line 1 (Store name)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+                <div>
+                    <input type="text" name="header_line_2" value="{% if is_edit %}{{ template.header_line_2 }}{% endif %}" 
+                           placeholder="Header Line 2 (Address)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+                <div>
+                    <input type="text" name="header_line_3" value="{% if is_edit %}{{ template.header_line_3 }}{% endif %}" 
+                           placeholder="Header Line 3 (Phone)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+                <div>
+                    <input type="text" name="header_line_4" value="{% if is_edit %}{{ template.header_line_4 }}{% endif %}" 
+                           placeholder="Header Line 4 (Tax ID)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Display -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">📋 Content Display</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_receipt_number" value="1" 
+                           {% if not is_edit or template.show_receipt_number %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Receipt Number</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_date_time" value="1" 
+                           {% if not is_edit or template.show_date_time %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Date & Time</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_cashier_name" value="1" 
+                           {% if not is_edit or template.show_cashier_name %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Cashier Name</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_customer_name" value="1" 
+                           {% if not is_edit or template.show_customer_name %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Customer Name</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_table_number" value="1" 
+                           {% if not is_edit or template.show_table_number %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Table Number</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_item_code" value="1" 
+                           {% if is_edit and template.show_item_code %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Item Code</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_item_category" value="1" 
+                           {% if is_edit and template.show_item_category %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Item Category</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_modifiers" value="1" 
+                           {% if not is_edit or template.show_modifiers %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Modifiers</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Formatting -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">🎨 Formatting</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Price Alignment</label>
+                    <select name="price_alignment" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="right" {% if not is_edit or template.price_alignment == 'right' %}selected{% endif %}>Right</option>
+                        <option value="left" {% if is_edit and template.price_alignment == 'left' %}selected{% endif %}>Left</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="show_currency_symbol" value="1" 
+                               {% if not is_edit or template.show_currency_symbol %}checked{% endif %}
+                               class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <span class="text-sm font-medium text-gray-700">Show Currency Symbol</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Section -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">💰 Summary Section</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_subtotal" value="1" 
+                           {% if not is_edit or template.show_subtotal %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Subtotal</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_tax" value="1" 
+                           {% if not is_edit or template.show_tax %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Tax</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_service_charge" value="1" 
+                           {% if not is_edit or template.show_service_charge %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Service Charge</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_discount" value="1" 
+                           {% if not is_edit or template.show_discount %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Discount</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_payment_method" value="1" 
+                           {% if not is_edit or template.show_payment_method %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Payment Method</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_paid_amount" value="1" 
+                           {% if not is_edit or template.show_paid_amount %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Paid Amount</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="show_change" value="1" 
+                           {% if not is_edit or template.show_change %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-gray-700">Change</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">📝 Footer</h3>
+            <div class="space-y-3">
+                <div>
+                    <input type="text" name="footer_line_1" value="{% if is_edit %}{{ template.footer_line_1 }}{% endif %}" 
+                           placeholder="Footer Line 1 (Thank you message)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+                <div>
+                    <input type="text" name="footer_line_2" value="{% if is_edit %}{{ template.footer_line_2 }}{% endif %}" 
+                           placeholder="Footer Line 2 (Additional info)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+                <div>
+                    <input type="text" name="footer_line_3" value="{% if is_edit %}{{ template.footer_line_3 }}{% endif %}" 
+                           placeholder="Footer Line 3 (Website/Social)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" name="show_qr_payment" value="1" id="show_qr" 
+                           {% if is_edit and template.show_qr_payment %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <label for="show_qr" class="text-sm font-medium text-gray-700">Show QR Payment Code</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Print Settings -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">🖨️ Print Settings</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="auto_print" value="1" 
+                           {% if not is_edit or template.auto_print %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm font-medium text-gray-700">Auto Print</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="auto_cut" value="1" 
+                           {% if not is_edit or template.auto_cut %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <span class="text-sm font-medium text-gray-700">Auto Cut Paper</span>
+                </label>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Feed Lines</label>
+                    <input type="number" name="feed_lines" value="{% if is_edit %}{{ template.feed_lines }}{% else %}3{% endif %}" 
+                           min="0" max="10" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">⚙️ Status</h3>
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="is_active" value="1" 
+                       {% if not is_edit or template.is_active %}checked{% endif %}
+                       class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                <span class="text-sm font-medium text-gray-700">Active (Enable this template)</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Form Actions -->
+    <div class="px-6 py-4 bg-gray-50 border-t flex justify-between items-center rounded-b-lg">
+        <a href="{% url 'management:receipt_template_list' %}" 
+           class="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
+            Cancel
+        </a>
+        <button type="submit" 
+                class="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white rounded-lg font-medium transition shadow-lg">
+            {% if is_edit %}💾 Update Template{% elif is_duplicate %}📋 Duplicate Template{% else %}✨ Create Template{% endif %}
+        </button>
+    </div>
+</form>
+{% endblock %}

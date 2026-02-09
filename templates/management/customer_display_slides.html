@@ -9,10 +9,286 @@
     <p class="text-gray-500">Manage slideshow images displayed on customer-facing screens</p>
 </div>
 
-<!-- Upload Form -->
-<div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-xl font-bold mb-4">📤 Upload New Slide</h2>
-    <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
+<!-- Main Content -->
+<div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">Manage Slides</h2>
+        
+        <div class="flex items-center gap-4">
+            <!-- Tab Navigation -->
+            <div class="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                <button 
+                    onclick="setView('table')"
+                    id="tableViewBtn"
+                    class="px-3 py-1.5 rounded text-sm font-medium transition bg-gray-100 text-gray-700"
+                    data-view="table">
+                    📋 Table
+                </button>
+                <button 
+                    onclick="setView('grid')"
+                    id="gridViewBtn"
+                    class="px-3 py-1.5 rounded text-sm font-medium transition bg-indigo-600 text-white"
+                    data-view="grid">
+                    🎴 Grid
+                </button>
+                <button 
+                    onclick="setView('upload')"
+                    id="uploadViewBtn"
+                    class="px-3 py-1.5 rounded text-sm font-medium transition bg-gray-100 text-gray-700"
+                    data-view="upload">
+                    📤 Upload
+                </button>
+            </div>
+            
+            <div class="text-sm text-gray-500">
+                {% if context_brand_id %}
+                Showing: Brand-specific + All brands
+                {% else %}
+                <span id="slideCount">{{ slides.count }} slide(s)</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    {% if slides %}
+    
+    <!-- Table View -->
+    <div id="tableView" class="overflow-x-auto" style="display: none;">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">#Order</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Preview</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Brand</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Duration</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Status</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for slide in slides %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-3 py-4">
+                        <span class="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded">
+                            #{{ slide.order }}
+                        </span>
+                    </td>
+                    <td class="px-3 py-4">
+                        <div class="w-24 h-16 bg-gray-100 rounded overflow-hidden">
+                            <img 
+                                src="{{ slide.image_url }}" 
+                                alt="{{ slide.title }}"
+                                class="w-full h-full object-cover"
+                                onerror="this.style.display='none'">
+                        </div>
+                    </td>
+                    <td class="px-3 py-4">
+                        <div class="text-sm font-medium text-gray-900">{{ slide.title }}</div>
+                        {% if slide.description %}
+                        <div class="text-xs text-gray-500 mt-1 line-clamp-1">{{ slide.description }}</div>
+                        {% endif %}
+                        {% if slide.start_date or slide.end_date %}
+                        <div class="text-xs text-gray-400 mt-1">
+                            {% if slide.start_date %}📅 {{ slide.start_date|date:"d/m/Y" }}{% endif %}
+                            {% if slide.end_date %} - {{ slide.end_date|date:"d/m/Y" }}{% endif %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-4">
+                        {% if slide.brand %}
+                        <span class="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                            {{ slide.brand.name }}
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">
+                            🌐 All Brands
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-4">
+                        <span class="text-sm text-gray-900">⏱️ {{ slide.duration_seconds }}s</span>
+                    </td>
+                    <td class="px-3 py-4">
+                        {% if slide.is_active %}
+                        <span class="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                            ✅ Active
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full">
+                            ⏸️ Inactive
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-4">
+                        <div class="flex items-center gap-2">
+                            <button 
+                                onclick="toggleSlide({{ slide.id }}, this)"
+                                class="px-2 py-1 {% if slide.is_active %}bg-amber-100 text-amber-700 hover:bg-amber-200{% else %}bg-green-100 text-green-700 hover:bg-green-200{% endif %} rounded text-xs font-medium transition"
+                                title="{% if slide.is_active %}Deactivate{% else %}Activate{% endif %}">
+                                {% if slide.is_active %}Hide{% else %}Show{% endif %}
+                            </button>
+                            <button 
+                                onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}')"
+                                class="px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded text-xs font-medium transition"
+                                title="Edit">
+                                ✏️ Edit
+                            </button>
+                            <button 
+                                onclick="deleteSlide({{ slide.id }}, '{{ slide.title|escapejs }}')"
+                                class="px-2 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs font-medium transition"
+                                title="Delete">
+                                🗑️
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Grid View -->
+    <div id="gridView" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {% for slide in slides %}
+        <div class="group relative bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+            <!-- Image -->
+            <div class="aspect-[4/3] bg-gray-200 relative overflow-hidden flex items-center justify-center">
+                <img 
+                    src="{{ slide.image_url }}" 
+                    alt="{{ slide.title }}"
+                    class="w-full h-full object-contain absolute inset-0"
+                    onerror="this.style.display='none'">
+                <!-- Fallback icon if image fails to load -->
+                <svg class="w-12 h-12 text-gray-400 z-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                
+                <!-- Status Badge -->
+                <div class="absolute top-2 right-2 flex gap-2">
+                    {% if slide.is_active %}
+                    <span class="px-2 py-1 bg-green-600 text-white text-xs font-semibold rounded-full">
+                        Active
+                    </span>
+                    {% else %}
+                    <span class="px-2 py-1 bg-gray-600 text-white text-xs font-semibold rounded-full">
+                        Inactive
+                    </span>
+                    {% endif %}
+                    
+                    {% if slide.brand %}
+                    <span class="px-2 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-full">
+                        {{ slide.brand.code }}
+                    </span>
+                    {% else %}
+                    <span class="px-2 py-1 bg-purple-600 text-white text-xs font-semibold rounded-full">
+                        All Brands
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <!-- Order Badge -->
+                <div class="absolute top-2 left-2">
+                    <span class="px-2 py-1 bg-black bg-opacity-60 text-white text-xs font-semibold rounded-full">
+                        #{{ slide.order }}
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Info -->
+            <div class="p-4">
+                <h3 class="font-bold text-gray-900 text-lg mb-1 truncate">{{ slide.title }}</h3>
+                
+                {% if slide.description %}
+                <p class="text-gray-600 text-sm mb-3 line-clamp-2">{{ slide.description }}</p>
+                {% endif %}
+                
+                <div class="flex items-center gap-4 text-xs text-gray-500 mb-3">
+                    <span class="flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        {{ slide.duration_seconds }}s
+                    </span>
+                    
+                    {% if slide.start_date or slide.end_date %}
+                    <span class="flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        Scheduled
+                    </span>
+                    {% endif %}
+                </div>
+                
+                {% if slide.start_date or slide.end_date %}
+                <div class="text-xs text-gray-500 mb-3 space-y-1">
+                    {% if slide.start_date %}
+                    <div>Start: {{ slide.start_date|date:"d M Y" }}</div>
+                    {% endif %}
+                    {% if slide.end_date %}
+                    <div>End: {{ slide.end_date|date:"d M Y" }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <div class="text-xs text-gray-400 border-t pt-2 mt-2">
+                    <div>Created: {{ slide.created_at|date:"d M Y H:i" }}</div>
+                    {% if slide.created_by %}
+                    <div>By: {{ slide.created_by.get_full_name|default:slide.created_by.username }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="p-4 pt-0 flex gap-2">
+                <!-- Toggle Active -->
+                <button 
+                    onclick="toggleSlide({{ slide.id }}, this)"
+                    class="flex-1 px-3 py-2 {% if slide.is_active %}bg-yellow-100 text-yellow-700 hover:bg-yellow-200{% else %}bg-green-100 text-green-700 hover:bg-green-200{% endif %} rounded-lg text-sm font-medium transition"
+                    title="{% if slide.is_active %}Deactivate{% else %}Activate{% endif %}">
+                    {% if slide.is_active %}
+                    👁️ Hide
+                    {% else %}
+                    👁️ Show
+                    {% endif %}
+                </button>
+                
+                <!-- Edit -->
+                <button 
+                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}')"
+                    class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition"
+                    title="Edit">
+                    ✏️ Edit
+                </button>
+                
+                <!-- Delete -->
+                <button 
+                    onclick="deleteSlide({{ slide.id }}, '{{ slide.title|escapejs }}')"
+                    class="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-medium transition"
+                    title="Delete">
+                    🗑️
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <div class="text-6xl mb-4">🖼️</div>
+        <p class="text-gray-500 text-lg">No slides uploaded yet</p>
+        <p class="text-gray-400 text-sm">Click Upload tab to add your first slide</p>
+    </div>
+    {% endif %}
+    
+    <!-- Upload View -->
+    <div id="uploadView" style="display: none;">
+        <div class="mb-4 pb-4 border-b border-gray-200">
+            <h3 class="text-lg font-bold text-gray-900 mb-1">📤 Upload New Slide</h3>
+            <p class="text-sm text-gray-500">Select one or multiple images to add to the slideshow. Configure display settings before uploading.</p>
+        </div>
+        
+        <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
         {% csrf_token %}
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -138,168 +414,22 @@
             </div>
         </div>
         
-        <div class="flex gap-3">
-            <button 
-                type="submit" 
-                id="uploadBtn"
-                class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
-                📤 Upload Slide
-            </button>
-            <button 
-                type="button" 
-                onclick="document.getElementById('uploadForm').reset(); document.getElementById('imagePreview').classList.add('hidden')"
-                class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
-                Clear Form
-            </button>
-        </div>
-    </form>
-</div>
-
-<!-- Current Slides Grid -->
-<div class="bg-white rounded-lg shadow p-6">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">Current Slides ({{ slides.count }})</h2>
-        <div class="text-sm text-gray-500">
-            {% if context_brand_id %}
-            Showing: Brand-specific + All brands
-            {% else %}
-            Showing: All slides
-            {% endif %}
-        </div>
-    </div>
-    
-    {% if slides %}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {% for slide in slides %}
-        <div class="group relative bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-            <!-- Image -->
-            <div class="aspect-[4/3] bg-gray-200 relative overflow-hidden flex items-center justify-center">
-                <img 
-                    src="{{ slide.image_url }}" 
-                    alt="{{ slide.title }}"
-                    class="w-full h-full object-contain absolute inset-0"
-                    onerror="this.style.display='none'">
-                <!-- Fallback icon if image fails to load -->
-                <svg class="w-12 h-12 text-gray-400 z-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-                
-                <!-- Status Badge -->
-                <div class="absolute top-2 right-2 flex gap-2">
-                    {% if slide.is_active %}
-                    <span class="px-2 py-1 bg-green-600 text-white text-xs font-semibold rounded-full">
-                        Active
-                    </span>
-                    {% else %}
-                    <span class="px-2 py-1 bg-gray-600 text-white text-xs font-semibold rounded-full">
-                        Inactive
-                    </span>
-                    {% endif %}
-                    
-                    {% if slide.brand %}
-                    <span class="px-2 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-full">
-                        {{ slide.brand.code }}
-                    </span>
-                    {% else %}
-                    <span class="px-2 py-1 bg-purple-600 text-white text-xs font-semibold rounded-full">
-                        All Brands
-                    </span>
-                    {% endif %}
-                </div>
-                
-                <!-- Order Badge -->
-                <div class="absolute top-2 left-2">
-                    <span class="px-2 py-1 bg-black bg-opacity-60 text-white text-xs font-semibold rounded-full">
-                        #{{ slide.order }}
-                    </span>
-                </div>
-            </div>
-            
-            <!-- Info -->
-            <div class="p-4">
-                <h3 class="font-bold text-gray-900 text-lg mb-1 truncate">{{ slide.title }}</h3>
-                
-                {% if slide.description %}
-                <p class="text-gray-600 text-sm mb-3 line-clamp-2">{{ slide.description }}</p>
-                {% endif %}
-                
-                <div class="flex items-center gap-4 text-xs text-gray-500 mb-3">
-                    <span class="flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        {{ slide.duration_seconds }}s
-                    </span>
-                    
-                    {% if slide.start_date or slide.end_date %}
-                    <span class="flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                        </svg>
-                        Scheduled
-                    </span>
-                    {% endif %}
-                </div>
-                
-                {% if slide.start_date or slide.end_date %}
-                <div class="text-xs text-gray-500 mb-3 space-y-1">
-                    {% if slide.start_date %}
-                    <div>Start: {{ slide.start_date|date:"d M Y" }}</div>
-                    {% endif %}
-                    {% if slide.end_date %}
-                    <div>End: {{ slide.end_date|date:"d M Y" }}</div>
-                    {% endif %}
-                </div>
-                {% endif %}
-                
-                <div class="text-xs text-gray-400 border-t pt-2 mt-2">
-                    <div>Created: {{ slide.created_at|date:"d M Y H:i" }}</div>
-                    {% if slide.created_by %}
-                    <div>By: {{ slide.created_by.get_full_name|default:slide.created_by.username }}</div>
-                    {% endif %}
-                </div>
-            </div>
-            
-            <!-- Actions -->
-            <div class="p-4 pt-0 flex gap-2">
-                <!-- Toggle Active -->
+            <div class="flex gap-3">
                 <button 
-                    onclick="toggleSlide({{ slide.id }}, this)"
-                    class="flex-1 px-3 py-2 {% if slide.is_active %}bg-yellow-100 text-yellow-700 hover:bg-yellow-200{% else %}bg-green-100 text-green-700 hover:bg-green-200{% endif %} rounded-lg text-sm font-medium transition"
-                    title="{% if slide.is_active %}Deactivate{% else %}Activate{% endif %}">
-                    {% if slide.is_active %}
-                    👁️ Hide
-                    {% else %}
-                    👁️ Show
-                    {% endif %}
+                    type="submit" 
+                    id="uploadBtn"
+                    class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
+                    📤 Upload Slide
                 </button>
-                
-                <!-- Edit -->
                 <button 
-                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|default:"" }}', '{{ slide.end_date|default:"" }}')"
-                    class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition"
-                    title="Edit">
-                    ✏️ Edit
-                </button>
-                
-                <!-- Delete -->
-                <button 
-                    onclick="deleteSlide({{ slide.id }}, '{{ slide.title|escapejs }}')"
-                    class="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-medium transition"
-                    title="Delete">
-                    🗑️
+                    type="button" 
+                    onclick="document.getElementById('uploadForm').reset(); document.getElementById('imagePreview').classList.add('hidden')"
+                    class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
+                    Clear Form
                 </button>
             </div>
-        </div>
-        {% endfor %}
+        </form>
     </div>
-    {% else %}
-    <div class="text-center py-12">
-        <div class="text-6xl mb-4">🖼️</div>
-        <p class="text-gray-500 text-lg">No slides uploaded yet</p>
-        <p class="text-gray-400 text-sm">Upload your first slide above to get started</p>
-    </div>
-    {% endif %}
 </div>
 
 <!-- Tips -->
@@ -650,6 +780,55 @@ document.getElementById('editModal').addEventListener('click', function(e) {
     if (e.target === this) {
         closeEditModal();
     }
+});
+
+// View Toggle
+let currentView = localStorage.getItem('slidesView') || 'grid'; // Default to grid view
+
+function setView(viewType) {
+    currentView = viewType;
+    localStorage.setItem('slidesView', viewType);
+    
+    const tableView = document.getElementById('tableView');
+    const gridView = document.getElementById('gridView');
+    const uploadView = document.getElementById('uploadView');
+    const tableBtn = document.getElementById('tableViewBtn');
+    const gridBtn = document.getElementById('gridViewBtn');
+    const uploadBtn = document.getElementById('uploadViewBtn');
+    
+    // Hide all views
+    if (tableView) tableView.style.display = 'none';
+    if (gridView) gridView.style.display = 'none';
+    if (uploadView) uploadView.style.display = 'none';
+    
+    // Reset all buttons
+    tableBtn.classList.remove('bg-indigo-600', 'text-white');
+    tableBtn.classList.add('bg-gray-100', 'text-gray-700');
+    gridBtn.classList.remove('bg-indigo-600', 'text-white');
+    gridBtn.classList.add('bg-gray-100', 'text-gray-700');
+    uploadBtn.classList.remove('bg-indigo-600', 'text-white');
+    uploadBtn.classList.add('bg-gray-100', 'text-gray-700');
+    
+    // Show selected view and activate button
+    if (viewType === 'table') {
+        if (tableView) tableView.style.display = 'block';
+        tableBtn.classList.add('bg-indigo-600', 'text-white');
+        tableBtn.classList.remove('bg-gray-100', 'text-gray-700');
+    } else if (viewType === 'upload') {
+        if (uploadView) uploadView.style.display = 'block';
+        uploadBtn.classList.add('bg-indigo-600', 'text-white');
+        uploadBtn.classList.remove('bg-gray-100', 'text-gray-700');
+    } else {
+        // Default: grid view
+        if (gridView) gridView.style.display = 'grid';
+        gridBtn.classList.add('bg-indigo-600', 'text-white');
+        gridBtn.classList.remove('bg-gray-100', 'text-gray-700');
+    }
+}
+
+// Initialize view on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setView(currentView);
 });
 </script>
 {% endblock %}

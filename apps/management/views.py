@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from django.db.models import Sum, Avg, Q, Count
+from django.db.models.deletion import ProtectedError
 from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
@@ -347,6 +348,11 @@ def terminals_list(request):
 
     base_terminals = POSTerminal.objects.filter(store=store_config)
     
+    # Apply context brand filter from session
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        base_terminals = base_terminals.filter(brand_id=context_brand_id)
+    
     # Get all terminals
     terminals = base_terminals.order_by('-is_active', '-last_heartbeat')
     
@@ -422,7 +428,7 @@ def terminals_list(request):
 @manager_required
 def terminal_detail(request, terminal_id):
     """
-    Terminal Details Modal (HTMX partial)
+    Terminal Details Page
     """
     terminal = get_object_or_404(POSTerminal, id=terminal_id)
     
@@ -448,7 +454,7 @@ def terminal_detail(request, terminal_id):
         'total_sales': total_sales,
     }
     
-    return render(request, 'management/partials/terminal_detail.html', context)
+    return render(request, 'management/terminal_detail_page.html', context)
 
 
 @supervisor_required
@@ -516,7 +522,7 @@ def terminal_reactivate(request, terminal_id):
 @supervisor_required
 def terminal_delete(request, terminal_id):
     """
-    Delete Terminal (HTMX endpoint)
+    Delete Terminal
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -524,17 +530,24 @@ def terminal_delete(request, terminal_id):
     terminal = get_object_or_404(POSTerminal, id=terminal_id)
     terminal_code = terminal.terminal_code
     
-    # Delete the terminal
-    terminal.delete()
+    # Try to delete the terminal
+    try:
+        terminal.delete()
+        messages.success(request, f'Terminal {terminal_code} has been deleted successfully')
+    except ProtectedError as e:
+        # Handle protected foreign key error
+        messages.error(request, 
+            f'Cannot delete terminal {terminal_code} because it has related records (shifts, bills, etc). '
+            'Please deactivate the terminal instead of deleting it.')
+    except Exception as e:
+        messages.error(request, f'Error deleting terminal {terminal_code}: {str(e)}')
     
-    # Return empty response (HTMX will remove the row)
-    from django.http import HttpResponse
-    return HttpResponse('')
+    return redirect('management:terminals')
 
 
 @manager_required
 def terminal_create(request):
-    """Create Terminal"""
+    """Create Terminal with Full Configuration"""
     store_config = Store.get_current()
     if not store_config:
         return render(request, 'management/terminal_form.html', {
@@ -545,12 +558,14 @@ def terminal_create(request):
     store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
 
     if request.method == 'POST':
+        # Core fields
         terminal_code = request.POST.get('terminal_code', '').strip()
         terminal_name = request.POST.get('terminal_name', '').strip()
         device_type = request.POST.get('device_type', '').strip()
         brand_id = request.POST.get('brand')
-        is_active = request.POST.get('is_active') == 'on'
+        is_active = request.POST.get('is_active') == '1'
 
+        # Validation
         if not terminal_code:
             messages.error(request, 'Terminal code is required')
         elif not terminal_name:
@@ -560,12 +575,14 @@ def terminal_create(request):
         elif POSTerminal.objects.filter(terminal_code=terminal_code).exists():
             messages.error(request, 'Terminal code already exists')
         else:
+            # Get brand
             if brand_id:
                 brand = get_object_or_404(Brand, id=brand_id)
             else:
                 brand = store_config.brand
 
-            terminal = POSTerminal.objects.create(
+            # Create terminal with core fields
+            terminal = POSTerminal(
                 store=store_config,
                 brand=brand,
                 terminal_code=terminal_code,
@@ -574,13 +591,56 @@ def terminal_create(request):
                 is_active=is_active,
                 registered_by=request.user,
             )
-            messages.success(request, f'Terminal {terminal.terminal_code} created')
+
+            # Network configuration
+            ip_address = request.POST.get('ip_address', '').strip()
+            if ip_address:
+                terminal.ip_address = ip_address
+
+            # Printer configuration
+            printer_type = request.POST.get('printer_type', '').strip()
+            terminal.printer_type = printer_type if printer_type else 'thermal'
+            terminal.receipt_printer_name = request.POST.get('receipt_printer_name', '').strip()
+            terminal.receipt_paper_width = int(request.POST.get('receipt_paper_width', 80))
+            terminal.kitchen_printer_name = request.POST.get('kitchen_printer_name', '').strip()
+            terminal.print_to = request.POST.get('print_to', 'printer')
+            terminal.auto_print_receipt = request.POST.get('auto_print_receipt') == '1'
+            terminal.auto_print_kitchen_order = request.POST.get('auto_print_kitchen_order') == '1'
+            terminal.print_logo_on_receipt = request.POST.get('print_logo_on_receipt') == '1'
+            terminal.print_checker_receipt = request.POST.get('print_checker_receipt') == '1'
+
+            # Hardware integration
+            terminal.cash_drawer_enabled = request.POST.get('cash_drawer_enabled') == '1'
+            terminal.barcode_scanner_enabled = request.POST.get('barcode_scanner_enabled') == '1'
+            terminal.customer_pole_display_enabled = request.POST.get('customer_pole_display_enabled') == '1'
+
+            # Display configuration
+            terminal.enable_customer_display = request.POST.get('enable_customer_display') == '1'
+            terminal.enable_kitchen_display = request.POST.get('enable_kitchen_display') == '1'
+            terminal.enable_kitchen_printer = request.POST.get('enable_kitchen_printer') == '1'
+
+            # Payment configuration
+            edc_mode = request.POST.get('edc_integration_mode', '').strip()
+            terminal.edc_integration_mode = edc_mode if edc_mode else 'none'
+            
+            # Handle default payment methods (multiple select)
+            default_payment_methods = request.POST.getlist('default_payment_methods')
+            if default_payment_methods:
+                terminal.default_payment_methods = default_payment_methods
+            else:
+                terminal.default_payment_methods = []
+
+            terminal.save()
+            messages.success(request, f'Terminal {terminal.terminal_code} created successfully ✓')
             return redirect('management:terminals')
 
     context = {
         'store_config': store_config,
         'store_brands': store_brands,
         'device_types': POSTerminal.DEVICE_TYPE_CHOICES,
+        'printer_types': POSTerminal.PRINTER_TYPE_CHOICES,
+        'print_to_choices': POSTerminal.PRINT_TO_CHOICES,
+        'edc_modes': POSTerminal.EDC_MODE_CHOICES,
         'is_edit': False,
     }
     return render(request, 'management/terminal_form.html', context)
@@ -588,7 +648,7 @@ def terminal_create(request):
 
 @manager_required
 def terminal_edit(request, terminal_id):
-    """Edit Terminal"""
+    """Edit Terminal with Full Configuration"""
     store_config = Store.get_current()
     if not store_config:
         return render(request, 'management/terminal_form.html', {
@@ -600,12 +660,14 @@ def terminal_edit(request, terminal_id):
     store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
 
     if request.method == 'POST':
+        # Core fields
         terminal_code = request.POST.get('terminal_code', '').strip()
         terminal_name = request.POST.get('terminal_name', '').strip()
         device_type = request.POST.get('device_type', '').strip()
         brand_id = request.POST.get('brand')
-        is_active = request.POST.get('is_active') == 'on'
+        is_active = request.POST.get('is_active') == '1'
 
+        # Validation
         if not terminal_code:
             messages.error(request, 'Terminal code is required')
         elif not terminal_name:
@@ -615,27 +677,196 @@ def terminal_edit(request, terminal_id):
         elif POSTerminal.objects.filter(terminal_code=terminal_code).exclude(id=terminal.id).exists():
             messages.error(request, 'Terminal code already exists')
         else:
+            # Get brand
             if brand_id:
                 brand = get_object_or_404(Brand, id=brand_id)
             else:
                 brand = store_config.brand
 
+            # Update core fields
             terminal.terminal_code = terminal_code
             terminal.terminal_name = terminal_name
             terminal.device_type = device_type
             terminal.brand = brand
             terminal.is_active = is_active
-            terminal.save()
 
-            messages.success(request, f'Terminal {terminal.terminal_code} updated')
+            # Network configuration
+            ip_address = request.POST.get('ip_address', '').strip()
+            if ip_address:
+                terminal.ip_address = ip_address
+
+            # Printer configuration
+            printer_type = request.POST.get('printer_type', '').strip()
+            terminal.printer_type = printer_type if printer_type else 'thermal'
+            terminal.receipt_printer_name = request.POST.get('receipt_printer_name', '').strip()
+            terminal.receipt_paper_width = int(request.POST.get('receipt_paper_width', 80))
+            terminal.kitchen_printer_name = request.POST.get('kitchen_printer_name', '').strip()
+            terminal.print_to = request.POST.get('print_to', 'printer')
+            terminal.auto_print_receipt = request.POST.get('auto_print_receipt') == '1'
+            terminal.auto_print_kitchen_order = request.POST.get('auto_print_kitchen_order') == '1'
+            terminal.print_logo_on_receipt = request.POST.get('print_logo_on_receipt') == '1'
+            terminal.print_checker_receipt = request.POST.get('print_checker_receipt') == '1'
+
+            # Hardware integration
+            terminal.cash_drawer_enabled = request.POST.get('cash_drawer_enabled') == '1'
+            terminal.barcode_scanner_enabled = request.POST.get('barcode_scanner_enabled') == '1'
+            terminal.customer_pole_display_enabled = request.POST.get('customer_pole_display_enabled') == '1'
+
+            # Display configuration
+            terminal.enable_customer_display = request.POST.get('enable_customer_display') == '1'
+            terminal.enable_kitchen_display = request.POST.get('enable_kitchen_display') == '1'
+            terminal.enable_kitchen_printer = request.POST.get('enable_kitchen_printer') == '1'
+
+            # Payment configuration
+            edc_mode = request.POST.get('edc_integration_mode', '').strip()
+            terminal.edc_integration_mode = edc_mode if edc_mode else 'none'
+            
+            # Handle default payment methods (multiple select)
+            default_payment_methods = request.POST.getlist('default_payment_methods')
+            if default_payment_methods:
+                terminal.default_payment_methods = default_payment_methods
+            else:
+                terminal.default_payment_methods = []
+
+            terminal.save()
+            messages.success(request, f'Terminal {terminal.terminal_code} updated successfully ✓')
             return redirect('management:terminals')
 
     context = {
         'store_config': store_config,
         'store_brands': store_brands,
         'device_types': POSTerminal.DEVICE_TYPE_CHOICES,
+        'printer_types': POSTerminal.PRINTER_TYPE_CHOICES,
+        'print_to_choices': POSTerminal.PRINT_TO_CHOICES,
+        'edc_modes': POSTerminal.EDC_MODE_CHOICES,
         'terminal': terminal,
         'is_edit': True,
+    }
+    return render(request, 'management/terminal_form.html', context)
+
+
+@manager_required
+def terminal_duplicate(request, terminal_id):
+    """Duplicate Terminal - Copy configuration from existing terminal"""
+    store_config = Store.get_current()
+    if not store_config:
+        return render(request, 'management/terminal_form.html', {
+            'error': 'Store configuration not found. Please run setup wizard first.',
+        })
+
+    # Get the terminal to duplicate
+    source_terminal = get_object_or_404(POSTerminal, id=terminal_id)
+    
+    from apps.core.models import StoreBrand, Brand
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    # If this is a POST request, create the new terminal
+    if request.method == 'POST':
+        # Core fields
+        terminal_code = request.POST.get('terminal_code', '').strip()
+        terminal_name = request.POST.get('terminal_name', '').strip()
+        device_type = request.POST.get('device_type', '').strip()
+        brand_id = request.POST.get('brand')
+        is_active = request.POST.get('is_active') == '1'
+
+        # Validation
+        if not terminal_code:
+            messages.error(request, 'Terminal code is required')
+        elif not terminal_name:
+            messages.error(request, 'Terminal name is required')
+        elif device_type not in dict(POSTerminal.DEVICE_TYPE_CHOICES):
+            messages.error(request, 'Invalid device type')
+        elif POSTerminal.objects.filter(terminal_code=terminal_code).exists():
+            messages.error(request, 'Terminal code already exists')
+        else:
+            # Get brand
+            if brand_id:
+                brand = get_object_or_404(Brand, id=brand_id)
+            else:
+                brand = store_config.brand
+
+            # Create terminal with core fields
+            terminal = POSTerminal(
+                store=store_config,
+                brand=brand,
+                terminal_code=terminal_code,
+                terminal_name=terminal_name,
+                device_type=device_type,
+                is_active=is_active,
+                registered_by=request.user,
+            )
+
+            # Network configuration
+            ip_address = request.POST.get('ip_address', '').strip()
+            if ip_address:
+                terminal.ip_address = ip_address
+
+            # Printer configuration
+            printer_type = request.POST.get('printer_type', '').strip()
+            terminal.printer_type = printer_type if printer_type else 'thermal'
+            terminal.receipt_printer_name = request.POST.get('receipt_printer_name', '').strip()
+            terminal.receipt_paper_width = int(request.POST.get('receipt_paper_width', 80))
+            terminal.kitchen_printer_name = request.POST.get('kitchen_printer_name', '').strip()
+            terminal.print_to = request.POST.get('print_to', 'printer')
+            terminal.auto_print_receipt = request.POST.get('auto_print_receipt') == '1'
+            terminal.auto_print_kitchen_order = request.POST.get('auto_print_kitchen_order') == '1'
+            terminal.print_logo_on_receipt = request.POST.get('print_logo_on_receipt') == '1'
+            terminal.print_checker_receipt = request.POST.get('print_checker_receipt') == '1'
+
+            # Hardware integration
+            terminal.cash_drawer_enabled = request.POST.get('cash_drawer_enabled') == '1'
+            terminal.barcode_scanner_enabled = request.POST.get('barcode_scanner_enabled') == '1'
+            terminal.customer_pole_display_enabled = request.POST.get('customer_pole_display_enabled') == '1'
+
+            # Display configuration
+            terminal.enable_customer_display = request.POST.get('enable_customer_display') == '1'
+            terminal.enable_kitchen_display = request.POST.get('enable_kitchen_display') == '1'
+            terminal.enable_kitchen_printer = request.POST.get('enable_kitchen_printer') == '1'
+
+            # Payment configuration
+            edc_mode = request.POST.get('edc_integration_mode', '').strip()
+            terminal.edc_integration_mode = edc_mode if edc_mode else 'none'
+            
+            # Handle default payment methods (multiple select)
+            default_payment_methods = request.POST.getlist('default_payment_methods')
+            if default_payment_methods:
+                terminal.default_payment_methods = default_payment_methods
+            else:
+                terminal.default_payment_methods = []
+
+            terminal.save()
+            messages.success(request, f'Terminal {terminal.terminal_code} created successfully from duplicate ✓')
+            return redirect('management:terminals')
+
+    # Generate suggested terminal code (add -copy or increment number)
+    import re
+    base_code = source_terminal.terminal_code
+    
+    # Try to find a unique code
+    counter = 2
+    suggested_code = f"{base_code}-copy"
+    while POSTerminal.objects.filter(terminal_code=suggested_code).exists():
+        suggested_code = f"{base_code}-{counter}"
+        counter += 1
+
+    # Create a copy of the terminal object for the form (without saving)
+    from copy import copy
+    terminal_copy = copy(source_terminal)
+    terminal_copy.id = None  # Clear ID so it's treated as new
+    terminal_copy.terminal_code = suggested_code
+    terminal_copy.terminal_name = f"{source_terminal.terminal_name} (Copy)"
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'device_types': POSTerminal.DEVICE_TYPE_CHOICES,
+        'printer_types': POSTerminal.PRINTER_TYPE_CHOICES,
+        'print_to_choices': POSTerminal.PRINT_TO_CHOICES,
+        'edc_modes': POSTerminal.EDC_MODE_CHOICES,
+        'terminal': terminal_copy,
+        'is_edit': False,
+        'is_duplicate': True,
+        'source_terminal_code': source_terminal.terminal_code,
     }
     return render(request, 'management/terminal_form.html', context)
 
@@ -4626,6 +4857,700 @@ def customer_display_slide_toggle(request, slide_id):
         
     except Exception as e:
         logger.error(f"Error toggling slide: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+# ==========================================
+# CUSTOMER DISPLAY CONFIG MANAGEMENT
+# ==========================================
+
+@manager_required
+def display_config_list(request):
+    """List all customer display configurations"""
+    from apps.core.models import CustomerDisplayConfig
+    
+    store_config, error_response = check_store_config(request, 'management/display_config_list.html')
+    if error_response:
+        return error_response
+    
+    # Get configs for current store
+    configs = CustomerDisplayConfig.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store').order_by('-created_at')
+    
+    # Apply brand context filter
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        configs = configs.filter(
+            Q(brand_id=context_brand_id) | Q(brand__isnull=True)
+        )
+    
+    context = {
+        'store_config': store_config,
+        'configs': configs,
+        'context_brand_id': context_brand_id,
+    }
+    
+    return render(request, 'management/display_config_list.html', context)
+
+
+@manager_required
+def display_config_create(request):
+    """Create new customer display configuration"""
+    from apps.core.models import CustomerDisplayConfig
+    
+    store_config, error_response = check_store_config(request, 'management/display_config_form.html')
+    if error_response:
+        return error_response
+    
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    
+    if request.method == 'POST':
+        brand_name = request.POST.get('brand_name', '').strip()
+        brand_logo_url = request.POST.get('brand_logo_url', '').strip()
+        brand_tagline = request.POST.get('brand_tagline', '').strip()
+        running_text = request.POST.get('running_text', '').strip()
+        running_text_speed = request.POST.get('running_text_speed', '50')
+        theme_primary_color = request.POST.get('theme_primary_color', '#4F46E5').strip()
+        theme_secondary_color = request.POST.get('theme_secondary_color', '#10B981').strip()
+        theme_text_color = request.POST.get('theme_text_color', '#1F2937').strip()
+        theme_billing_bg = request.POST.get('theme_billing_bg', 'gradient').strip()
+        theme_billing_text = request.POST.get('theme_billing_text', '#FFFFFF').strip()
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+        
+        # Validation
+        if not brand_name:
+            messages.error(request, 'Brand name is required')
+        elif not running_text:
+            messages.error(request, 'Running text is required')
+        else:
+            try:
+                # Check unique constraint
+                existing = CustomerDisplayConfig.objects.filter(
+                    company=store_config.company,
+                    brand_id=brand_id if brand_id else None,
+                    store_id=store_id if store_id else None
+                ).exists()
+                
+                if existing:
+                    messages.error(request, 'Configuration already exists for this company/brand/store combination')
+                else:
+                    config = CustomerDisplayConfig(
+                        company=store_config.company,
+                        brand_id=brand_id if brand_id else None,
+                        store_id=store_id if store_id else None,
+                        brand_name=brand_name,
+                        brand_logo_url=brand_logo_url,
+                        brand_tagline=brand_tagline,
+                        running_text=running_text,
+                        running_text_speed=int(running_text_speed),
+                        theme_primary_color=theme_primary_color,
+                        theme_secondary_color=theme_secondary_color,
+                        theme_text_color=theme_text_color,
+                        theme_billing_bg=theme_billing_bg,
+                        theme_billing_text=theme_billing_text,
+                        is_active=is_active,
+                        created_by=request.user
+                    )
+                    config.save()
+                    messages.success(request, f'Display config "{brand_name}" created successfully')
+                    return redirect('management:display_config_list')
+            except Exception as e:
+                messages.error(request, f'Error creating config: {str(e)}')
+    
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'is_edit': False,
+    }
+    
+    return render(request, 'management/display_config_form.html', context)
+
+
+@manager_required
+def display_config_edit(request, config_id):
+    """Edit customer display configuration"""
+    from apps.core.models import CustomerDisplayConfig
+    
+    store_config, error_response = check_store_config(request, 'management/display_config_form.html')
+    if error_response:
+        return error_response
+    
+    config = get_object_or_404(CustomerDisplayConfig, id=config_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    
+    if request.method == 'POST':
+        brand_name = request.POST.get('brand_name', '').strip()
+        brand_logo_url = request.POST.get('brand_logo_url', '').strip()
+        brand_tagline = request.POST.get('brand_tagline', '').strip()
+        running_text = request.POST.get('running_text', '').strip()
+        running_text_speed = request.POST.get('running_text_speed', '50')
+        theme_primary_color = request.POST.get('theme_primary_color', '#4F46E5').strip()
+        theme_secondary_color = request.POST.get('theme_secondary_color', '#10B981').strip()
+        theme_text_color = request.POST.get('theme_text_color', '#1F2937').strip()
+        theme_billing_bg = request.POST.get('theme_billing_bg', 'gradient').strip()
+        theme_billing_text = request.POST.get('theme_billing_text', '#FFFFFF').strip()
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+        
+        # Validation
+        if not brand_name:
+            messages.error(request, 'Brand name is required')
+        elif not running_text:
+            messages.error(request, 'Running text is required')
+        else:
+            try:
+                # Check unique constraint (excluding current record)
+                existing = CustomerDisplayConfig.objects.filter(
+                    company=store_config.company,
+                    brand_id=brand_id if brand_id else None,
+                    store_id=store_id if store_id else None
+                ).exclude(id=config_id).exists()
+                
+                if existing:
+                    messages.error(request, 'Configuration already exists for this company/brand/store combination')
+                else:
+                    config.brand_id = brand_id if brand_id else None
+                    config.store_id = store_id if store_id else None
+                    config.brand_name = brand_name
+                    config.brand_logo_url = brand_logo_url
+                    config.brand_tagline = brand_tagline
+                    config.running_text = running_text
+                    config.running_text_speed = int(running_text_speed)
+                    config.theme_primary_color = theme_primary_color
+                    config.theme_secondary_color = theme_secondary_color
+                    config.theme_text_color = theme_text_color
+                    config.theme_billing_bg = theme_billing_bg
+                    config.theme_billing_text = theme_billing_text
+                    config.is_active = is_active
+                    config.updated_by = request.user
+                    config.save()
+                    messages.success(request, f'Display config "{brand_name}" updated successfully')
+                    return redirect('management:display_config_list')
+            except Exception as e:
+                messages.error(request, f'Error updating config: {str(e)}')
+    
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'config': config,
+        'is_edit': True,
+    }
+    
+    return render(request, 'management/display_config_form.html', context)
+
+
+@manager_required
+@require_POST
+def display_config_delete(request, config_id):
+    """Delete customer display configuration"""
+    from apps.core.models import CustomerDisplayConfig
+    
+    store_config = Store.get_current()
+    if not store_config:
+        messages.error(request, 'Store configuration not found')
+        return redirect('management:display_config_list')
+    
+    try:
+        config = get_object_or_404(CustomerDisplayConfig, id=config_id, company=store_config.company)
+        config_name = config.brand_name
+        config.delete()
+        messages.success(request, f'Display config "{config_name}" deleted successfully')
+    except Exception as e:
+        messages.error(request, f'Error deleting config: {str(e)}')
+    
+    return redirect('management:display_config_list')
+
+
+@manager_required
+@require_POST
+def display_config_toggle(request, config_id):
+    """Toggle customer display configuration active status"""
+    from apps.core.models import CustomerDisplayConfig
+    
+    store_config = Store.get_current()
+    if not store_config:
+        return JsonResponse({'success': False, 'error': 'Store not configured'}, status=400)
+    
+    try:
+        config = get_object_or_404(CustomerDisplayConfig, id=config_id, company=store_config.company)
+        config.is_active = not config.is_active
+        config.updated_by = request.user
+        config.save()
+        
+        status = 'activated' if config.is_active else 'deactivated'
+        messages.success(request, f'Config "{config.brand_name}" {status}!')
+        
+        return JsonResponse({
+            'success': True,
+            'is_active': config.is_active,
+            'message': f'Config {status}'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error toggling config: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+# ===================== Receipt Template Views =====================
+
+@manager_required
+def receipt_template_list(request):
+    """List all receipt templates"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config, error_response = check_store_config(request, 'management/receipt_template_list.html')
+    if error_response:
+        return error_response
+    
+    # Get templates for current store
+    templates = ReceiptTemplate.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store').order_by('-created_at')
+    
+    # Apply brand context filter
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        templates = templates.filter(
+            Q(brand_id=context_brand_id) | Q(brand__isnull=True)
+        )
+    
+    context = {
+        'store_config': store_config,
+        'templates': templates,
+        'context_brand_id': context_brand_id,
+    }
+    
+    return render(request, 'management/receipt_template_list.html', context)
+
+
+@manager_required
+def receipt_template_create(request):
+    """Create new receipt template"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config, error_response = check_store_config(request, 'management/receipt_template_form.html')
+    if error_response:
+        return error_response
+    
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        paper_width = request.POST.get('paper_width', '58')
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+        
+        # Header fields
+        show_logo = request.POST.get('show_logo') == '1'
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+        header_line_3 = request.POST.get('header_line_3', '').strip()
+        header_line_4 = request.POST.get('header_line_4', '').strip()
+        
+        # Content display options
+        show_receipt_number = request.POST.get('show_receipt_number') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_cashier_name = request.POST.get('show_cashier_name') == '1'
+        show_customer_name = request.POST.get('show_customer_name') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_item_code = request.POST.get('show_item_code') == '1'
+        show_item_category = request.POST.get('show_item_category') == '1'
+        show_modifiers = request.POST.get('show_modifiers') == '1'
+        
+        # Formatting
+        price_alignment = request.POST.get('price_alignment', 'right')
+        show_currency_symbol = request.POST.get('show_currency_symbol') == '1'
+        
+        # Summary section
+        show_subtotal = request.POST.get('show_subtotal') == '1'
+        show_tax = request.POST.get('show_tax') == '1'
+        show_service_charge = request.POST.get('show_service_charge') == '1'
+        show_discount = request.POST.get('show_discount') == '1'
+        show_payment_method = request.POST.get('show_payment_method') == '1'
+        show_paid_amount = request.POST.get('show_paid_amount') == '1'
+        show_change = request.POST.get('show_change') == '1'
+        
+        # Footer
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+        footer_line_3 = request.POST.get('footer_line_3', '').strip()
+        show_qr_payment = request.POST.get('show_qr_payment') == '1'
+        
+        # Print settings
+        auto_print = request.POST.get('auto_print') == '1'
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+        
+        # Validation
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template = ReceiptTemplate(
+                    company=store_config.company,
+                    brand_id=brand_id if brand_id else None,
+                    store_id=store_id if store_id else None,
+                    template_name=template_name,
+                    is_active=is_active,
+                    paper_width=int(paper_width),
+                    show_logo=show_logo,
+                    header_line_1=header_line_1,
+                    header_line_2=header_line_2,
+                    header_line_3=header_line_3,
+                    header_line_4=header_line_4,
+                    show_receipt_number=show_receipt_number,
+                    show_date_time=show_date_time,
+                    show_cashier_name=show_cashier_name,
+                    show_customer_name=show_customer_name,
+                    show_table_number=show_table_number,
+                    show_item_code=show_item_code,
+                    show_item_category=show_item_category,
+                    show_modifiers=show_modifiers,
+                    price_alignment=price_alignment,
+                    show_currency_symbol=show_currency_symbol,
+                    show_subtotal=show_subtotal,
+                    show_tax=show_tax,
+                    show_service_charge=show_service_charge,
+                    show_discount=show_discount,
+                    show_payment_method=show_payment_method,
+                    show_paid_amount=show_paid_amount,
+                    show_change=show_change,
+                    footer_line_1=footer_line_1,
+                    footer_line_2=footer_line_2,
+                    footer_line_3=footer_line_3,
+                    show_qr_payment=show_qr_payment,
+                    auto_print=auto_print,
+                    auto_cut=auto_cut,
+                    feed_lines=int(feed_lines),
+                    created_by=request.user
+                )
+                
+                # Handle logo upload
+                if 'logo' in request.FILES:
+                    template.logo = request.FILES['logo']
+                
+                template.save()
+                messages.success(request, f'Receipt template "{template_name}" created successfully')
+                return redirect('management:receipt_template_list')
+            except Exception as e:
+                messages.error(request, f'Error creating template: {str(e)}')
+    
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'is_edit': False,
+    }
+    
+    return render(request, 'management/receipt_template_form.html', context)
+
+
+@manager_required
+def receipt_template_edit(request, template_id):
+    """Edit receipt template"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config, error_response = check_store_config(request, 'management/receipt_template_form.html')
+    if error_response:
+        return error_response
+    
+    template = get_object_or_404(ReceiptTemplate, id=template_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        paper_width = request.POST.get('paper_width', '58')
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+        
+        # Header fields
+        show_logo = request.POST.get('show_logo') == '1'
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+        header_line_3 = request.POST.get('header_line_3', '').strip()
+        header_line_4 = request.POST.get('header_line_4', '').strip()
+        
+        # Content display options
+        show_receipt_number = request.POST.get('show_receipt_number') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_cashier_name = request.POST.get('show_cashier_name') == '1'
+        show_customer_name = request.POST.get('show_customer_name') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_item_code = request.POST.get('show_item_code') == '1'
+        show_item_category = request.POST.get('show_item_category') == '1'
+        show_modifiers = request.POST.get('show_modifiers') == '1'
+        
+        # Formatting
+        price_alignment = request.POST.get('price_alignment', 'right')
+        show_currency_symbol = request.POST.get('show_currency_symbol') == '1'
+        
+        # Summary section
+        show_subtotal = request.POST.get('show_subtotal') == '1'
+        show_tax = request.POST.get('show_tax') == '1'
+        show_service_charge = request.POST.get('show_service_charge') == '1'
+        show_discount = request.POST.get('show_discount') == '1'
+        show_payment_method = request.POST.get('show_payment_method') == '1'
+        show_paid_amount = request.POST.get('show_paid_amount') == '1'
+        show_change = request.POST.get('show_change') == '1'
+        
+        # Footer
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+        footer_line_3 = request.POST.get('footer_line_3', '').strip()
+        show_qr_payment = request.POST.get('show_qr_payment') == '1'
+        
+        # Print settings
+        auto_print = request.POST.get('auto_print') == '1'
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+        
+        # Validation
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template.brand_id = brand_id if brand_id else None
+                template.store_id = store_id if store_id else None
+                template.template_name = template_name
+                template.is_active = is_active
+                template.paper_width = int(paper_width)
+                template.show_logo = show_logo
+                template.header_line_1 = header_line_1
+                template.header_line_2 = header_line_2
+                template.header_line_3 = header_line_3
+                template.header_line_4 = header_line_4
+                template.show_receipt_number = show_receipt_number
+                template.show_date_time = show_date_time
+                template.show_cashier_name = show_cashier_name
+                template.show_customer_name = show_customer_name
+                template.show_table_number = show_table_number
+                template.show_item_code = show_item_code
+                template.show_item_category = show_item_category
+                template.show_modifiers = show_modifiers
+                template.price_alignment = price_alignment
+                template.show_currency_symbol = show_currency_symbol
+                template.show_subtotal = show_subtotal
+                template.show_tax = show_tax
+                template.show_service_charge = show_service_charge
+                template.show_discount = show_discount
+                template.show_payment_method = show_payment_method
+                template.show_paid_amount = show_paid_amount
+                template.show_change = show_change
+                template.footer_line_1 = footer_line_1
+                template.footer_line_2 = footer_line_2
+                template.footer_line_3 = footer_line_3
+                template.show_qr_payment = show_qr_payment
+                template.auto_print = auto_print
+                template.auto_cut = auto_cut
+                template.feed_lines = int(feed_lines)
+                template.updated_by = request.user
+                
+                # Handle logo upload
+                if 'logo' in request.FILES:
+                    template.logo = request.FILES['logo']
+                
+                template.save()
+                messages.success(request, f'Receipt template "{template_name}" updated successfully')
+                return redirect('management:receipt_template_list')
+            except Exception as e:
+                messages.error(request, f'Error updating template: {str(e)}')
+    
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'template': template,
+        'is_edit': True,
+    }
+    
+    return render(request, 'management/receipt_template_form.html', context)
+
+
+@manager_required
+def receipt_template_duplicate(request, template_id):
+    """Duplicate receipt template"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config, error_response = check_store_config(request, 'management/receipt_template_form.html')
+    if error_response:
+        return error_response
+    
+    # Get original template
+    original = get_object_or_404(ReceiptTemplate, id=template_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        paper_width = request.POST.get('paper_width', '58')
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+        
+        # Header fields
+        show_logo = request.POST.get('show_logo') == '1'
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+        header_line_3 = request.POST.get('header_line_3', '').strip()
+        header_line_4 = request.POST.get('header_line_4', '').strip()
+        
+        # Content display options
+        show_receipt_number = request.POST.get('show_receipt_number') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_cashier_name = request.POST.get('show_cashier_name') == '1'
+        show_customer_name = request.POST.get('show_customer_name') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_item_code = request.POST.get('show_item_code') == '1'
+        show_item_category = request.POST.get('show_item_category') == '1'
+        show_modifiers = request.POST.get('show_modifiers') == '1'
+        
+        # Formatting
+        price_alignment = request.POST.get('price_alignment', 'right')
+        show_currency_symbol = request.POST.get('show_currency_symbol') == '1'
+        
+        # Summary section
+        show_subtotal = request.POST.get('show_subtotal') == '1'
+        show_tax = request.POST.get('show_tax') == '1'
+        show_service_charge = request.POST.get('show_service_charge') == '1'
+        show_discount = request.POST.get('show_discount') == '1'
+        show_payment_method = request.POST.get('show_payment_method') == '1'
+        show_paid_amount = request.POST.get('show_paid_amount') == '1'
+        show_change = request.POST.get('show_change') == '1'
+        
+        # Footer
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+        footer_line_3 = request.POST.get('footer_line_3', '').strip()
+        show_qr_payment = request.POST.get('show_qr_payment') == '1'
+        
+        # Print settings
+        auto_print = request.POST.get('auto_print') == '1'
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+        
+        # Validation
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template = ReceiptTemplate(
+                    company=store_config.company,
+                    brand_id=brand_id if brand_id else None,
+                    store_id=store_id if store_id else None,
+                    template_name=template_name,
+                    is_active=is_active,
+                    paper_width=int(paper_width),
+                    show_logo=show_logo,
+                    header_line_1=header_line_1,
+                    header_line_2=header_line_2,
+                    header_line_3=header_line_3,
+                    header_line_4=header_line_4,
+                    show_receipt_number=show_receipt_number,
+                    show_date_time=show_date_time,
+                    show_cashier_name=show_cashier_name,
+                    show_customer_name=show_customer_name,
+                    show_table_number=show_table_number,
+                    show_item_code=show_item_code,
+                    show_item_category=show_item_category,
+                    show_modifiers=show_modifiers,
+                    price_alignment=price_alignment,
+                    show_currency_symbol=show_currency_symbol,
+                    show_subtotal=show_subtotal,
+                    show_tax=show_tax,
+                    show_service_charge=show_service_charge,
+                    show_discount=show_discount,
+                    show_payment_method=show_payment_method,
+                    show_paid_amount=show_paid_amount,
+                    show_change=show_change,
+                    footer_line_1=footer_line_1,
+                    footer_line_2=footer_line_2,
+                    footer_line_3=footer_line_3,
+                    show_qr_payment=show_qr_payment,
+                    auto_print=auto_print,
+                    auto_cut=auto_cut,
+                    feed_lines=int(feed_lines),
+                    created_by=request.user
+                )
+                template.save()
+                messages.success(request, f'Receipt template "{template_name}" duplicated successfully')
+                return redirect('management:receipt_template_list')
+            except Exception as e:
+                messages.error(request, f'Error duplicating template: {str(e)}')
+    
+    # Pre-fill form with original template data but change name
+    template = original
+    template.template_name = f"{original.template_name} (Copy)"
+    template.is_active = False  # Set duplicate as inactive by default
+    
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'template': template,
+        'is_edit': False,
+        'is_duplicate': True,
+    }
+    
+    return render(request, 'management/receipt_template_form.html', context)
+
+
+@manager_required
+@require_POST
+def receipt_template_delete(request, template_id):
+    """Delete receipt template"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config = Store.get_current()
+    if not store_config:
+        messages.error(request, 'Store configuration not found')
+        return redirect('management:receipt_template_list')
+    
+    try:
+        template = get_object_or_404(ReceiptTemplate, id=template_id, company=store_config.company)
+        template_name = template.template_name
+        template.delete()
+        messages.success(request, f'Receipt template "{template_name}" deleted successfully')
+    except Exception as e:
+        messages.error(request, f'Error deleting template: {str(e)}')
+    
+    return redirect('management:receipt_template_list')
+
+
+@manager_required
+@require_POST
+def receipt_template_toggle(request, template_id):
+    """Toggle receipt template active status"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config = Store.get_current()
+    if not store_config:
+        return JsonResponse({'success': False, 'error': 'Store not configured'}, status=400)
+    
+    try:
+        template = get_object_or_404(ReceiptTemplate, id=template_id, company=store_config.company)
+        template.is_active = not template.is_active
+        template.updated_by = request.user
+        template.save()
+        
+        status = 'activated' if template.is_active else 'deactivated'
+        messages.success(request, f'Template "{template.template_name}" {status}!')
+        
+        return JsonResponse({
+            'success': True,
+            'is_active': template.is_active,
+            'message': f'Template {status}'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error toggling template: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': str(e)

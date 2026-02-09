@@ -5,14 +5,24 @@
          // ==========================================
          // 🔧 CONFIGURATION - Easy to modify!
          // ==========================================
-         paymentMethods: [
+         allPaymentMethods: [
              { id: 'cash', label: 'Cash', icon: '💵', requiresReference: false },
              { id: 'card', label: 'Card', icon: '💳', requiresReference: true, referencePlaceholder: 'Last 4 digits / Approval code' },
              { id: 'qris', label: 'QRIS', icon: '📱', requiresReference: true, referencePlaceholder: 'Transaction ID' },
              { id: 'ewallet', label: 'E-Wallet', icon: '🏦', requiresReference: true, referencePlaceholder: 'Reference number' },
              { id: 'transfer', label: 'Transfer', icon: '🔄', requiresReference: true, referencePlaceholder: 'Transfer reference' },
-             { id: 'voucher', label: 'Voucher', icon: '🎟️', requiresReference: true, referencePlaceholder: 'Voucher code' }
+             { id: 'voucher', label: 'Voucher', icon: '🎟️', requiresReference: true, referencePlaceholder: 'Voucher code' },
+             { id: 'debit', label: 'Debit', icon: '💳', requiresReference: true, referencePlaceholder: 'Card number / Approval code' }
          ],
+         
+         // Filter payment methods based on terminal configuration
+         get paymentMethods() {
+             const allowedMethods = {{ terminal_payment_methods|safe }};
+             if (!allowedMethods || allowedMethods.length === 0) {
+                 return this.allPaymentMethods;
+             }
+             return this.allPaymentMethods.filter(method => allowedMethods.includes(method.id));
+         },
          
          quickAmounts: [
              { label: 'Exact', getValue: (remaining) => remaining, color: 'green' },

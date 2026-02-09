@@ -16,9 +16,25 @@ urlpatterns = [
     path('terminals/create/', views.terminal_create, name='terminal_create'),
     path('terminals/<uuid:terminal_id>/', views.terminal_detail, name='terminal_detail'),
     path('terminals/<uuid:terminal_id>/edit/', views.terminal_edit, name='terminal_edit'),
+    path('terminals/<uuid:terminal_id>/duplicate/', views.terminal_duplicate, name='terminal_duplicate'),
     path('terminals/<uuid:terminal_id>/deactivate/', views.terminal_deactivate, name='terminal_deactivate'),
     path('terminals/<uuid:terminal_id>/reactivate/', views.terminal_reactivate, name='terminal_reactivate'),
     path('terminals/<uuid:terminal_id>/delete/', views.terminal_delete, name='terminal_delete'),
+    
+    # Customer Display Config
+    path('display-configs/', views.display_config_list, name='display_config_list'),
+    path('display-configs/create/', views.display_config_create, name='display_config_create'),
+    path('display-configs/<int:config_id>/edit/', views.display_config_edit, name='display_config_edit'),
+    path('display-configs/<int:config_id>/delete/', views.display_config_delete, name='display_config_delete'),
+    path('display-configs/<int:config_id>/toggle/', views.display_config_toggle, name='display_config_toggle'),
+    
+    # Receipt Templates
+    path('receipt-templates/', views.receipt_template_list, name='receipt_template_list'),
+    path('receipt-templates/create/', views.receipt_template_create, name='receipt_template_create'),
+    path('receipt-templates/<int:template_id>/edit/', views.receipt_template_edit, name='receipt_template_edit'),
+    path('receipt-templates/<int:template_id>/duplicate/', views.receipt_template_duplicate, name='receipt_template_duplicate'),
+    path('receipt-templates/<int:template_id>/delete/', views.receipt_template_delete, name='receipt_template_delete'),
+    path('receipt-templates/<int:template_id>/toggle/', views.receipt_template_toggle, name='receipt_template_toggle'),
     
     # Settings
     path('settings/', views.settings, name='settings'),

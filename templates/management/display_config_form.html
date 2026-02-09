@@ -1,0 +1,372 @@
+{% extends 'management/base.html' %}
+
+{% block title %}{% if is_edit %}Edit{% else %}Create{% endif %} Display Configuration{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="flex items-center gap-3 mb-2">
+        <a href="{% url 'management:display_config_list' %}" 
+           class="text-gray-600 hover:text-gray-900 transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </a>
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">
+                {% if is_edit %}Edit Display Configuration{% else %}Create Display Configuration{% endif %}
+            </h1>
+            <p class="text-gray-500">Configure customer display branding and theme</p>
+        </div>
+    </div>
+</div>
+
+<!-- Messages -->
+{% if messages %}
+<div class="mb-4 space-y-2">
+    {% for message in messages %}
+    <div class="px-4 py-3 rounded-lg border flex items-start gap-3 shadow-sm
+        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+        {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+        {% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800
+        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        <span class="text-xl">
+            {% if message.tags == 'error' %}❌
+            {% elif message.tags == 'success' %}✅
+            {% elif message.tags == 'warning' %}⚠️
+            {% else %}ℹ️{% endif %}
+        </span>
+        <div class="flex-1">{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Form -->
+<form method="POST" class="bg-white rounded-lg shadow p-6">
+    {% csrf_token %}
+    
+    <div class="space-y-6">
+        <!-- Branding Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">🏷️ Branding Information</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Brand Name -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Brand Display Name <span class="text-red-500">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        name="brand_name"
+                        value="{% if config %}{{ config.brand_name }}{% endif %}"
+                        required
+                        maxlength="200"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="e.g., Bakso Express">
+                    <p class="mt-1 text-sm text-gray-500">Display name shown on customer screen</p>
+                </div>
+                
+                <!-- Brand Logo URL -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Brand Logo URL
+                    </label>
+                    <input 
+                        type="url" 
+                        name="brand_logo_url"
+                        value="{% if config %}{{ config.brand_logo_url }}{% endif %}"
+                        maxlength="500"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="https://minio.example.com/logos/brand-logo.png">
+                    <p class="mt-1 text-sm text-gray-500">Full MinIO URL to logo image</p>
+                </div>
+                
+                <!-- Brand Tagline -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Tagline (Optional)
+                    </label>
+                    <input 
+                        type="text" 
+                        name="brand_tagline"
+                        value="{% if config %}{{ config.brand_tagline }}{% endif %}"
+                        maxlength="200"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="e.g., The Best Bakso in Town!">
+                    <p class="mt-1 text-sm text-gray-500">Tagline displayed below brand name</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Running Text Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">📢 Running Text</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Running Text -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Running Text <span class="text-red-500">*</span>
+                    </label>
+                    <textarea 
+                        name="running_text"
+                        rows="3"
+                        required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="e.g., Welcome to Bakso Express! Promo spesial setiap hari Jumat. Follow us @baksoexpress">{% if config %}{{ config.running_text }}{% endif %}</textarea>
+                    <p class="mt-1 text-sm text-gray-500">Scrolling text at bottom of customer display</p>
+                </div>
+                
+                <!-- Running Text Speed -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Scroll Speed (pixels/second)
+                    </label>
+                    <input 
+                        type="number" 
+                        name="running_text_speed"
+                        value="{% if config %}{{ config.running_text_speed }}{% else %}50{% endif %}"
+                        min="10"
+                        max="200"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    <p class="mt-1 text-sm text-gray-500">Default: 50 pixels/second</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Theme Colors Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">🎨 Theme Colors</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Primary Color -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Primary Color
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input 
+                            type="color" 
+                            name="theme_primary_color"
+                            value="{% if config %}{{ config.theme_primary_color }}{% else %}#4F46E5{% endif %}"
+                            class="h-10 w-16 border border-gray-300 rounded cursor-pointer">
+                        <input 
+                            type="text" 
+                            id="primary_color_text"
+                            value="{% if config %}{{ config.theme_primary_color }}{% else %}#4F46E5{% endif %}"
+                            maxlength="20"
+                            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="#4F46E5">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Main brand color</p>
+                </div>
+                
+                <!-- Secondary Color -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Secondary Color
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input 
+                            type="color" 
+                            name="theme_secondary_color"
+                            value="{% if config %}{{ config.theme_secondary_color }}{% else %}#10B981{% endif %}"
+                            class="h-10 w-16 border border-gray-300 rounded cursor-pointer">
+                        <input 
+                            type="text" 
+                            id="secondary_color_text"
+                            value="{% if config %}{{ config.theme_secondary_color }}{% else %}#10B981{% endif %}"
+                            maxlength="20"
+                            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="#10B981">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Accent color</p>
+                </div>
+                
+                <!-- Text Color -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Text Color
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input 
+                            type="color" 
+                            name="theme_text_color"
+                            value="{% if config %}{{ config.theme_text_color }}{% else %}#1F2937{% endif %}"
+                            class="h-10 w-16 border border-gray-300 rounded cursor-pointer">
+                        <input 
+                            type="text" 
+                            id="text_color_text"
+                            value="{% if config %}{{ config.theme_text_color }}{% else %}#1F2937{% endif %}"
+                            maxlength="20"
+                            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="#1F2937">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Main text color</p>
+                </div>
+                
+                <!-- Billing Background -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Billing Background
+                    </label>
+                    <select 
+                        name="theme_billing_bg"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <option value="gradient" {% if config and config.theme_billing_bg == 'gradient' %}selected{% endif %}>Gradient</option>
+                        <option value="solid" {% if config and config.theme_billing_bg == 'solid' %}selected{% endif %}>Solid Color</option>
+                        <option value="transparent" {% if config and config.theme_billing_bg == 'transparent' %}selected{% endif %}>Transparent</option>
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Billing section style</p>
+                </div>
+                
+                <!-- Billing Text Color -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Billing Text Color
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input 
+                            type="color" 
+                            name="theme_billing_text"
+                            value="{% if config %}{{ config.theme_billing_text }}{% else %}#FFFFFF{% endif %}"
+                            class="h-10 w-16 border border-gray-300 rounded cursor-pointer">
+                        <input 
+                            type="text" 
+                            id="billing_text_color_text"
+                            value="{% if config %}{{ config.theme_billing_text }}{% else %}#FFFFFF{% endif %}"
+                            maxlength="20"
+                            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="#FFFFFF">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Text color in billing section</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Scope Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">🎯 Configuration Scope</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Brand -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Brand (Optional)
+                    </label>
+                    <select 
+                        name="brand"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <option value="">All Brands (Company-wide)</option>
+                        {% for store_brand in store_brands %}
+                        <option value="{{ store_brand.brand.id }}" {% if config and config.brand_id == store_brand.brand.id %}selected{% endif %}>
+                            {{ store_brand.brand.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Leave empty for company-wide config</p>
+                </div>
+                
+                <!-- Store -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Store (Optional)
+                    </label>
+                    <select 
+                        name="store"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <option value="">All Stores</option>
+                        <!-- Note: Add store options if needed -->
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Leave empty for brand/company-wide</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Status Section -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4">⚙️ Status</h3>
+            
+            <div class="flex items-center">
+                <input 
+                    type="checkbox" 
+                    id="is_active"
+                    name="is_active"
+                    value="1"
+                    {% if not config or config.is_active %}checked{% endif %}
+                    class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                <label for="is_active" class="ml-2 text-sm text-gray-700">Active (Config is used by customer displays)</label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="flex gap-3 mt-8 pt-6 border-t">
+        <button 
+            type="submit"
+            class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
+            {% if is_edit %}💾 Save Changes{% else %}➕ Create Configuration{% endif %}
+        </button>
+        <a href="{% url 'management:display_config_list' %}"
+           class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
+            Cancel
+        </a>
+    </div>
+</form>
+
+<script>
+// Sync color picker with text input
+function syncColorInputs() {
+    // Primary Color
+    const primaryPicker = document.querySelector('input[name="theme_primary_color"]');
+    const primaryText = document.getElementById('primary_color_text');
+    primaryPicker.addEventListener('input', (e) => {
+        primaryText.value = e.target.value.toUpperCase();
+    });
+    primaryText.addEventListener('input', (e) => {
+        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+            primaryPicker.value = e.target.value;
+        }
+    });
+    
+    // Secondary Color
+    const secondaryPicker = document.querySelector('input[name="theme_secondary_color"]');
+    const secondaryText = document.getElementById('secondary_color_text');
+    secondaryPicker.addEventListener('input', (e) => {
+        secondaryText.value = e.target.value.toUpperCase();
+    });
+    secondaryText.addEventListener('input', (e) => {
+        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+            secondaryPicker.value = e.target.value;
+        }
+    });
+    
+    // Text Color
+    const textPicker = document.querySelector('input[name="theme_text_color"]');
+    const textText = document.getElementById('text_color_text');
+    textPicker.addEventListener('input', (e) => {
+        textText.value = e.target.value.toUpperCase();
+    });
+    textText.addEventListener('input', (e) => {
+        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+            textPicker.value = e.target.value;
+        }
+    });
+    
+    // Billing Text Color
+    const billingPicker = document.querySelector('input[name="theme_billing_text"]');
+    const billingText = document.getElementById('billing_text_color_text');
+    billingPicker.addEventListener('input', (e) => {
+        billingText.value = e.target.value.toUpperCase();
+    });
+    billingText.addEventListener('input', (e) => {
+        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+            billingPicker.value = e.target.value;
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', syncColorInputs);
+</script>
+{% endblock %}

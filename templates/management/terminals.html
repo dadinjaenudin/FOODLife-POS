@@ -1,371 +1,269 @@
 {% extends 'management/base.html' %}
 
-{% block page_title %}Terminal Management{% endblock %}
+{% block title %}Terminal Management{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-1.5" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-1.5">
-        <div>
-            <h1 class="text-xl font-bold text-gray-800">Terminal Management</h1>
-            <p class="text-xs text-gray-600">Monitor and control registered terminals</p>
-        </div>
-        <div class="flex items-center gap-2">
-            <a href="{% url 'management:master_data' %}" class="px-2.5 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-xs">
-                ← Back to Master Data
-            </a>
-            <a href="{% url 'management:terminal_create' %}"
-               class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs font-semibold">
-                + New Terminal
-            </a>
-        </div>
-    </div>
-
-    {% if error %}
-    <div class="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg mb-2 text-xs">
-        {{ error }}
-    </div>
-    {% endif %}
-
-    <!-- Filters -->
-    <div class="bg-white rounded-lg shadow p-2.5 mb-1.5">
-        <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-2">
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Status</label>
-                <select name="status" class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
-                    <option value="online" {% if status_filter == 'online' %}selected{% endif %}>Online</option>
-                    <option value="offline" {% if status_filter == 'offline' %}selected{% endif %}>Offline</option>
-                    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Device Type</label>
-                <select name="device_type" class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                    <option value="">All Types</option>
-                    {% for value, label in device_types %}
-                    <option value="{{ value }}" {% if device_filter == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-700 mb-0.5">Search</label>
-                <input type="text" name="search" value="{{ search }}" placeholder="Terminal code..."
-                       class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-            </div>
-            <div class="flex items-end gap-2">
-                <button type="submit" class="w-full px-2.5 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
-                    Apply Filters
-                </button>
-                {% if search or status_filter != 'all' or device_filter %}
-                <a href="{% url 'management:terminals' %}" class="px-2.5 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors">
-                    Clear
-                </a>
-                {% endif %}
-            </div>
-        </form>
-    </div>
-
-    <!-- Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-1.5 mb-1.5">
-        <div class="bg-white rounded-lg shadow p-1.5">
-            <div class="text-lg font-bold text-gray-800">{{ total_count }}</div>
-            <div class="text-xs text-gray-600">Total</div>
-        </div>
-        <div class="bg-green-50 rounded-lg shadow p-1.5">
-            <div class="text-lg font-bold text-green-700">{{ active_count }}</div>
-            <div class="text-xs text-gray-600">Active</div>
-        </div>
-        <div class="bg-red-50 rounded-lg shadow p-1.5">
-            <div class="text-lg font-bold text-red-700">{{ inactive_count }}</div>
-            <div class="text-xs text-gray-600">Inactive</div>
-        </div>
-        <div class="bg-blue-50 rounded-lg shadow p-1.5">
-            <div class="text-lg font-bold text-blue-700">{{ online_count }}</div>
-            <div class="text-xs text-gray-600">Online</div>
-        </div>
-        <div class="bg-yellow-50 rounded-lg shadow p-1.5">
-            <div class="text-lg font-bold text-yellow-700">{{ offline_count }}</div>
-            <div class="text-xs text-gray-600">Offline</div>
-        </div>
-    </div>
-    
-    <!-- Terminals Table -->
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Terminal
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Device Type
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        IP Address
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Last Heartbeat
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Current Cashier
-                    </th>
-                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                    </th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {% for terminal in terminals %}
-                <tr class="hover:bg-gray-50">
-                    <td class="px-3 py-2 whitespace-nowrap">
-                        {% if terminal.status == 'online' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            🟢 Online
-                        </span>
-                        {% elif terminal.status == 'warning' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            ⚠️ Warning
-                        </span>
-                        {% elif terminal.status == 'inactive' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            ⏸️ Inactive
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            ⚫ Offline
-                        </span>
-                        {% endif %}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap">
-                        <div class="text-xs font-mono text-gray-600">{{ terminal.terminal_code }}</div>
-                        <div class="text-xs font-medium text-gray-900">{{ terminal.terminal_name|default:"—" }}</div>
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
-                        {{ terminal.get_device_type_display }}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
-                        {{ terminal.ip_address|default:"—" }}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
-                        {% if terminal.last_heartbeat %}
-                        {{ terminal.last_heartbeat|timesince }} ago
-                        {% else %}
-                        Never
-                        {% endif %}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
-                        {% if terminal.current_shift %}
-                        {{ terminal.current_shift.cashier.get_full_name }}
-                        {% else %}
-                        <span class="text-gray-400">—</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap text-center">
-                        <div class="flex items-center justify-center gap-1">
-                            <button hx-get="{% url 'management:terminal_detail' terminal.id %}"
-                                    hx-target="#modal-content"
-                                    onclick="document.getElementById('detail-modal').classList.remove('hidden')"
-                                    class="inline-flex items-center px-1.5 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition"
-                                    title="View">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                </svg>
-                            </button>
-                            <a href="{% url 'management:terminal_edit' terminal.id %}"
-                               class="inline-flex items-center px-1.5 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition"
-                               title="Edit">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                </svg>
-                            </a>
-                            {% if terminal.is_active %}
-                            <button hx-post="{% url 'management:terminal_deactivate' terminal.id %}"
-                                    hx-confirm="Deactivate terminal {{ terminal.terminal_code }}?"
-                                    hx-target="closest tr"
-                                    hx-swap="outerHTML"
-                                    class="inline-flex items-center px-1.5 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600 transition"
-                                    title="Deactivate">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 12H6"/>
-                                </svg>
-                            </button>
-                            {% else %}
-                            <button hx-post="{% url 'management:terminal_reactivate' terminal.id %}"
-                                    hx-target="closest tr"
-                                    hx-swap="outerHTML"
-                                    class="inline-flex items-center px-1.5 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700 transition"
-                                    title="Reactivate">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                </svg>
-                            </button>
-                            {% endif %}
-                                <button type="button"
-                                    hx-post="{% url 'management:terminal_delete' terminal.id %}"
-                                    hx-trigger="confirmed"
-                                    onclick="showDeleteModal('{{ terminal.id }}', '{{ terminal.terminal_code }}')"
-                                    hx-target="closest tr"
-                                    hx-swap="outerHTML"
-                                    class="inline-flex items-center px-1.5 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition delete-terminal-btn"
-                                    title="Delete"
-                                    data-terminal-id="{{ terminal.id }}"
-                                    data-terminal-code="{{ terminal.terminal_code }}">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="7" class="px-3 py-8 text-center">
-                        <div class="text-gray-400 text-sm">No terminals found</div>
-                        <p class="text-gray-500 text-xs mt-1">Try adjusting your filters</p>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
-    </div>
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Terminal Management</h1>
+    <p class="text-gray-500">Manage your POS terminals and devices</p>
 </div>
 
-<!-- Delete Confirmation Modal -->
-<div id="delete-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
-        <!-- Modal Header -->
-        <div class="bg-gradient-to-r from-red-500 to-red-600 rounded-t-2xl p-6">
-            <div class="flex items-center justify-center w-16 h-16 bg-white bg-opacity-20 rounded-full mx-auto mb-4">
-                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
-            </div>
-            <h3 class="text-2xl font-bold text-white text-center">Delete Terminal</h3>
-        </div>
-        
-        <!-- Modal Body -->
-        <div class="p-6">
-            <div class="text-center mb-6">
-                <p class="text-gray-700 text-lg mb-2">Are you sure you want to delete</p>
-                <p class="text-2xl font-bold text-gray-900 mb-2" id="delete-terminal-name">Terminal Code</p>
-                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mt-4">
-                    <div class="flex items-start">
-                        <svg class="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-                        </svg>
-                        <div class="text-left">
-                            <p class="text-sm font-semibold text-red-800 mb-1">Permanent Action!</p>
-                            <p class="text-sm text-red-700">This will permanently remove the terminal from the database. This action cannot be undone.</p>
-                        </div>
+<!-- Messages -->
+{% if messages %}
+<div class="mb-4 space-y-2" id="messages-container">
+    {% for message in messages %}
+    <div class="message-alert px-4 py-3 rounded-lg border flex items-start gap-3 shadow-sm
+        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+        {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+        {% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800
+        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        <span class="text-xl">
+            {% if message.tags == 'error' %}❌
+            {% elif message.tags == 'success' %}✅
+            {% elif message.tags == 'warning' %}⚠️
+            {% else %}ℹ️{% endif %}
+        </span>
+        <div class="flex-1">{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Main Content -->
+<div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold">Terminals ({{ terminals.count }})</h2>
+        <a href="{% url 'management:terminal_create' %}" 
+           class="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all duration-300 shadow-lg">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add New Terminal
+        </a>
+    </div>
+
+    {% if terminals %}
+    <!-- Terminals Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for terminal in terminals %}
+        <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+            <!-- Header with Status -->
+            <div class="p-4 {% if terminal.status == 'online' %}bg-gradient-to-r from-emerald-50 to-green-50{% elif terminal.status == 'inactive' %}bg-gray-50{% else %}bg-gradient-to-r from-red-50 to-orange-50{% endif %} border-b">
+                <div class="flex items-start justify-between mb-2">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 font-mono">{{ terminal.terminal_code }}</h3>
+                        <p class="text-sm text-gray-600">{{ terminal.terminal_name }}</p>
                     </div>
+                    {% if terminal.status == 'online' %}
+                    <span class="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                        🟢 Online
+                    </span>
+                    {% elif terminal.status == 'inactive' %}
+                    <span class="inline-flex items-center px-2 py-1 bg-gray-200 text-gray-600 text-xs font-semibold rounded-full">
+                        ⏸️ Inactive
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">
+                        🔴 Offline
+                    </span>
+                    {% endif %}
                 </div>
             </div>
-            
-            <!-- Action Buttons -->
-            <div class="flex gap-3">
-                <button onclick="hideDeleteModal()"
-                        class="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
-                    <span class="flex items-center justify-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                        Cancel
-                    </span>
-                </button>
-                <button onclick="confirmDelete()"
-                        class="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition font-medium shadow-lg hover:shadow-xl">
-                    <span class="flex items-center justify-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                        </svg>
-                        Delete Now
-                    </span>
+
+            <!-- Content -->
+            <div class="p-4 space-y-3">
+                <!-- Device Type & Brand -->
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Device & Brand</span>
+                    <div class="mt-1 flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
+                            💻 {{ terminal.get_device_type_display }}
+                        </span>
+                        <span class="inline-flex items-center px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">
+                            🏷️ {{ terminal.brand.name }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Network Info -->
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">IP Address</span>
+                    <p class="mt-1 text-sm text-gray-700 font-mono">{{ terminal.ip_address|default:"—" }}</p>
+                </div>
+
+                <!-- Current Shift -->
+                {% if terminal.current_shift %}
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Active Cashier</span>
+                    <p class="mt-1 text-sm text-gray-700">👤 {{ terminal.current_shift.cashier.get_full_name }}</p>
+                </div>
+                {% endif %}
+
+                <!-- Payment Methods Available -->
+                {% if terminal.default_payment_methods %}
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Payment Methods</span>
+                    <div class="mt-1 flex items-center gap-1 flex-wrap">
+                        {% for method in terminal.default_payment_methods %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded
+                            {% if method == 'cash' %}bg-green-100 text-green-700
+                            {% elif method == 'card' %}bg-blue-100 text-blue-700
+                            {% elif method == 'qris' %}bg-purple-100 text-purple-700
+                            {% elif method == 'ewallet' %}bg-orange-100 text-orange-700
+                            {% elif method == 'bank_transfer' %}bg-cyan-100 text-cyan-700
+                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                            {% if method == 'cash' %}💵
+                            {% elif method == 'card' %}💳
+                            {% elif method == 'qris' %}📱
+                            {% elif method == 'ewallet' %}📲
+                            {% elif method == 'bank_transfer' %}🏦
+                            {% else %}💰{% endif %}
+                            {{ method|upper }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Metadata -->
+                <div class="pt-2 border-t text-xs text-gray-500">
+                    {% if terminal.last_heartbeat %}
+                    <div>Last seen: {{ terminal.last_heartbeat|timesince }} ago</div>
+                    {% endif %}
+                    <div>Registered: {{ terminal.registered_at|date:"d M Y" }}</div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="p-4 pt-0 flex gap-2">
+                <a href="{% url 'management:terminal_detail' terminal.id %}"
+                   class="flex-1 px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium transition text-center"
+                   title="View Details">
+                    👁️ View
+                </a>
+                <a href="{% url 'management:terminal_edit' terminal.id %}"
+                   class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition text-center"
+                   title="Edit">
+                    ✏️ Edit
+                </a>
+                <a href="{% url 'management:terminal_duplicate' terminal.id %}"
+                   class="px-3 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg text-sm font-medium transition"
+                   title="Duplicate">
+                    📋
+                </a>
+                <button 
+                    onclick="deleteTerminal({{ terminal.id }}, '{{ terminal.terminal_code|escapejs }}')"
+                    class="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-medium transition"
+                    title="Delete">
+                    🗑️
                 </button>
             </div>
         </div>
+        {% endfor %}
     </div>
+    {% else %}
+    <div class="text-center py-12">
+        <div class="text-6xl mb-4">💻</div>
+        <p class="text-gray-500 text-lg">No terminals registered yet</p>
+        <p class="text-gray-400 text-sm">Register your first POS terminal to get started</p>
+        <a href="{% url 'management:terminal_create' %}" 
+           class="mt-4 inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Register First Terminal
+        </a>
+    </div>
+    {% endif %}
 </div>
 
-<!-- Terminal Detail Modal -->
-<div id="detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div class="p-6" id="modal-content">
-            <!-- Content loaded via HTMX -->
-        </div>
-        <div class="p-4 bg-gray-50 border-t flex justify-end">
-            <button onclick="document.getElementById('detail-modal').classList.add('hidden')"
-                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
-                Close
+<!-- Tips -->
+<div class="mt-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+    <h3 class="font-bold text-indigo-900 mb-2">💡 Terminal Management Tips</h3>
+    <ul class="text-indigo-800 text-sm space-y-1">
+        <li>• <strong>Status:</strong> Green (Online) = last heartbeat &lt; 5 minutes, Red (Offline) = no recent heartbeat</li>
+        <li>• <strong>Payment Methods:</strong> Configure which payment methods are available at this terminal</li>
+        <li>• <strong>Device Types:</strong> POS for cashier terminals, Tablet for waiters, Kitchen Display for kitchen screens</li>
+        <li>• <strong>Duplicate:</strong> Copy terminal configuration to quickly set up similar terminals</li>
+        <li>• <strong>IP Address:</strong> Automatically tracked when terminal connects to server</li>
+    </ul>
+</div>
+
+<!-- Delete Modal -->
+<div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="bg-red-600 px-4 py-3 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white">Delete Terminal</h3>
+            <button onclick="document.getElementById('delete-modal').style.display='none'"
+                    class="text-white hover:text-gray-200 transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
             </button>
+        </div>
+        <div class="p-4">
+            <p class="text-sm text-gray-700 mb-2">Are you sure you want to delete terminal:</p>
+            <p class="text-base font-bold text-gray-900 mb-3" id="delete-terminal-code"></p>
+            <div class="bg-red-50 border-l-4 border-red-500 p-3 rounded text-xs mb-4">
+                <p class="font-semibold text-red-800 mb-1">⚠️ Warning</p>
+                <p class="text-red-700">This action cannot be undone. If the terminal has associated records (shifts, bills), deletion will be prevented.</p>
+            </div>
+            <div class="flex gap-3">
+                <button 
+                    onclick="confirmDelete()"
+                    class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition">
+                    Delete Terminal
+                </button>
+                <button 
+                    onclick="document.getElementById('delete-modal').style.display='none'"
+                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
+                    Cancel
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-    let currentDeleteTerminalId = null;
-    let currentDeleteButton = null;
+let deleteTerminalId = null;
+
+function deleteTerminal(terminalId, terminalCode) {
+    deleteTerminalId = terminalId;
+    document.getElementById('delete-terminal-code').textContent = terminalCode;
+    document.getElementById('delete-modal').style.display = 'flex';
+}
+
+function confirmDelete() {
+    if (!deleteTerminalId) return;
     
-    function showDeleteModal(terminalId, terminalCode) {
-        event.preventDefault();
-        event.stopPropagation();
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/management/terminals/${deleteTerminalId}/delete/`;
+    
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = '{{ csrf_token }}';
+    form.appendChild(csrfInput);
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Auto-dismiss messages
+document.addEventListener('DOMContentLoaded', function() {
+    const messages = document.querySelectorAll('.message-alert');
+    messages.forEach((message, index) => {
+        const isError = message.classList.contains('bg-red-50');
+        const delay = isError ? 8000 : 5000;
         
-        currentDeleteTerminalId = terminalId;
-        currentDeleteButton = event.target.closest('button') || event.target;
-        
-        // Update modal content
-        document.getElementById('delete-terminal-name').textContent = terminalCode;
-        
-        // Show modal with animation
-        const modal = document.getElementById('delete-modal');
-        modal.classList.remove('hidden');
         setTimeout(() => {
-            modal.classList.add('opacity-100');
-        }, 10);
-    }
-    
-    function hideDeleteModal() {
-        const modal = document.getElementById('delete-modal');
-        modal.classList.add('hidden');
-        currentDeleteTerminalId = null;
-        currentDeleteButton = null;
-    }
-    
-    function confirmDelete() {
-        if (currentDeleteTerminalId && currentDeleteButton) {
-            // Remove the onclick handler temporarily to avoid re-triggering modal
-            const originalOnclick = currentDeleteButton.onclick;
-            currentDeleteButton.onclick = null;
-            
-            // Trigger HTMX post
-            htmx.trigger(currentDeleteButton, 'click');
-            
-            // Hide modal
-            hideDeleteModal();
-        }
-    }
-    
-    // Close modal when clicking outside
-    document.getElementById('delete-modal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            hideDeleteModal();
-        }
+            message.style.transition = 'opacity 0.5s, transform 0.5s';
+            message.style.opacity = '0';
+            message.style.transform = 'translateX(100%)';
+            setTimeout(() => message.remove(), 500);
+        }, delay + (index * 200));
     });
-    
-    // Close modal with Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('delete-modal');
-            if (!modal.classList.contains('hidden')) {
-                hideDeleteModal();
-            }
-        }
-    });
+});
 </script>
 {% endblock %}

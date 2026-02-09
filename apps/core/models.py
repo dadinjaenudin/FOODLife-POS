@@ -753,3 +753,207 @@ class CustomerDisplaySlide(models.Model):
             return False
         return True
 
+
+class CustomerDisplayConfig(models.Model):
+    """
+    Configuration for customer display appearance
+    Controls branding, theme colors, and running text
+    One config per company/brand/store combination
+    """
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='display_configs')
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name='display_configs', null=True, blank=True)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='display_configs', null=True, blank=True)
+    
+    # Branding
+    brand_name = models.CharField(max_length=200, help_text="Display name on customer screen")
+    brand_logo_url = models.URLField(max_length=500, help_text="Logo URL (MinIO)")
+    brand_tagline = models.CharField(max_length=200, blank=True, help_text="Tagline below brand name")
+    
+    # Running Text
+    running_text = models.TextField(help_text="Scrolling text at bottom of screen")
+    running_text_speed = models.IntegerField(default=50, help_text="Scroll speed (pixels per second)")
+    
+    # Theme Colors
+    theme_primary_color = models.CharField(max_length=20, default='#4F46E5', help_text="Primary color (hex)")
+    theme_secondary_color = models.CharField(max_length=20, default='#10B981', help_text="Secondary color (hex)")
+    theme_text_color = models.CharField(max_length=20, default='#1F2937', help_text="Main text color (hex)")
+    theme_billing_bg = models.CharField(max_length=50, default='gradient', help_text="Billing section background")
+    theme_billing_text = models.CharField(max_length=20, default='#FFFFFF', help_text="Billing text color (hex)")
+    
+    # Status
+    is_active = models.BooleanField(default=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='display_configs_created')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='display_configs_updated')
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'is_active']),
+            models.Index(fields=['brand', 'is_active']),
+            models.Index(fields=['store', 'is_active']),
+        ]
+        unique_together = [['company', 'brand', 'store']]
+        verbose_name = 'Customer Display Config'
+        verbose_name_plural = 'Customer Display Configs'
+    
+    def __str__(self):
+        scope = "All"
+        if self.store:
+            scope = f"Store: {self.store.code}"
+        elif self.brand:
+            scope = f"Brand: {self.brand.code}"
+        return f"{self.brand_name} ({scope})"
+
+
+def receipt_logo_upload_path(instance, filename):
+    """
+    Generate dynamic upload path for receipt template logo
+    Path: receipt_logos/{company_code}/{brand_code or 'company'}/{timestamp}_{filename}
+    """
+    import os
+    from datetime import datetime
+    
+    # Get company code
+    company_code = instance.company.code if instance.company else 'default'
+    
+    # Get brand code or use 'company' for company-wide templates
+    if instance.brand:
+        scope_code = instance.brand.code
+    elif instance.store:
+        scope_code = f"store_{instance.store.code}"
+    else:
+        scope_code = 'company'
+    
+    # Add timestamp to filename to avoid collisions
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    name, ext = os.path.splitext(filename)
+    new_filename = f"{timestamp}_{name}{ext}"
+    
+    # Return path: receipt_logos/{company_code}/{scope_code}/{timestamp}_{filename}
+    return os.path.join('receipt_logos', company_code, scope_code, new_filename)
+
+
+class ReceiptTemplate(models.Model):
+    """
+    Receipt printing template configuration
+    Controls receipt header, content display, and footer
+    """
+    PRICE_ALIGNMENT_CHOICES = [
+        ('left', 'Left'),
+        ('right', 'Right'),
+    ]
+    
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='receipt_templates')
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name='receipt_templates', null=True, blank=True)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='receipt_templates', null=True, blank=True)
+    
+    # Template Info
+    template_name = models.CharField(max_length=100, help_text="Template identifier")
+    is_active = models.BooleanField(default=True)
+    
+    # Paper Settings
+    paper_width = models.IntegerField(default=58, help_text="Paper width in mm (58 or 80)")
+    
+    # Header
+    show_logo = models.BooleanField(default=True)
+    logo = models.ImageField(upload_to=receipt_logo_upload_path, null=True, blank=True, help_text="Receipt logo image")
+    header_line_1 = models.CharField(max_length=100, blank=True, help_text="Store name / company")
+    header_line_2 = models.CharField(max_length=100, blank=True, help_text="Address line 1")
+    header_line_3 = models.CharField(max_length=100, blank=True, help_text="Address line 2 / Phone")
+    header_line_4 = models.CharField(max_length=100, blank=True, help_text="Tax ID / Additional info")
+    
+    # Content Display Options
+    show_receipt_number = models.BooleanField(default=True)
+    show_date_time = models.BooleanField(default=True)
+    show_cashier_name = models.BooleanField(default=True)
+    show_customer_name = models.BooleanField(default=True)
+    show_table_number = models.BooleanField(default=True)
+    show_item_code = models.BooleanField(default=False)
+    show_item_category = models.BooleanField(default=False)
+    show_modifiers = models.BooleanField(default=True)
+    
+    # Formatting
+    price_alignment = models.CharField(max_length=10, choices=PRICE_ALIGNMENT_CHOICES, default='right')
+    show_currency_symbol = models.BooleanField(default=True)
+    
+    # Summary Section
+    show_subtotal = models.BooleanField(default=True)
+    show_tax = models.BooleanField(default=True)
+    show_service_charge = models.BooleanField(default=True)
+    show_discount = models.BooleanField(default=True)
+    show_payment_method = models.BooleanField(default=True)
+    show_paid_amount = models.BooleanField(default=True)
+    show_change = models.BooleanField(default=True)
+    
+    # Footer
+    footer_line_1 = models.CharField(max_length=100, blank=True, help_text="Thank you message")
+    footer_line_2 = models.CharField(max_length=100, blank=True, help_text="Additional info")
+    footer_line_3 = models.CharField(max_length=100, blank=True, help_text="Website / Social media")
+    show_qr_payment = models.BooleanField(default=False, help_text="Show payment QR code")
+    
+    # Print Settings
+    auto_print = models.BooleanField(default=True, help_text="Auto print after order")
+    auto_cut = models.BooleanField(default=True, help_text="Auto cut paper")
+    feed_lines = models.IntegerField(default=3, help_text="Lines to feed after print")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='receipt_templates_created')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='receipt_templates_updated')
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'is_active']),
+            models.Index(fields=['brand', 'is_active']),
+            models.Index(fields=['store', 'is_active']),
+        ]
+        verbose_name = 'Receipt Template'
+        verbose_name_plural = 'Receipt Templates'
+    
+    def __str__(self):
+        scope = "Company"
+        if self.store:
+            scope = f"{self.store.name}"
+        elif self.brand:
+            scope = f"{self.brand.name}"
+        return f"{self.template_name} ({scope})"
+    
+    def save(self, *args, **kwargs):
+        """Override save to delete old logo when uploading new one"""
+        try:
+            # Get old instance to check if logo changed
+            if self.pk:
+                old_instance = ReceiptTemplate.objects.get(pk=self.pk)
+                # If logo changed, delete old file
+                if old_instance.logo and old_instance.logo != self.logo:
+                    import os
+                    if os.path.isfile(old_instance.logo.path):
+                        os.remove(old_instance.logo.path)
+        except ReceiptTemplate.DoesNotExist:
+            pass
+        except Exception as e:
+            # Don't fail save if cleanup fails
+            print(f"[Warning] Failed to cleanup old logo: {e}")
+        
+        super().save(*args, **kwargs)
+    
+    def delete(self, *args, **kwargs):
+        """Override delete to cleanup logo file"""
+        try:
+            # Delete logo file before deleting instance
+            if self.logo:
+                import os
+                if os.path.isfile(self.logo.path):
+                    os.remove(self.logo.path)
+        except Exception as e:
+            # Don't fail delete if cleanup fails
+            print(f"[Warning] Failed to cleanup logo on delete: {e}")
+        
+        super().delete(*args, **kwargs)
+

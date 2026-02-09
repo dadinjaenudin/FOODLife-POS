@@ -738,6 +738,9 @@
             console.log('✅ Modal container created and appended to body');
         }
         
+        // Load terminal configuration for auto print settings
+        loadTerminalConfig();
+        
         // Check shift status on page load
         console.log('🚀 Starting shift status check...');
         checkShiftOnLoad();
@@ -1593,6 +1596,70 @@
     
     const LOCAL_API_URL = 'http://127.0.0.1:5000';
     
+    // Terminal configuration from database
+    let terminalConfig = null;
+    
+    /**
+     * Load terminal configuration from server
+     */
+    async function loadTerminalConfig() {
+        try {
+            // Get terminal/company/brand/store codes from localStorage (set by POSLauncher)
+            // Fall back to URL parameters for immediate access
+            let terminalCode = localStorage.getItem('terminal_code');
+            let companyCode = localStorage.getItem('company_code');
+            let brandCode = localStorage.getItem('brand_code');
+            let storeCode = localStorage.getItem('store_code');
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            if (!terminalCode) {
+                terminalCode = urlParams.get('terminal');
+            }
+            if (!companyCode) {
+                companyCode = urlParams.get('company');
+            }
+            if (!brandCode) {
+                brandCode = urlParams.get('brand');
+            }
+            if (!storeCode) {
+                storeCode = urlParams.get('store');
+            }
+            
+            if (!terminalCode) {
+                console.warn('⚠️ Terminal code not found in localStorage or URL parameters');
+                return;
+            }
+            
+            console.log('📡 Loading terminal config:');
+            console.log('   Terminal:', terminalCode);
+            console.log('   Company:', companyCode || 'N/A');
+            console.log('   Brand:', brandCode || 'N/A');
+            console.log('   Store:', storeCode || 'N/A');
+            
+            // Build API URL with all available codes for validation
+            let apiUrl = `/api/terminal/config?terminal_code=${terminalCode}`;
+            if (companyCode) apiUrl += `&company_code=${companyCode}`;
+            if (brandCode) apiUrl += `&brand_code=${brandCode}`;
+            if (storeCode) apiUrl += `&store_code=${storeCode}`;
+            
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            
+            if (data.success) {
+                terminalConfig = data;
+                console.log('✅ Terminal config loaded and validated:', terminalConfig);
+                console.log('   Auto Print Receipt:', terminalConfig.device_config?.auto_print_receipt);
+                console.log('   Auto Print Kitchen:', terminalConfig.device_config?.auto_print_kitchen_order);
+                console.log('   Print To:', terminalConfig.device_config?.print_to);
+            } else {
+                console.error('❌ Failed to load terminal config:', data.error);
+            }
+        } catch (error) {
+            console.error('❌ Error loading terminal config:', error);
+        }
+    }
+    
     /**
      * Check if running in kiosk mode
      */
@@ -2016,9 +2083,18 @@
      * Send receipt to local printer
      */
     function sendReceiptToLocalPrinter(bill) {
+        // Check if auto print receipt is enabled in terminal config
+        if (!terminalConfig?.device_config?.auto_print_receipt) {
+            console.log('⚠️ Auto print receipt disabled in terminal config');
+            return;
+        }
+        
         if (!isKioskMode()) {
+            console.log('⚠️ Not in kiosk mode, skipping auto print');
             return; // Not in kiosk mode, skip
         }
+        
+        console.log('🖨️ Auto print receipt enabled, sending to printer...');
         
         // Wait a bit to ensure bill data is fully saved
         setTimeout(() => {

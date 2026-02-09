@@ -10,7 +10,7 @@ import uuid
 import json
 
 from .models import Bill, BillItem, Payment, BillLog
-from apps.core.models import Product, Category, ModifierOption, Store, Modifier
+from apps.core.models import Product, Category, ModifierOption, Store, Modifier, POSTerminal
 from apps.core.models_session import StoreSession, CashierShift, ShiftPaymentSummary
 from apps.tables.models import Table
 
@@ -1486,14 +1486,33 @@ def send_to_kitchen(request, bill_id):
         for item in bill.items.all():
             print(f"  - Item #{item.id}: {item.product.name} - Status: {item.status}")
         
-        # Create kitchen tickets ONLY for these specific items
-        print(f"\nCalling create_kitchen_tickets with item_ids: {pending_item_ids}")
-        tickets = create_kitchen_tickets(bill, item_ids=pending_item_ids)
-        print(f"{'='*60}\n")
+        # Get terminal config for auto print flags
+        from apps.core.models import POSTerminal
+        terminal = None
+        if hasattr(request, 'terminal') and request.terminal:
+            terminal = request.terminal
+        elif 'terminal_id' in request.session:
+            try:
+                terminal = POSTerminal.objects.get(id=request.session['terminal_id'])
+            except POSTerminal.DoesNotExist:
+                pass
         
-        print(f"DEBUG: Created {len(tickets)} kitchen ticket(s) for bill #{bill.bill_number}")
-        for ticket in tickets:
-            print(f"  - Ticket #{ticket.id}: {ticket.printer_target.upper()} ({ticket.items.count()} items)")
+        # Create kitchen tickets ONLY if auto_print_kitchen_order is enabled
+        # Kitchen Printer Agent will poll and print these tickets automatically
+        tickets = []
+        if terminal and terminal.auto_print_kitchen_order:
+            print(f"\n[Auto Print Kitchen] ENABLED - Creating kitchen tickets")
+            print(f"Calling create_kitchen_tickets with item_ids: {pending_item_ids}")
+            tickets = create_kitchen_tickets(bill, item_ids=pending_item_ids)
+            print(f"{'='*60}\n")
+            
+            print(f"DEBUG: Created {len(tickets)} kitchen ticket(s) for bill #{bill.bill_number}")
+            for ticket in tickets:
+                print(f"  - Ticket #{ticket.id}: {ticket.printer_target.upper()} ({ticket.items.count()} items)")
+        else:
+            print(f"\n[Auto Print Kitchen] DISABLED - Skipping kitchen ticket creation")
+            print(f"Items marked as 'sent' but no tickets created for Kitchen Printer Agent")
+            print(f"{'='*60}\n")
         
         BillLog.objects.create(
             bill=bill, 
@@ -1502,25 +1521,14 @@ def send_to_kitchen(request, bill_id):
             details={
                 'items_count': pending_items.count(),
                 'tickets_count': len(tickets),
-                'tickets': [t.id for t in tickets]
+                'tickets': [t.id for t in tickets] if tickets else [],
+                'auto_print_kitchen': terminal.auto_print_kitchen_order if terminal else False
             }
         )
         
         # Print checker receipt if enabled (for marking completed items)
+        # This prints to POSLauncher local printer via local_api.py
         try:
-            from apps.core.models import POSTerminal
-            
-            # Get terminal from request or session
-            terminal = None
-            if hasattr(request, 'terminal') and request.terminal:
-                terminal = request.terminal
-            elif 'terminal_id' in request.session:
-                try:
-                    terminal = POSTerminal.objects.get(id=request.session['terminal_id'])
-                except POSTerminal.DoesNotExist:
-                    pass
-            
-            # Print checker receipt if enabled
             if terminal and terminal.print_checker_receipt:
                 # Get the items that were just sent (use the pending_item_ids list)
                 items_sent = bill.items.filter(id__in=pending_item_ids)
@@ -1555,11 +1563,27 @@ def send_to_kitchen(request, bill_id):
 def payment_modal(request, bill_id):
     """Payment modal - HTMX"""
     bill = get_object_or_404(Bill, id=bill_id)
+    
+    # Get terminal from session to filter available payment methods
+    terminal = None
+    terminal_payment_methods = []
+    if 'terminal_id' in request.session:
+        try:
+            terminal = POSTerminal.objects.get(id=request.session['terminal_id'])
+            terminal_payment_methods = terminal.default_payment_methods or []
+        except POSTerminal.DoesNotExist:
+            pass
+    
+    # Default to all methods if terminal not configured
+    if not terminal_payment_methods:
+        terminal_payment_methods = ['cash', 'card', 'qris', 'ewallet', 'transfer', 'voucher']
+    
     context = {
         'bill': bill,
         'amount_int': int(bill.get_remaining()),
         'total_int': int(bill.total),
-        'paid_int': int(bill.get_paid_amount())
+        'paid_int': int(bill.get_paid_amount()),
+        'terminal_payment_methods': terminal_payment_methods,
     }
     return render(request, 'pos/partials/payment_modal.html', context)
 

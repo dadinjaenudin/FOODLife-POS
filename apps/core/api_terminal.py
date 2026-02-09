@@ -320,7 +320,7 @@ def get_receipt_template(request):
                 # Try to find template: 1) by brand, 2) by store, 3) by company
                 cursor.execute("""
                     SELECT 
-                        id, template_name, paper_width, show_logo,
+                        id, template_name, paper_width, show_logo, logo,
                         header_line_1, header_line_2, header_line_3, header_line_4,
                         show_receipt_number, show_date_time, show_cashier_name,
                         show_customer_name, show_table_number, show_item_code,
@@ -360,40 +360,47 @@ def get_receipt_template(request):
                         'error': 'No receipt template found'
                     }, status=404)
                 
+                # Construct logo URL from template's logo field
+                logo_url = None
+                if row[4]:  # logo field
+                    # Return relative path only (POSLauncher will build full URL with edge_server)
+                    logo_url = '/media/' + row[4]
+                
                 # Build template dict
                 template = {
                     'id': row[0],
                     'template_name': row[1],
                     'paper_width': row[2],
                     'show_logo': row[3],
-                    'header_line_1': row[4],
-                    'header_line_2': row[5],
-                    'header_line_3': row[6],
-                    'header_line_4': row[7],
-                    'show_receipt_number': row[8],
-                    'show_date_time': row[9],
-                    'show_cashier_name': row[10],
-                    'show_customer_name': row[11],
-                    'show_table_number': row[12],
-                    'show_item_code': row[13],
-                    'show_item_category': row[14],
-                    'show_modifiers': row[15],
-                    'price_alignment': row[16],
-                    'show_currency_symbol': row[17],
-                    'show_subtotal': row[18],
-                    'show_tax': row[19],
-                    'show_service_charge': row[20],
+                    'logo_url': logo_url,
+                    'header_line_1': row[5],
+                    'header_line_2': row[6],
+                    'header_line_3': row[7],
+                    'header_line_4': row[8],
+                    'show_receipt_number': row[9],
+                    'show_date_time': row[10],
+                    'show_cashier_name': row[11],
+                    'show_customer_name': row[12],
+                    'show_table_number': row[13],
+                    'show_item_code': row[14],
+                    'show_item_category': row[15],
+                    'show_modifiers': row[16],
+                    'price_alignment': row[17],
+                    'show_currency_symbol': row[18],
+                    'show_subtotal': row[19],
+                    'show_tax': row[20],
+                    'show_service_charge': row[21],
                     'show_discount': row[21],
                     'show_payment_method': row[22],
-                    'show_paid_amount': row[23],
-                    'show_change': row[24],
-                    'footer_line_1': row[25],
-                    'footer_line_2': row[26],
-                    'footer_line_3': row[27],
-                    'show_qr_payment': row[28],
-                    'auto_print': row[29],
-                    'auto_cut': row[30],
-                    'feed_lines': row[31],
+                    'show_paid_amount': row[24],
+                    'show_change': row[25],
+                    'footer_line_1': row[26],
+                    'footer_line_2': row[27],
+                    'footer_line_3': row[28],
+                    'show_qr_payment': row[29],
+                    'auto_print': row[30],
+                    'auto_cut': row[31],
+                    'feed_lines': row[32],
                 }
                 
                 return JsonResponse({
