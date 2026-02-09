@@ -494,6 +494,7 @@ def setup_reset(request):
             # Delete in proper order (respects FK constraints)
             from apps.core.models import Category, Product, Modifier
             from apps.pos.models import Bill, BillItem, Payment
+            from apps.core.models_session import CashierShift, StoreSession, CashDrop
             
             # Count before deletion
             terminal_count = POSTerminal.objects.count()
@@ -506,11 +507,21 @@ def setup_reset(request):
             bill_count = Bill.objects.count()
             bill_item_count = BillItem.objects.count()
             payment_count = Payment.objects.count()
+            shift_count = CashierShift.objects.count()
+            session_count = StoreSession.objects.count()
+            cashdrop_count = CashDrop.objects.count()
             
             # Step 0: Delete POS transactions (they reference Products, Store, Brand, Company with PROTECT)
             BillItem.objects.all().delete()
             Payment.objects.all().delete()
             Bill.objects.all().delete()
+            
+            # Step 0.5: Delete cash drops (they reference CashierShift with PROTECT)
+            CashDrop.objects.all().delete()
+            
+            # Step 0.6: Delete cashier shifts and sessions (they reference POSTerminal and Store with PROTECT)
+            CashierShift.objects.all().delete()
+            StoreSession.objects.all().delete()
             
             # Step 1: Delete terminals (depends on Store)
             POSTerminal.objects.all().delete()
@@ -532,6 +543,7 @@ def setup_reset(request):
             messages.success(request, 
                 f'✅ Complete reset successful! Deleted: {company_count} companies, '
                 f'{brand_count} brands, {store_count} stores, {terminal_count} terminals, '
+                f'{session_count} sessions, {shift_count} shifts, {cashdrop_count} cash drops, '
                 f'{product_count} products, {category_count} categories, {modifier_count} modifiers, '
                 f'{bill_count} bills, {bill_item_count} bill items, {payment_count} payments. '
                 f'Start fresh from /setup/')

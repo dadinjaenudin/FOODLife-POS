@@ -6,7 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Queue Display - {{ request.user.brand.name }}</title>
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/output.css' %}">
+    <link rel="stylesheet" href="{% static 'css/output.css' %}" onerror="this.onerror=null; this.href='{% static 'css/tailwind.min.css' %}';">
     <script src="{% static 'js/htmx.min.js' %}"></script>
     <style>
         * {

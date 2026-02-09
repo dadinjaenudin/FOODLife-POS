@@ -21,7 +21,7 @@
     </div>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <div class="bg-white rounded-lg shadow border border-gray-200 p-4">
             <div class="flex items-center justify-between">
                 <div>
@@ -29,6 +29,16 @@
                     <p class="text-2xl font-bold text-gray-800">{{ total_count }}</p>
                 </div>
                 <div class="text-3xl">🏷️</div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow border border-gray-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">Store Brands</p>
+                    <p class="text-2xl font-bold text-blue-600">{{ store_brands_count }}</p>
+                </div>
+                <div class="text-3xl">🏪</div>
             </div>
         </div>
         
@@ -68,6 +78,7 @@
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Brand Code</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Brand Name</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Brand Type</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Company</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Tax Rate</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Service Charge</th>
@@ -91,6 +102,11 @@
                                     {% endif %}
                                 </div>
                             </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+                                {{ brand.brand_type|default:"restaurant"|title }}
+                            </span>
                         </td>
                         <td class="px-4 py-3">
                             <div>
@@ -135,18 +151,129 @@
         {% endif %}
     </div>
 
+    <!-- Store Brands Table (Brands assigned to this store) -->
+    <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden mt-6">
+        <div class="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                        <span class="text-2xl mr-2">🏪</span>
+                        Store Brands
+                    </h2>
+                    <p class="text-xs text-gray-600 mt-0.5">Brands assigned to {{ store_config.name }}</p>
+                </div>
+                <div class="text-sm">
+                    <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
+                        {{ store_brands_count }} Brand{{ store_brands_count|pluralize }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        {% if store_brands %}
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Brand Code</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Brand Name</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Company</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">HO Store ID</th>
+                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for store_brand in store_brands %}
+                    <tr class="hover:bg-blue-50 transition-colors">
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ forloop.counter }}</td>
+                        <td class="px-4 py-3">
+                            <span class="text-sm font-mono font-semibold text-blue-700">{{ store_brand.brand.code }}</span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center">
+                                <span class="text-2xl mr-2">🏷️</span>
+                                <div>
+                                    <p class="text-sm font-semibold text-gray-800">{{ store_brand.brand.name }}</p>
+                                    <p class="text-xs text-gray-500 mt-0.5">{{ store_brand.brand.brand_type|default:"restaurant"|title }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div>
+                                <p class="text-sm font-semibold text-gray-800">{{ store_brand.brand.company.name }}</p>
+                                <p class="text-xs text-gray-500 font-mono">{{ store_brand.brand.company.code }}</p>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if store_brand.ho_store_id %}
+                            <span class="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">
+                                {{ store_brand.ho_store_id|truncatechars:13 }}
+                            </span>
+                            {% else %}
+                            <span class="text-xs text-gray-400 italic">Not set</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            {% if store_brand.is_active %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                </svg>
+                                Active
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                                </svg>
+                                Inactive
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <p class="text-xs text-gray-600">{{ store_brand.created_at|date:"d M Y" }}</p>
+                            <p class="text-xs text-gray-400">{{ store_brand.created_at|date:"H:i" }}</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center">
+            <div class="text-6xl mb-4">🏪</div>
+            <p class="text-gray-600 text-lg font-semibold mb-2">No Store Brands Found</p>
+            <p class="text-gray-500 text-sm">No brands have been assigned to this store yet</p>
+            <p class="text-xs text-gray-400 mt-2">Store Brands will be synced from Head Office</p>
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Additional Info -->
     <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
         <div class="flex items-start">
             <svg class="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            <div>
-                <h3 class="text-sm font-semibold text-blue-800 mb-1">About Brands</h3>
-                <p class="text-xs text-blue-700">
-                    Brands are business brands or concepts managed by the company. Each brand can have multiple stores and products. 
-                    Brand data is synchronized from the Head Office and cannot be modified from the Edge Server.
-                </p>
+            <div class="text-sm">
+                <h3 class="font-semibold text-blue-800 mb-2">About Brands & Store Brands</h3>
+                <div class="text-xs text-blue-700 space-y-2">
+                    <p>
+                        <strong>Brands:</strong> All business brands or concepts managed by the company. Each brand can have multiple stores and products. 
+                        Brand data is synchronized from the Head Office and cannot be modified from the Edge Server.
+                    </p>
+                    <p>
+                        <strong>Store Brands:</strong> Specific brands assigned to this store ({{ store_config.name }}). This is a many-to-many relationship 
+                        that allows one physical store to operate multiple brands (e.g., Food Court concept). Each Store Brand can have its own HO Store ID 
+                        for proper data synchronization.
+                    </p>
+                    <p>
+                        <strong>Note:</strong> Both Brand and Store Brand data are automatically synchronized from HO. 
+                        Any brands or assignments not included in the HO sync response will be removed from the Edge database.
+                    </p>
+                </div>
             </div>
         </div>
     </div>

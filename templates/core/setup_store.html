@@ -1,17 +1,120 @@
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup Store - Edge Server</title>
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/output.css' %}">
-    <script src="{% static 'js/sweetalert2.min.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'css/output.css' %}" onerror="this.onerror=null; this.href='{% static 'css/tailwind.min.css' %}';">
+    <script defer src="{% static 'js/alpine.min.js' %}"></script>
 </head>
 
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
+    <div class="container mx-auto px-4 py-8" x-data="setupStore()"        <!-- Custom Modal -->
+        <div x-show="modal.show" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 z-50 overflow-y-auto"
+             style="display: none;">
+            <!-- Backdrop -->
+            <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"></div>
+            
+            <!-- Modal -->
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div x-show="modal.show"
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="transition ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden">
+                    <!-- Modal Header -->
+                    <div class="px-6 py-5 border-b border-gray-200"
+                         :class="{
+                             'bg-gradient-to-r from-green-50 to-emerald-50': modal.type === 'success',
+                             'bg-gradient-to-r from-red-50 to-rose-50': modal.type === 'error',
+                             'bg-gradient-to-r from-blue-50 to-indigo-50': modal.type === 'info',
+                             'bg-gradient-to-r from-yellow-50 to-amber-50': modal.type === 'warning'
+                         }">
+                        <div class="flex items-center space-x-3">
+                            <!-- Icon -->
+                            <div class="flex-shrink-0">
+                                <template x-if="modal.type === 'success'">
+                                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                    </div>
+                                </template>
+                                <template x-if="modal.type === 'error'">
+                                    <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </div>
+                                </template>
+                                <template x-if="modal.type === 'info'">
+                                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                </template>
+                                <template x-if="modal.type === 'warning'">
+                                    <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                        </svg>
+                                    </div>
+                                </template>
+                                <template x-if="modal.type === 'loading'">
+                                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <svg class="animate-spin w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    </div>
+                                </template>
+                            </div>
+                            <!-- Title -->
+                            <h3 class="text-xl font-bold text-gray-800" x-text="modal.title"></h3>
+                        </div>
+                    </div>
+                    
+                    <!-- Modal Body -->
+                    <div class="px-6 py-5">
+                        <div x-html="modal.message" class="text-gray-700"></div>
+                    </div>
+                    
+                    <!-- Modal Footer -->
+                    <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+                        <template x-if="modal.showCancel">
+                            <button @click="modal.show = false"
+                                    class="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors">
+                                <span x-text="modal.cancelText"></span>
+                            </button>
+                        </template>
+                        <template x-if="modal.showConfirm">
+                            <button @click="modal.onConfirm()"
+                                    class="px-5 py-2.5 rounded-lg font-medium text-white transition-colors"
+                                    :class="{
+                                        'bg-green-600 hover:bg-green-700': modal.type === 'success',
+                                        'bg-red-600 hover:bg-red-700': modal.type === 'error',
+                                        'bg-blue-600 hover:bg-blue-700': modal.type === 'info',
+                                        'bg-yellow-600 hover:bg-yellow-700': modal.type === 'warning'
+                                    }">
+                                <span x-text="modal.confirmText"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- Header -->
         <div class="text-center mb-8">
             <div class="text-6xl mb-4">🏪</div>
@@ -21,77 +124,51 @@
 
         <!-- Setup Form -->
         <div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-8">
-            {% if messages %}
-            {% for message in messages %}
-            <div
-                class="mb-6 p-4 rounded-lg {% if message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
-                {{ message }}
-            </div>
-            {% endfor %}
-            {% endif %}
-
-            <form method="post" action="{% url 'core:setup_store_config' %}" class="space-y-6" id="setupForm">
+            <form @submit.prevent="submitSetup" class="space-y-6">
                 {% csrf_token %}
 
-                <!-- Hidden company_id field -->
-                <input type="hidden" name="company_id" id="company_id_hidden" value="">
-
-                <!-- Step 1: Select Company -->
+                <!-- Company Selection -->
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-2">Company *</label>
-                    <select id="company_select" required
+                    <select 
+                        x-model="selectedCompany" 
+                        @change="loadStores"
+                        required
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">-- Loading Companies... --</option>
+                        <option value="">-- Pilih Company --</option>
+                        <template x-for="company in companies" :key="company.id">
+                            <option :value="company.id" x-text="`${company.name} (${company.code})`"></option>
+                        </template>
                     </select>
                     <p class="mt-1 text-sm text-gray-500">Select which company this store belongs to</p>
                 </div>
 
-                <!-- Step 2: Select Store from HO -->
-                <div id="store_dropdown_container" style="display: none;">
+                <!-- Store Selection -->
+                <div x-show="selectedCompany" x-transition>
                     <label class="block text-sm font-bold text-gray-700 mb-2">Store from HO Server *</label>
-                    <select id="store_select" name="ho_store_id" required
+                    <select 
+                        x-model="selectedStore" 
+                        required
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">-- Select Company First --</option>
+                        <option value="">-- Pilih Store --</option>
+                        <template x-for="store in stores" :key="store.id">
+                            <option :value="store.id" x-text="`${store.store_name} (${store.store_code})`"></option>
+                        </template>
                     </select>
                     <p class="mt-1 text-sm text-gray-500">Select store from HO Server master data</p>
                 </div>
 
                 <!-- Info: Store will be pulled from HO -->
-                <div id="store_info_box" class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded"
-                    style="display: none;">
+                <div x-show="selectedStore" x-transition class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
                     <div class="flex">
                         <div class="flex-shrink-0">
                             <svg class="h-5 w-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd"
-                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                                    clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
                             </svg>
                         </div>
                         <div class="ml-3">
                             <p class="text-sm text-yellow-700 font-medium">Store data will be pulled from HO Server</p>
-                            <p class="mt-1 text-sm text-yellow-600">
-                                Store code, name, address, and other details will be automatically synced from HO master
-                                data.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Info: What will be synced -->
-                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                    <div class="flex">
-                        <div class="flex-shrink-0">
-                            <svg class="h-5 w-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd"
-                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                                    clip-rule="evenodd" />
-                            </svg>
-                        </div>
-                        <div class="ml-3">
-                            <p class="text-sm text-blue-700 font-medium">What happens after setup?</p>
-                            <ul class="mt-2 text-sm text-blue-600 list-disc list-inside">
-                                <li>Company & Store configuration</li>
-                            </ul>
+                            <p class="mt-1 text-sm text-yellow-600">Store code, name, address, and other details will be automatically synced from HO master data.</p>
                         </div>
                     </div>
                 </div>
@@ -101,25 +178,24 @@
                     <div class="flex">
                         <div class="flex-shrink-0">
                             <svg class="h-5 w-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd"
-                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                                    clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
                             </svg>
                         </div>
                         <div class="ml-3">
                             <p class="text-sm text-blue-700 font-medium">Important</p>
-                            <p class="mt-1 text-sm text-blue-600">
-                                This will save the store configuration directly to this Edge Server database.
-                            </p>
+                            <p class="mt-1 text-sm text-blue-600">This will save the store configuration directly to this Edge Server database.</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Submit Button -->
                 <div class="flex items-center space-x-4">
-                    <button type="submit" id="setupButton"
+                    <button 
+                        type="submit"
+                        :disabled="loading || !selectedCompany || !selectedStore"
                         class="flex-1 bg-blue-600 text-white py-4 px-6 rounded-lg font-bold text-lg hover:bg-blue-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                        🚀 Setup Store
+                        <span x-show="!loading">🚀 Setup Store</span>
+                        <span x-show="loading">⏳ Processing...</span>
                     </button>
                 </div>
             </form>
@@ -128,262 +204,238 @@
             <div class="mt-6 text-center">
                 <p class="text-sm text-gray-600">
                     After Setup store, you can login to admin page
-                    <a href="{% url 'core:terminal_setup' %}"
-                        class="text-blue-600 hover:text-blue-800 font-medium">/setup/terminal/</a>
+                    <a href="{% url 'core:terminal_setup' %}" class="text-blue-600 hover:text-blue-800 font-medium">/setup/terminal/</a>
                 </p>
             </div>
         </div>
+    </div>
 
-        <script>
-            // Helper function to get CSRF token
-            function getCookie(name) {
-                let cookieValue = null;
-                if (document.cookie && document.cookie !== '') {
-                    const cookies = document.cookie.split(';');
-                    for (let i = 0; i < cookies.length; i++) {
-                        const cookie = cookies[i].trim();
-                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                            break;
+    <script>
+        function setupStore() {
+            return {
+                companies: [],
+                stores: [],
+                selectedCompany: '',
+                selectedStore: '',
+                loading: false,
+                modal: {
+                    show: false,
+                    type: 'info', // success, error, info, warning, loading
+                    title: '',
+                    message: '',
+                    showConfirm: true,
+                    showCancel: false,
+                    confirmText: 'OK',
+                    cancelText: 'Tutup',
+                    onConfirm: () => { this.modal.show = false; }
+                },
+
+                init() {
+                    this.loadCompanies();
+                },
+
+                showModal(options) {
+                    this.modal = {
+                        show: true,
+                        type: options.type || 'info',
+                        title: options.title || '',
+                        message: options.message || '',
+                        showConfirm: options.showConfirm !== false,
+                        showCancel: options.showCancel || false,
+                        confirmText: options.confirmText || 'OK',
+                        cancelText: options.cancelText || 'Tutup',
+                        onConfirm: options.onConfirm || (() => { this.modal.show = false; })
+                    };
+                },
+
+                getCsrfToken() {
+                    const name = 'csrftoken';
+                    let cookieValue = null;
+                    if (document.cookie && document.cookie !== '') {
+                        const cookies = document.cookie.split(';');
+                        for (let i = 0; i < cookies.length; i++) {
+                            const cookie = cookies[i].trim();
+                            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                                break;
+                            }
                         }
                     }
-                }
-                return cookieValue;
-            }
+                    return cookieValue;
+                },
 
-
-
-            // Load companies from API on page load
-            document.addEventListener('DOMContentLoaded', function () {
-                const companySelect = document.getElementById('company_select');
-                const companyIdHidden = document.getElementById('company_id_hidden');
-                const storeSelect = document.getElementById('store_select');
-                const storeDropdownContainer = document.getElementById('store_dropdown_container');
-                const setupForm = document.getElementById('setupForm');
-                const setupButton = document.getElementById('setupButton');
-
-                // Function to load companies from HO Server
-                function loadCompanies() {
-                    companySelect.innerHTML = '<option value="">-- Loading Companies from HO... --</option>';
-
-                    fetch('/api/ho/companies/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        }
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            companySelect.innerHTML = '<option value="">-- Select Company --</option>';
-
-                            if (data.companies && data.companies.length > 0) {
-                                data.companies.forEach(company => {
-                                    const option = document.createElement('option');
-                                    option.value = company.id;
-                                    option.textContent = `${company.name} (${company.code})`;
-                                    companySelect.appendChild(option);
-                                });
-                            } else {
-                                companySelect.innerHTML = '<option value="">-- No Companies Found in HO --</option>';
+                async loadCompanies() {
+                    try {
+                        const response = await fetch('/api/ho/companies/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCsrfToken()
                             }
-                        })
-                        .catch(error => {
-                            console.error('Error loading companies from HO:', error);
-                            companySelect.innerHTML = '<option value="">-- Error: Check HO Server Connection --</option>';
                         });
-                }
+                        const data = await response.json();
+                        this.companies = data.companies || [];
+                    } catch (error) {
+                        console.error('Error loading companies:', error);
+                        this.showModal({
+                            type: 'error',
+                            title: 'Error',
+                            message: 'Gagal memuat data company dari HO Server',
+                            confirmText: 'OK'
+                        });
+                    }
+                },
 
-                // Function to load stores from HO Server based on company
-                function loadStores(companyId) {
-                    if (!companyId) {
-                        storeDropdownContainer.style.display = 'none';
-                        storeSelect.innerHTML = '<option value="">-- Select Company First --</option>';
+                async loadStores() {
+                    if (!this.selectedCompany) {
+                        this.stores = [];
+                        this.selectedStore = '';
                         return;
                     }
 
-                    storeDropdownContainer.style.display = 'block';
-                    storeSelect.innerHTML = '<option value="">-- Loading Stores from HO... --</option>';
-
-                    fetch('/api/ho/stores/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: JSON.stringify({ company_id: companyId })
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            storeSelect.innerHTML = '<option value="">-- Select Store --</option>';
-
-                            if (data.stores && data.stores.length > 0) {
-                                data.stores.forEach(store => {
-                                    const option = document.createElement('option');
-                                    option.value = store.id;
-                                    option.textContent = `${store.store_name} (${store.store_code})`;
-                                    storeSelect.appendChild(option);
-                                });
-                            } else {
-                                storeSelect.innerHTML = '<option value="">-- No Stores Found for this Company --</option>';
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error loading stores from HO:', error);
-                            storeSelect.innerHTML = '<option value="">-- Error: Check HO Server Connection --</option>';
+                    try {
+                        const response = await fetch('/api/ho/stores/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCsrfToken()
+                            },
+                            body: JSON.stringify({ company_id: this.selectedCompany })
                         });
-                }
-
-                // Initial load
-                loadCompanies();
-
-                // When company is selected, update hidden field and load stores
-                companySelect.addEventListener('change', function () {
-                    const companyId = this.value;
-                    companyIdHidden.value = companyId;
-                    loadStores(companyId);
-                });
-
-                // When store is selected, show info box
-                storeSelect.addEventListener('change', function () {
-                    const storeId = this.value;
-                    const storeInfoBox = document.getElementById('store_info_box');
-
-                    if (storeId) {
-                        storeInfoBox.style.display = 'block';
-                    } else {
-                        storeInfoBox.style.display = 'none';
+                        const data = await response.json();
+                        this.stores = data.stores || [];
+                        this.selectedStore = '';
+                    } catch (error) {
+                        console.error('Error loading stores:', error);
+                        this.showModal({
+                            type: 'error',
+                            title: 'Error',
+                            message: 'Gagal memuat data store dari HO Server',
+                            confirmText: 'OK'
+                        });
                     }
-                });
+                },
 
-                // Handle form submission with AJAX and SweetAlert
-                setupForm.addEventListener('submit', function (e) {
-                    e.preventDefault();
-
-                    const companyId = companyIdHidden.value;
-                    const storeId = storeSelect.value;
-
-                    if (!companyId || !storeId) {
-                        Swal.fire({
-                            icon: 'warning',
+                async submitSetup() {
+                    if (!this.selectedCompany || !this.selectedStore) {
+                        this.showModal({
+                            type: 'warning',
                             title: 'Data Tidak Lengkap',
-                            text: 'Silakan pilih Company dan Store terlebih dahulu',
-                            confirmButtonColor: '#3B82F6'
+                            message: 'Silakan pilih Company dan Store terlebih dahulu',
+                            confirmText: 'OK'
                         });
                         return;
                     }
 
-                    // Disable button and show loading
-                    setupButton.disabled = true;
-                    setupButton.innerHTML = '⏳ Processing...';
+                    this.loading = true;
 
-                    // Show loading alert
-                    Swal.fire({
+                    // Show loading modal
+                    this.showModal({
+                        type: 'loading',
                         title: 'Sedang Setup Store...',
-                        html: 'Mohon tunggu, sedang mengambil data dari HO Server dan menyimpan ke database Edge Server.',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        didOpen: () => {
-                            Swal.showLoading();
-                        }
+                        message: 'Mohon tunggu, sedang mengambil data dari HO Server dan menyimpan ke database Edge Server.',
+                        showConfirm: false,
+                        showCancel: false
                     });
 
-                    // Submit form via AJAX
-                    const formData = new FormData(setupForm);
+                    try {
+                        const formData = new FormData();
+                        formData.append('csrfmiddlewaretoken', this.getCsrfToken());
+                        formData.append('company_id', this.selectedCompany);
+                        formData.append('ho_store_id', this.selectedStore);
 
-                    fetch(setupForm.action, {
-                        method: 'POST',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: formData
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            setupButton.disabled = false;
-                            setupButton.innerHTML = '🚀 Setup Store';
-
-                            if (data.success) {
-                                // Success - show success message
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: '✅ Setup Berhasil!',
-                                    html: `
-                                        <div class="text-left">
-                                            <p class="mb-2"><strong>Company:</strong> ${data.company_name}</p>
-                                            <p class="mb-2"><strong>Store:</strong> ${data.store_name} (${data.store_code})</p>
-                                            ${data.brand_count ? `<p class="mb-2"><strong>Brands:</strong> ${data.brand_names} (${data.brand_count} brand${data.brand_count > 1 ? 's' : ''})</p>` : ''}
-                                            <hr class="my-3">
-                                            <p class="mb-2"><strong>Langkah Selanjutnya:</strong></p>
-                                            <p class="text-sm text-gray-600 mb-2">
-                                                ${data.next_step || 'Silakan login dan sync master data dari menu Management > Master Data'}
-                                            </p>
-                                            <div class="bg-blue-50 p-3 rounded mt-3">
-                                                <p class="text-sm text-blue-800">
-                                                    💡 <strong>Tip:</strong> Setelah login, buka menu <strong>Management > Master Data</strong> 
-                                                    untuk sync Categories, Products, dan data lainnya dari HO Server.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    `,
-                                    confirmButtonText: 'Login Sekarang',
-                                    confirmButtonColor: '#10B981'
-                                }).then((result) => {
-                                    if (result.isConfirmed) {
-                                        window.location.href = '/login/';
-                                    }
-                                });
-                            } else if (data.already_configured) {
-                                // Already configured - show warning
-                                Swal.fire({
-                                    icon: 'info',
-                                    title: '⚠️ Store Telah Di-Setup',
-                                    html: `
-                                        <div class="text-left">
-                                            <p class="mb-2">Store telah di-setup sebelumnya:</p>
-                                            <p class="mb-2"><strong>Company:</strong> ${data.company_name}</p>
-                                            <p class="mb-2"><strong>Store:</strong> ${data.store_name} (${data.store_code})</p>
-                                            <hr class="my-3">
-                                            <p class="text-sm text-gray-600">Silakan login untuk menggunakan sistem.</p>
-                                        </div>
-                                    `,
-                                    confirmButtonText: 'Login Sekarang',
-                                    confirmButtonColor: '#3B82F6',
-                                    showCancelButton: true,
-                                    cancelButtonText: 'Tutup',
-                                    cancelButtonColor: '#6B7280'
-                                }).then((result) => {
-                                    if (result.isConfirmed) {
-                                        window.location.href = '/login/';
-                                    }
-                                });
-                            } else {
-                                // Error
-                                Swal.fire({
-                                    icon: 'error',
-                                    title: '❌ Setup Gagal',
-                                    text: data.message || 'Terjadi kesalahan saat setup store',
-                                    confirmButtonColor: '#EF4444'
-                                });
-                            }
-                        })
-                        .catch(error => {
-                            setupButton.disabled = false;
-                            setupButton.innerHTML = '🚀 Setup Store';
-
-                            console.error('Setup error:', error);
-                            Swal.fire({
-                                icon: 'error',
-                                title: '❌ Error',
-                                text: 'Terjadi kesalahan koneksi. Silakan coba lagi.',
-                                confirmButtonColor: '#EF4444'
-                            });
+                        const response = await fetch('{% url "core:setup_store_config" %}', {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRFToken': this.getCsrfToken()
+                            },
+                            body: formData
                         });
-                });
-            });
-        </script>
-    </div>
-</body>
 
+                        const data = await response.json();
+                        this.loading = false;
+
+                        if (data.success) {
+                            this.showSuccessDialog(data);
+                        } else if (data.already_configured) {
+                            this.showAlreadyConfiguredDialog(data);
+                        } else {
+                            this.showModal({
+                                type: 'error',
+                                title: '❌ Setup Gagal',
+                                message: data.message || 'Terjadi kesalahan saat setup store',
+                                confirmText: 'OK'
+                            });
+                        }
+                    } catch (error) {
+                        this.loading = false;
+                        console.error('Setup error:', error);
+                        this.showModal({
+                            type: 'error',
+                            title: '❌ Error',
+                            message: 'Terjadi kesalahan koneksi. Silakan coba lagi.',
+                            confirmText: 'OK'
+                        });
+                    }
+                },
+
+                showSuccessDialog(data) {
+                    const brandInfo = data.brand_count 
+                        ? `<p class="mb-2"><strong class="font-semibold">Brands:</strong> ${data.brand_names} (${data.brand_count} brand${data.brand_count > 1 ? 's' : ''})</p>`
+                        : '';
+
+                    this.showModal({
+                        type: 'success',
+                        title: '✅ Setup Berhasil!',
+                        message: `
+                            <div class="space-y-2">
+                                <p class="mb-2"><strong class="font-semibold">Company:</strong> ${data.company_name}</p>
+                                <p class="mb-2"><strong class="font-semibold">Store:</strong> ${data.store_name} (${data.store_code})</p>
+                                ${brandInfo}
+                                <hr class="my-4 border-gray-200">
+                                <p class="mb-2 font-semibold text-gray-800">Langkah Selanjutnya:</p>
+                                <p class="text-sm text-gray-600 mb-2">
+                                    ${data.next_step || 'Silakan login dan sync master data dari menu Management > Master Data'}
+                                </p>
+                                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg mt-3">
+                                    <p class="text-sm text-blue-800">
+                                        💡 <strong class="font-semibold">Tip:</strong> Setelah login, buka menu <strong>Management → Master Data</strong> 
+                                        untuk sync Categories, Products, dan data lainnya dari HO Server.
+                                    </p>
+                                </div>
+                            </div>
+                        `,
+                        confirmText: 'Login Sekarang',
+                        onConfirm: () => {
+                            window.location.href = '/login/';
+                        }
+                    });
+                },
+
+                showAlreadyConfiguredDialog(data) {
+                    this.showModal({
+                        type: 'info',
+                        title: '⚠️ Store Telah Di-Setup',
+                        message: `
+                            <div class="space-y-2">
+                                <p class="mb-2">Store telah di-setup sebelumnya:</p>
+                                <p class="mb-2"><strong class="font-semibold">Company:</strong> ${data.company_name}</p>
+                                <p class="mb-2"><strong class="font-semibold">Store:</strong> ${data.store_name} (${data.store_code})</p>
+                                <hr class="my-4 border-gray-200">
+                                <p class="text-sm text-gray-600">Silakan login untuk menggunakan sistem.</p>
+                            </div>
+                        `,
+                        confirmText: 'Login Sekarang',
+                        showCancel: true,
+                        cancelText: 'Tutup',
+                        onConfirm: () => {
+                            window.location.href = '/login/';
+                        }
+                    });
+                }
+            }
+        }
+    </script>
+</body>
 </html>

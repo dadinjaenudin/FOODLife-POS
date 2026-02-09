@@ -118,6 +118,11 @@ class Brand(models.Model):
     service_charge = models.DecimalField(max_digits=5, decimal_places=2, default=5.00)
     logo = models.ImageField(upload_to='brands/', blank=True)
     receipt_footer = models.TextField(blank=True, default='Terima Kasih Atas Kunjungan Anda')
+    brand_type = models.CharField(
+        max_length=50,
+        default='restaurant',
+        help_text='Type of brand/concept (synced from HO)'
+    )
     is_active = models.BooleanField(default=True)
     
     # Brand-specific loyalty override (optional)

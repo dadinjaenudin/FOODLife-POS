@@ -7,7 +7,7 @@
     
     <!-- Tailwind CSS - LOCAL -->
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/output.css' %}">
+    <link rel="stylesheet" href="{% static 'css/output.css' %}" onerror="this.onerror=null; this.href='{% static 'css/tailwind.min.css' %}';">
     
     <!-- HTMX - LOCAL -->
     <script src="{% static 'js/htmx.min.js' %}"></script>

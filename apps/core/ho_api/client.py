@@ -325,6 +325,7 @@ class HOAPIClient:
         if store_id:
             payload['store_id'] = store_id
         
+        logger.info("[HO API] Brands payload: %s", payload)
         data = self._make_request('POST', '/api/v1/sync/brands/', json=payload)
         
         brands = data.get('brands') or data.get('results', [])

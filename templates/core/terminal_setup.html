@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Terminal Setup - {{ store.store_name }}</title>
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/output.css' %}">
+    <link rel="stylesheet" href="{% static 'css/output.css' %}" onerror="this.onerror=null; this.href='{% static 'css/tailwind.min.css' %}';">
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen flex items-center justify-center p-4">
@@ -153,18 +153,10 @@
     </div>
 
     <script>
-        // Detect IP address (shown from backend, but we can enhance with client-side)
-        fetch('https://api.ipify.org?format=json')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('ipDisplay').textContent = data.ip;
-            })
-            .catch(() => {
-                document.getElementById('ipDisplay').textContent = '{{ request.META.REMOTE_ADDR }}';
-            });
+        // Display IP address from server (no external API call)
+        document.getElementById('ipDisplay').textContent = '{{ request.META.REMOTE_ADDR }}';
 
-        // Try to get MAC address (limited in browser for security)
-        // Most modern browsers block this, but we try via server detection
+        // MAC address detected by server
         document.getElementById('macDisplay').textContent = 'Detected by server';
 
         // Form submission with localStorage

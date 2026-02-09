@@ -57,4 +57,5 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+    # Static files are automatically served by django.contrib.staticfiles when DEBUG=True
+    # No need to add static() for STATIC_URL in development

@@ -1330,6 +1330,14 @@ def sync_from_ho(request):
         brand = store_brand.brand
         company = brand.company
         company_id = str(company.id)
+        
+        # Validate HO Store ID is configured
+        if not store_brand.ho_store_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'HO Store ID not configured. Please run Setup Store wizard first or update StoreBrand.ho_store_id in database.'
+            }, status=400)
+        
         ho_store_id = str(store_brand.ho_store_id)
         
         # Initialize HO API Client
@@ -1341,7 +1349,159 @@ def sync_from_ho(request):
         # Sync each selected table
         for table_name in selected_tables:
             try:
-                if table_name == 'core_category':
+                if table_name == 'core_brand':
+                    # Sync Brands
+                    print(f"[SYNC] Requesting brands from HO with payload: company_id={company_id}, store_id={ho_store_id}")
+                    brands = client.get_brands(company_id=company_id, store_id=ho_store_id)
+                    saved_count = 0
+                    updated_count = 0
+                    
+                    # Log all brands and their brand_type
+                    print(f"[SYNC] Total brands from HO: {len(brands)}")
+                    for idx, b in enumerate(brands, 1):
+                        print(f"[SYNC] Brand {idx}: code='{b.get('code')}' name='{b.get('name')}' brand_type='{b.get('brand_type')}'")
+                    
+                    # Get all brand IDs from HO response
+                    ho_brand_ids = [brand_data['id'] for brand_data in brands]
+                    
+                    # Delete brands not in HO response
+                    brands_to_delete = Brand.objects.filter(
+                        company_id=company_id
+                    ).exclude(
+                        id__in=ho_brand_ids
+                    )
+                    
+                    deleted_count = brands_to_delete.count()
+                    if deleted_count > 0:
+                        deleted_brands = list(brands_to_delete.values_list('code', 'name'))
+                        print(f"[SYNC] Deleting {deleted_count} brands not found in HO: {deleted_brands}")
+                        brands_to_delete.delete()
+                    
+                    for brand_data in brands:
+                        try:
+                            # Get company_id from API response
+                            brand_company_id = brand_data.get('company_id')
+                            if not brand_company_id:
+                                print(f"[SYNC] Brand {brand_data.get('name')} skipped - missing company_id")
+                                continue
+                            
+                            brand_company = Company.objects.filter(id=brand_company_id).first()
+                            if not brand_company:
+                                print(f"[SYNC] Brand {brand_data.get('name')} skipped - company not found: {brand_company_id}")
+                                continue
+                            
+                            defaults = {
+                                'company': brand_company,
+                                'code': brand_data.get('code', ''),
+                                'name': brand_data.get('name', 'Unnamed Brand'),
+                                'address': brand_data.get('address', ''),
+                                'phone': brand_data.get('phone', ''),
+                                'tax_id': brand_data.get('tax_id', ''),
+                                'tax_rate': Decimal(str(brand_data.get('tax_rate', 11.00))),
+                                'service_charge': Decimal(str(brand_data.get('service_charge', 5.00))),
+                                'receipt_footer': brand_data.get('receipt_footer', 'Terima Kasih Atas Kunjungan Anda'),
+                                'brand_type': brand_data.get('brand_type', 'restaurant'),  # Get brand_type from HO API
+                                'is_active': brand_data.get('is_active', True),
+                                'point_expiry_months_override': brand_data.get('point_expiry_months_override'),
+                            }
+                            
+                            brand_obj, created = Brand.objects.update_or_create(
+                                id=brand_data['id'],
+                                defaults=defaults
+                            )
+                            
+                            if created:
+                                saved_count += 1
+                            else:
+                                updated_count += 1
+                                
+                        except Exception as brand_error:
+                            print(f"Error saving brand {brand_data.get('name', 'unknown')}: {brand_error}")
+                            import traceback
+                            traceback.print_exc()
+                            continue
+                    
+                    synced_tables.append(table_name)
+                    sync_results[table_name] = {
+                        'success': True,
+                        'records_count': saved_count + updated_count,
+                        'details': f'{saved_count} created, {updated_count} updated'
+                    }
+                
+                elif table_name == 'core_storebrand':
+                    # Sync Store-Brand relationships
+                    print(f"[SYNC] Requesting store-brands from HO with payload: company_id={company_id}, store_id={ho_store_id}")
+                    store_brands_data = client.get_store_brands(company_id=company_id, store_id=ho_store_id)
+                    saved_count = 0
+                    updated_count = 0
+                    
+                    print(f"[SYNC] Total store-brands from HO: {len(store_brands_data)}")
+                    
+                    # Get all store-brand IDs from HO response
+                    ho_storebrand_ids = [sb['id'] for sb in store_brands_data if 'id' in sb]
+                    
+                    # Delete store-brands not in HO response
+                    storebrands_to_delete = StoreBrand.objects.filter(
+                        store=store_config
+                    ).exclude(
+                        id__in=ho_storebrand_ids
+                    )
+                    
+                    deleted_count = storebrands_to_delete.count()
+                    if deleted_count > 0:
+                        print(f"[SYNC] Deleting {deleted_count} store-brands not found in HO")
+                        storebrands_to_delete.delete()
+                    
+                    for sb_data in store_brands_data:
+                        try:
+                            brand_id = sb_data.get('brand_id')
+                            if not brand_id:
+                                print(f"[SYNC] Store-Brand skipped - missing brand_id")
+                                continue
+                            
+                            brand_obj = Brand.objects.filter(id=brand_id).first()
+                            if not brand_obj:
+                                print(f"[SYNC] Store-Brand skipped - brand not found: {brand_id}")
+                                continue
+                            
+                            # store_id from HO API response is the HO Store ID
+                            ho_store_id_from_api = sb_data.get('store_id')
+                            
+                            defaults = {
+                                'store': store_config,
+                                'brand': brand_obj,
+                                'ho_store_id': ho_store_id_from_api,  # This is HO Store ID
+                                'is_active': sb_data.get('is_active', True),
+                            }
+                            
+                            print(f"[SYNC] Syncing StoreBrand: brand={brand_obj.name}, ho_store_id={ho_store_id_from_api}")
+                            
+                            storebrand_obj, created = StoreBrand.objects.update_or_create(
+                                id=sb_data['id'],
+                                defaults=defaults
+                            )
+                            
+                            if created:
+                                saved_count += 1
+                                print(f"[SYNC] ✓ StoreBrand created: {brand_obj.name}")
+                            else:
+                                updated_count += 1
+                                print(f"[SYNC] ✓ StoreBrand updated: {brand_obj.name}")
+                                
+                        except Exception as sb_error:
+                            print(f"Error saving store-brand: {sb_error}")
+                            import traceback
+                            traceback.print_exc()
+                            continue
+                    
+                    synced_tables.append(table_name)
+                    sync_results[table_name] = {
+                        'success': True,
+                        'records_count': saved_count + updated_count,
+                        'details': f'{saved_count} created, {updated_count} updated, {deleted_count} deleted'
+                    }
+                
+                elif table_name == 'core_category':
                     # Sync Categories
                     categories = client.get_categories(company_id=company_id, store_id=ho_store_id)
                     saved_count = 0
@@ -1993,18 +2153,29 @@ def sync_from_ho(request):
             }
 
             for table_name, result in sync_results.items():
-                if result.get('success') and 'checklist' in result:
-                    checklist = result['checklist']
-                    for item_name, comparison in checklist.items():
-                        is_match = comparison.get('match', False)
-                        all_match = all_match and is_match
-                        icon = '✓' if is_match else '✗'
+                if result.get('success'):
+                    # For tables with detailed checklist
+                    if 'checklist' in result:
+                        checklist = result['checklist']
+                        for item_name, comparison in checklist.items():
+                            is_match = comparison.get('match', False)
+                            all_match = all_match and is_match
+                            icon = '✓' if is_match else '✗'
+                            checklist_items.append({
+                                'item': label_map.get(item_name, item_name),
+                                'ho': comparison['ho'],
+                                'edge': comparison['edge'],
+                                'match': is_match,
+                                'icon': icon
+                            })
+                    # For simple tables (Brand, StoreBrand, etc) - use records_count
+                    elif 'records_count' in result:
                         checklist_items.append({
-                            'item': label_map.get(item_name, item_name),
-                            'ho': comparison['ho'],
-                            'edge': comparison['edge'],
-                            'match': is_match,
-                            'icon': icon
+                            'item': table_name.replace('core_', '').replace('_', '-').title(),
+                            'ho': result['records_count'],
+                            'edge': result['records_count'],
+                            'match': True,
+                            'icon': '✓'
                         })
             
             return JsonResponse({
@@ -2041,13 +2212,21 @@ def brands_list(request):
     """Brands List - Display all brands in the system"""
     store_config = Store.get_current()
     
-    # Get all brands
+    # Get all brands (only from HO after sync)
     brands = Brand.objects.all().order_by('code')
+    
+    # Get store brands (brands assigned to this store)
+    from apps.core.models import StoreBrand
+    store_brands = StoreBrand.objects.filter(
+        store=store_config
+    ).select_related('brand', 'brand__company').order_by('brand__name')
     
     context = {
         'brands': brands,
+        'store_brands': store_brands,
         'store_config': store_config,
         'total_count': brands.count(),
+        'store_brands_count': store_brands.count(),
     }
     
     return render(request, 'management/brands_list.html', context)
