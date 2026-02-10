@@ -542,7 +542,9 @@
             
             // Logo
             if (brand.logo_url) {
-                document.getElementById('header-logo').innerHTML = `<img src="${brand.logo_url}" alt="Logo">`;
+                const logoHtml = `<img src="${brand.logo_url}" alt="Logo" onerror="console.error('[Brand] Logo failed to load:', '${brand.logo_url}'); this.style.display='none';">`;
+                document.getElementById('header-logo').innerHTML = logoHtml;
+                console.log('[Brand] Logo URL:', brand.logo_url);
             }
             
             // Theme colors
@@ -556,51 +558,34 @@
         
         // ========== SLIDESHOW ==========
         async function initSlideshow() {
-            console.log('[Customer Display] Initializing slideshow from Django API...');
+            console.log('[Customer Display] Initializing slideshow from local config...');
             
             try {
-                // Build API URL with filters from config
-                const params = new URLSearchParams();
-                if (config.company_code) params.append('company', config.company_code);
-                if (config.brand_code) params.append('brand', config.brand_code);
-                if (config.store_code) params.append('store', config.store_code);
+                // Use slideshow data from local API config (already fetched server-side)
+                const slides = (config && Array.isArray(config.slideshow)) ? config.slideshow : [];
                 
-                const apiUrl = `${config.edge_server}/api/customer-display/slideshow/?${params.toString()}`;
-                console.log('[Customer Display] Fetching slideshow from:', apiUrl);
-                
-                const response = await fetch(apiUrl);
-                if (!response.ok) {
-                    throw new Error(`API error: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (!data.success || !data.slides || data.slides.length === 0) {
+                if (!slides.length) {
                     console.log('[Customer Display] No slides available, showing default');
                     showDefaultSlide();
+                    // Show slideshow container even with default slide
+                    const slideshowContainer = document.querySelector('.slideshow-container');
+                    if (slideshowContainer) slideshowContainer.style.display = 'flex';
                     return;
                 }
                 
-                console.log(`[Customer Display] Loaded ${data.slides.length} slides from MinIO`);
+                console.log(`[Customer Display] Loaded ${slides.length} slides from config`);
                 
-                // Update brand name if available
-                if (data.brand_name) {
-                    config.brand.name = data.brand_name;
-                }
-                
-                // Render slides with MinIO images
-                const slides = data.slides;
                 const slidesContainer = document.getElementById('slideshow-slides');
                 const indicatorsContainer = document.getElementById('slide-indicators');
                 
-                // Create slides with images from MinIO
+                // Create slides with images (URLs already converted to absolute by local_api.py)
                 slidesContainer.innerHTML = slides.map((slide, index) => `
-                    <div class="slide ${index === 0 ? 'active' : ''}" data-index="${index}" data-duration="${slide.duration * 1000}">
+                    <div class="slide ${index === 0 ? 'active' : ''}" data-index="${index}" data-duration="${(slide.duration_seconds || slide.duration || 5) * 1000}">
                         <img src="${slide.image_url}" 
-                             alt="${slide.title}" 
+                             alt="${slide.title || 'Slide'}" 
                              class="slide-image"
                              loading="${index === 0 ? 'eager' : 'lazy'}"
-                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'slide-error\\'>Image failed to load</div>';">
+                             onerror="console.error('[Slideshow] Image failed to load:', '${slide.image_url}'); this.style.display='none'; this.parentElement.innerHTML='<div class=\\'slide-error\\'>Image failed to load<br><small>${slide.image_url}</small></div>';">
                     </div>
                 `).join('');
                 
@@ -609,6 +594,13 @@
                     `<div class="slide-indicator ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`
                 ).join('');
                 
+                // Show slideshow container
+                const slideshowContainer = document.querySelector('.slideshow-container');
+                if (slideshowContainer) {
+                    slideshowContainer.style.display = 'flex';
+                    console.log('[Customer Display] Slideshow container shown');
+                }
+                
                 // Start rotation
                 console.log('[Customer Display] Starting slideshow...');
                 startSlideshow(slides);
@@ -616,37 +608,68 @@
             } catch (error) {
                 console.error('[Customer Display] Failed to load slideshow:', error);
                 showDefaultSlide();
+                // Show slideshow container even on error
+                const slideshowContainer = document.querySelector('.slideshow-container');
+                if (slideshowContainer) slideshowContainer.style.display = 'flex';
             }
         }
         
         function showDefaultSlide() {
             // Show default welcome slide if no slides available
             const brandName = config && config.brand && config.brand.name ? config.brand.name : 'YOGYA Food Life';
-            document.getElementById('slideshow-slides').innerHTML = `
-                <div class="slide active">
-                    <div class="slide-content" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                        <h2>🎉 Selamat datang di ${brandName}!</h2>
-                        <p>Nikmati berbagai menu pilihan terbaik</p>
+            const slidesContainer = document.getElementById('slideshow-slides');
+            if (slidesContainer) {
+                slidesContainer.innerHTML = `
+                    <div class="slide active">
+                        <div class="slide-content" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <h2>🎉 Selamat datang di ${brandName}!</h2>
+                            <p>Nikmati berbagai menu pilihan terbaik</p>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
+            
+            // Clear indicators for default slide
+            const indicatorsContainer = document.getElementById('slide-indicators');
+            if (indicatorsContainer) {
+                indicatorsContainer.innerHTML = '';
+            }
+            
+            console.log('[Customer Display] Showing default welcome slide');
         }
         
         function startSlideshow(slides) {
             if (slideInterval) clearInterval(slideInterval);
             
+            if (!slides || slides.length === 0) {
+                console.log('[Slideshow] No slides to rotate');
+                return;
+            }
+            
+            console.log('[Slideshow] Starting rotation with', slides.length, 'slides');
+            
             function nextSlide() {
                 currentSlide = (currentSlide + 1) % slides.length;
+                console.log('[Slideshow] Moving to slide', currentSlide + 1, 'of', slides.length);
                 showSlide(currentSlide);
                 
                 // Use slide-specific duration or default 5 seconds
-                const duration = slides[currentSlide].duration ? slides[currentSlide].duration * 1000 : 5000;
+                const slide = slides[currentSlide];
+                const duration = (slide.duration_seconds || slide.duration || 5) * 1000;
+                console.log('[Slideshow] Next rotation in', duration / 1000, 'seconds');
                 slideInterval = setTimeout(nextSlide, duration);
             }
             
-            // Start with first slide's duration
-            const firstDuration = slides[0].duration ? slides[0].duration * 1000 : 5000;
-            slideInterval = setTimeout(nextSlide, firstDuration);
+            // Only start rotation if more than 1 slide
+            if (slides.length > 1) {
+                // Start with first slide's duration
+                const firstSlide = slides[0];
+                const firstDuration = (firstSlide.duration_seconds || firstSlide.duration || 5) * 1000;
+                console.log('[Slideshow] First rotation in', firstDuration / 1000, 'seconds');
+                slideInterval = setTimeout(nextSlide, firstDuration);
+            } else {
+                console.log('[Slideshow] Only 1 slide, no rotation needed');
+            }
         }
         
         function showSlide(index) {

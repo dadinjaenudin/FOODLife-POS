@@ -1364,18 +1364,40 @@ def sync_from_ho(request):
                     # Get all brand IDs from HO response
                     ho_brand_ids = [brand_data['id'] for brand_data in brands]
                     
-                    # Delete brands not in HO response
-                    brands_to_delete = Brand.objects.filter(
+                    # Handle brands not in HO response - use soft delete if they have transactions
+                    brands_not_in_ho = Brand.objects.filter(
                         company_id=company_id
                     ).exclude(
                         id__in=ho_brand_ids
                     )
                     
-                    deleted_count = brands_to_delete.count()
+                    soft_deleted_count = 0
+                    hard_deleted_count = 0
+                    
+                    for brand in brands_not_in_ho:
+                        # Check if brand has any transactions
+                        from apps.pos.models import Bill, BillItem
+                        has_transactions = (
+                            Bill.objects.filter(brand=brand).exists() or
+                            BillItem.objects.filter(brand=brand).exists()
+                        )
+                        
+                        if has_transactions:
+                            # Soft delete - set is_active=False to preserve data integrity
+                            brand.is_active = False
+                            brand.save(update_fields=['is_active'])
+                            soft_deleted_count += 1
+                            print(f"[SYNC] ⚠️ Brand '{brand.name}' has transactions - soft deleted (is_active=False)")
+                        else:
+                            # Hard delete - safe to remove as no transactions exist
+                            brand_name = brand.name
+                            brand.delete()
+                            hard_deleted_count += 1
+                            print(f"[SYNC] 🗑️ Brand '{brand_name}' has no transactions - hard deleted")
+                    
+                    deleted_count = soft_deleted_count + hard_deleted_count
                     if deleted_count > 0:
-                        deleted_brands = list(brands_to_delete.values_list('code', 'name'))
-                        print(f"[SYNC] Deleting {deleted_count} brands not found in HO: {deleted_brands}")
-                        brands_to_delete.delete()
+                        print(f"[SYNC] Brands not in HO: {soft_deleted_count} soft-deleted, {hard_deleted_count} hard-deleted")
                     
                     for brand_data in brands:
                         try:
@@ -1440,17 +1462,40 @@ def sync_from_ho(request):
                     # Get all store-brand IDs from HO response
                     ho_storebrand_ids = [sb['id'] for sb in store_brands_data if 'id' in sb]
                     
-                    # Delete store-brands not in HO response
-                    storebrands_to_delete = StoreBrand.objects.filter(
+                    # Handle store-brands not in HO response - use soft delete if brand has transactions
+                    storebrands_not_in_ho = StoreBrand.objects.filter(
                         store=store_config
                     ).exclude(
                         id__in=ho_storebrand_ids
-                    )
+                    ).select_related('brand')
                     
-                    deleted_count = storebrands_to_delete.count()
+                    soft_deleted_count = 0
+                    hard_deleted_count = 0
+                    
+                    for store_brand in storebrands_not_in_ho:
+                        # Check if the brand has any transactions
+                        from apps.pos.models import Bill, BillItem
+                        has_transactions = (
+                            Bill.objects.filter(brand=store_brand.brand).exists() or
+                            BillItem.objects.filter(brand=store_brand.brand).exists()
+                        )
+                        
+                        if has_transactions:
+                            # Soft delete - set is_active=False to preserve data integrity
+                            store_brand.is_active = False
+                            store_brand.save(update_fields=['is_active'])
+                            soft_deleted_count += 1
+                            print(f"[SYNC] ⚠️ StoreBrand '{store_brand.brand.name}' has transactions - soft deleted (is_active=False)")
+                        else:
+                            # Hard delete - safe to remove as no transactions exist
+                            brand_name = store_brand.brand.name
+                            store_brand.delete()
+                            hard_deleted_count += 1
+                            print(f"[SYNC] 🗑️ StoreBrand '{brand_name}' has no transactions - hard deleted")
+                    
+                    deleted_count = soft_deleted_count + hard_deleted_count
                     if deleted_count > 0:
-                        print(f"[SYNC] Deleting {deleted_count} store-brands not found in HO")
-                        storebrands_to_delete.delete()
+                        print(f"[SYNC] StoreBrands not in HO: {soft_deleted_count} soft-deleted, {hard_deleted_count} hard-deleted")
                     
                     for sb_data in store_brands_data:
                         try:
@@ -4933,13 +4978,14 @@ def customer_display_slide_update(request, slide_id):
     Update slide metadata (not image)
     """
     try:
-        from apps.core.models import CustomerDisplaySlide
+        from apps.core.models import CustomerDisplaySlide, Brand
         
         slide = get_object_or_404(CustomerDisplaySlide, id=slide_id)
         
         # Get form data
         title = request.POST.get('title', '').strip()
         description = request.POST.get('description', '').strip()
+        brand_id = request.POST.get('brand_id', '').strip()
         order = int(request.POST.get('order', 0))
         duration = int(request.POST.get('duration', 5))
         is_active = request.POST.get('is_active') == 'true'
@@ -4950,6 +4996,13 @@ def customer_display_slide_update(request, slide_id):
         if title:
             slide.title = title
         slide.description = description
+        
+        # Update brand
+        if brand_id:
+            slide.brand = Brand.objects.get(id=brand_id)
+        else:
+            slide.brand = None
+            
         slide.order = order
         slide.duration_seconds = duration
         slide.is_active = is_active
@@ -5089,6 +5142,7 @@ def display_config_create(request):
     
     if request.method == 'POST':
         brand_name = request.POST.get('brand_name', '').strip()
+        brand_logo = request.FILES.get('brand_logo')
         brand_logo_url = request.POST.get('brand_logo_url', '').strip()
         brand_tagline = request.POST.get('brand_tagline', '').strip()
         running_text = request.POST.get('running_text', '').strip()
@@ -5124,6 +5178,7 @@ def display_config_create(request):
                         brand_id=brand_id if brand_id else None,
                         store_id=store_id if store_id else None,
                         brand_name=brand_name,
+                        brand_logo=brand_logo,
                         brand_logo_url=brand_logo_url,
                         brand_tagline=brand_tagline,
                         running_text=running_text,
@@ -5165,6 +5220,7 @@ def display_config_edit(request, config_id):
     
     if request.method == 'POST':
         brand_name = request.POST.get('brand_name', '').strip()
+        brand_logo = request.FILES.get('brand_logo')
         brand_logo_url = request.POST.get('brand_logo_url', '').strip()
         brand_tagline = request.POST.get('brand_tagline', '').strip()
         running_text = request.POST.get('running_text', '').strip()
@@ -5198,6 +5254,8 @@ def display_config_edit(request, config_id):
                     config.brand_id = brand_id if brand_id else None
                     config.store_id = store_id if store_id else None
                     config.brand_name = brand_name
+                    if brand_logo:
+                        config.brand_logo = brand_logo
                     config.brand_logo_url = brand_logo_url
                     config.brand_tagline = brand_tagline
                     config.running_text = running_text
@@ -5734,3 +5792,100 @@ def receipt_template_toggle(request, template_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@manager_required
+@require_POST
+def receipt_template_create_sample(request):
+    """Create sample receipt template with default values"""
+    from apps.core.models import ReceiptTemplate
+    
+    store_config = Store.get_current()
+    if not store_config:
+        messages.error(request, 'Store not configured')
+        return redirect('management:receipt_template_list')
+    
+    try:
+        # Check if sample already exists
+        existing_sample = ReceiptTemplate.objects.filter(
+            company=store_config.company,
+            template_name__icontains='Sample Template'
+        ).first()
+        
+        if existing_sample:
+            messages.warning(request, f'Sample template already exists: "{existing_sample.template_name}"')
+            return redirect('management:receipt_template_list')
+        
+        # Create sample template with comprehensive default values
+        sample_template = ReceiptTemplate.objects.create(
+            company=store_config.company,
+            brand=None,  # Company-wide template
+            store=None,
+            
+            # Template Info
+            template_name='Sample Template - 58mm',
+            is_active=False,  # Inactive by default
+            
+            # Paper Settings
+            paper_width=58,
+            
+            # Header
+            show_logo=True,
+            header_line_1=store_config.company.name,
+            header_line_2='Jl. Contoh No. 123, Jakarta',
+            header_line_3='Telp: (021) 1234-5678',
+            header_line_4='NPWP: 01.234.567.8-901.000',
+            
+            # Content Display Options
+            show_receipt_number=True,
+            show_date_time=True,
+            show_cashier_name=True,
+            show_customer_name=True,
+            show_table_number=True,
+            show_item_code=False,
+            show_item_category=False,
+            show_modifiers=True,
+            
+            # Formatting
+            price_alignment='right',
+            show_currency_symbol=True,
+            
+            # Summary Section
+            show_subtotal=True,
+            show_tax=True,
+            show_service_charge=True,
+            show_discount=True,
+            show_payment_method=True,
+            show_paid_amount=True,
+            show_change=True,
+            
+            # Footer
+            footer_line_1='Terima kasih atas kunjungan Anda!',
+            footer_line_2='Barang yang sudah dibeli tidak dapat ditukar',
+            footer_line_3='www.yogyagroup.com',
+            show_qr_payment=False,
+            
+            # Print Settings
+            auto_print=True,
+            auto_cut=True,
+            feed_lines=3,
+            
+            # Metadata
+            created_by=request.user,
+            updated_by=request.user
+        )
+        
+        messages.success(
+            request, 
+            f'✅ Sample template created: "{sample_template.template_name}". '
+            f'You can now edit it to customize for your needs.'
+        )
+        
+        # Redirect to edit page
+        return redirect('management:receipt_template_edit', template_id=sample_template.id)
+        
+    except Exception as e:
+        logger.error(f"Error creating sample template: {str(e)}")
+        messages.error(request, f'Failed to create sample template: {str(e)}')
+        return redirect('management:receipt_template_list')
+

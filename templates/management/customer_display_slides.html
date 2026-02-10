@@ -129,7 +129,7 @@
                                 {% if slide.is_active %}Hide{% else %}Show{% endif %}
                             </button>
                             <button 
-                                onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}')"
+                                onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}', {% if slide.brand %}{{ slide.brand.id }}{% else %}''{% endif %})"
                                 class="px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded text-xs font-medium transition"
                                 title="Edit">
                                 ✏️ Edit
@@ -256,7 +256,7 @@
                 
                 <!-- Edit -->
                 <button 
-                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}')"
+                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}', {% if slide.brand %}{{ slide.brand.id }}{% else %}''{% endif %})"
                     class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition"
                     title="Edit">
                     ✏️ Edit
@@ -474,6 +474,20 @@
                         name="description"
                         rows="2"
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Brand (Optional)</label>
+                    <select 
+                        name="brand_id"
+                        id="editBrandId"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <option value="">All Brands</option>
+                        {% for store_brand in store_brands %}
+                        <option value="{{ store_brand.brand.id }}">{{ store_brand.brand.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Leave empty to show on all brands</p>
                 </div>
                 
                 <div class="grid grid-cols-2 gap-4">
@@ -703,7 +717,7 @@ async function toggleSlide(slideId, button) {
 }
 
 // Edit slide
-function editSlide(id, title, description, order, duration, isActive, startDate, endDate) {
+function editSlide(id, title, description, order, duration, isActive, startDate, endDate, brandId) {
     document.getElementById('editSlideId').value = id;
     document.getElementById('editTitle').value = title;
     document.getElementById('editDescription').value = description;
@@ -712,6 +726,7 @@ function editSlide(id, title, description, order, duration, isActive, startDate,
     document.getElementById('editIsActive').checked = isActive;
     document.getElementById('editStartDate').value = startDate;
     document.getElementById('editEndDate').value = endDate;
+    document.getElementById('editBrandId').value = brandId || '';
     
     document.getElementById('editModal').style.display = 'flex';
 }

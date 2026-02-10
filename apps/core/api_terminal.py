@@ -17,11 +17,20 @@ def validate_terminal(request):
     """
     Validate terminal credentials and generate session token
     POST /api/terminal/validate
-    Body: {"terminal_code": "BOE-001", "session_token": "uuid" (optional)}
+    Body: {
+        "terminal_code": "BOE-001",
+        "store_code": "KPT",
+        "brand_code": "BOE",
+        "company_code": "YOGYA",
+        "session_token": "uuid" (optional)
+    }
     """
     try:
         data = json.loads(request.body)
         terminal_code = data.get('terminal_code')
+        store_code = data.get('store_code')
+        brand_code = data.get('brand_code')
+        company_code = data.get('company_code')
         session_token = data.get('session_token')
         
         if not terminal_code:
@@ -30,10 +39,28 @@ def validate_terminal(request):
                 'error': 'terminal_code required'
             }, status=400)
         
+        # Validate that store_code, brand_code, company_code are provided
+        if not store_code or not company_code:
+            return JsonResponse({
+                'valid': False,
+                'error': 'store_code and company_code are required for security validation'
+            }, status=400)
+        
         try:
-            terminal = POSTerminal.objects.select_related('store', 'store__company').get(
-                terminal_code=terminal_code,
-                is_active=True
+            # Query with validation filters to ensure terminal belongs to correct store/brand/company
+            query_filters = {
+                'terminal_code': terminal_code,
+                'is_active': True,
+                'store__store_code': store_code,
+                'store__company__code': company_code,
+            }
+            
+            # Brand code is optional (for multi-brand stores)
+            if brand_code:
+                query_filters['brand__code'] = brand_code
+            
+            terminal = POSTerminal.objects.select_related('store', 'store__company', 'brand').get(
+                **query_filters
             )
             
             # Get brand (may be None for stores without brands)
@@ -104,7 +131,7 @@ def validate_terminal(request):
         except POSTerminal.DoesNotExist:
             return JsonResponse({
                 'valid': False,
-                'error': 'Terminal not found or inactive'
+                'error': f'Terminal "{terminal_code}" not found, inactive, or does not belong to store "{store_code}"'
             }, status=404)
             
     except json.JSONDecodeError:
@@ -191,20 +218,25 @@ def get_terminal_config(request):
                 'error': 'terminal_code parameter required'
             }, status=400)
         
+        # Validate that store_code and company_code are provided
+        if not store_code or not company_code:
+            return JsonResponse({
+                'success': False,
+                'error': 'store_code and company_code are required for security validation'
+            }, status=400)
+        
         try:
-            # Build query filters
+            # Build query filters with mandatory validation
             query_filters = {
                 'terminal_code': terminal_code,
-                'is_active': True
+                'is_active': True,
+                'store__store_code': store_code,
+                'store__company__code': company_code,
             }
             
-            # Add optional filters for more specific matching
-            if company_code:
-                query_filters['store__company__code'] = company_code
+            # Brand code validation (optional for multi-brand stores)
             if brand_code:
                 query_filters['brand__code'] = brand_code
-            if store_code:
-                query_filters['store__store_code'] = store_code
             
             terminal = POSTerminal.objects.select_related('store', 'store__company', 'brand').get(
                 **query_filters
@@ -264,7 +296,7 @@ def get_terminal_config(request):
         except POSTerminal.DoesNotExist:
             return JsonResponse({
                 'success': False,
-                'error': 'Terminal not found or inactive'
+                'error': f'Terminal "{terminal_code}" not found, inactive, or does not belong to store "{store_code}" / company "{company_code}"'
             }, status=404)
             
     except Exception as e:
@@ -293,20 +325,25 @@ def get_receipt_template(request):
                 'error': 'terminal_code parameter required'
             }, status=400)
         
+        # Validate that store_code and company_code are provided
+        if not store_code or not company_code:
+            return JsonResponse({
+                'success': False,
+                'error': 'store_code and company_code are required for security validation'
+            }, status=400)
+        
         try:
-            # Build query filters
+            # Build query filters with mandatory validation
             query_filters = {
                 'terminal_code': terminal_code,
-                'is_active': True
+                'is_active': True,
+                'store__store_code': store_code,
+                'store__company__code': company_code,
             }
             
-            # Add optional filters for more specific matching
-            if company_code:
-                query_filters['store__company__code'] = company_code
+            # Brand code validation (optional for multi-brand stores)
             if brand_code:
                 query_filters['brand__code'] = brand_code
-            if store_code:
-                query_filters['store__store_code'] = store_code
             
             # Get terminal to find brand/store
             terminal = POSTerminal.objects.select_related('store', 'brand').get(
@@ -411,7 +448,7 @@ def get_receipt_template(request):
         except POSTerminal.DoesNotExist:
             return JsonResponse({
                 'success': False,
-                'error': 'Terminal not found or inactive'
+                'error': f'Terminal "{terminal_code}" not found, inactive, or does not belong to store "{store_code}" / company "{company_code}"'
             }, status=404)
             
     except Exception as e:

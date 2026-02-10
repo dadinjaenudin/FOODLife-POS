@@ -31,6 +31,7 @@ urlpatterns = [
     # Receipt Templates
     path('receipt-templates/', views.receipt_template_list, name='receipt_template_list'),
     path('receipt-templates/create/', views.receipt_template_create, name='receipt_template_create'),
+    path('receipt-templates/create-sample/', views.receipt_template_create_sample, name='receipt_template_create_sample'),
     path('receipt-templates/<int:template_id>/edit/', views.receipt_template_edit, name='receipt_template_edit'),
     path('receipt-templates/<int:template_id>/duplicate/', views.receipt_template_duplicate, name='receipt_template_duplicate'),
     path('receipt-templates/<int:template_id>/delete/', views.receipt_template_delete, name='receipt_template_delete'),

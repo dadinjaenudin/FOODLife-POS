@@ -4,7 +4,7 @@
   "agent": {
     "name": "Kitchen-Agent-1",
     "version": "1.0.0",
-    "station_codes": ["kitchen"],
+    "station_codes": ["kitchen", "bar"],
     "brand_ids": [],
     "heartbeat_interval": 30
   },

@@ -20,8 +20,9 @@ import subprocess
 from pathlib import Path
 from threading import Thread
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit
 from PyQt6.QtCore import QUrl, Qt
+from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage, QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
@@ -70,23 +71,37 @@ def load_config():
 
 
 def validate_terminal(config):
-    """Validate terminal with Edge Server"""
+    """
+    Validate terminal with Edge Server
+    
+    Returns:
+        tuple: (success: bool, error_type: str, data: dict, error_message: str)
+    """
     if not config or 'terminal_code' not in config:
-        return None
+        return (False, "config_missing", None, 
+                "Configuration file (config.json) is missing or invalid.\nPlease check terminal_code, store_code, company_code.")
     
     edge_server = config.get('edge_server', 'http://127.0.0.1:8001')
     terminal_code = config.get('terminal_code')
+    store_code = config.get('store_code')
+    company_code = config.get('company_code')
     
-    print(f"[Terminal] Validating {terminal_code}...")
+    # Check required fields
+    if not store_code or not company_code:
+        return (False, "config_missing", None,
+                f"Required configuration fields are missing.\n\n"
+                f"Please update config.json with terminal_code, store_code, and company_code.")
+    
+    print(f"[Terminal] Validating {terminal_code} @ {store_code} ({company_code})...")
     
     try:
         response = requests.post(
             f"{edge_server}/api/terminal/validate",
             json={
                 'terminal_code': terminal_code,
-                'company_code': config.get('company_code'),
+                'company_code': company_code,
                 'brand_code': config.get('brand_code'),
-                'store_code': config.get('store_code')
+                'store_code': store_code
             },
             timeout=10
         )
@@ -94,14 +109,30 @@ def validate_terminal(config):
         if response.status_code == 200:
             data = response.json()
             if data.get('valid'):
-                print(f"[Terminal] Validated: {terminal_code}")
-                return data
+                print(f"[Terminal] ✓ Validated: {terminal_code}")
+                return (True, None, data, None)
+            else:
+                error = data.get('error', 'Unknown error')
+                return (False, "validation_error", None, f"Terminal validation failed:\n\n{error}")
+        elif response.status_code == 404:
+            error_data = response.json()
+            error_msg = error_data.get('error', 'Terminal not found')
+            return (False, "not_found", None,
+                    f"The terminal configuration does not match any registered terminal.\n\n{error_msg}")
+        else:
+            return (False, "validation_error", None, 
+                    f"Server returned error {response.status_code}:\n{response.text}")
         
-        print(f"[Terminal] Validation failed")
-        return None
+    except requests.exceptions.ConnectionError:
+        return (False, "connection_error", None,
+                f"Cannot connect to Edge Server at {edge_server}\n\n"
+                f"The server may be offline or unreachable.")
+    except requests.exceptions.Timeout:
+        return (False, "connection_error", None,
+                f"Connection timeout to Edge Server at {edge_server}\n\n"
+                f"The server is not responding.")
     except Exception as e:
-        print(f"[Terminal] Validation error: {e}")
-        return None
+        return (False, "validation_error", None, f"Validation error:\n{str(e)}")
 
 
 def fetch_terminal_config_from_api(config):
@@ -126,17 +157,22 @@ def fetch_terminal_config_from_api(config):
     brand_code = config.get('brand_code')
     store_code = config.get('store_code')
     
+    # Validate required fields (same as API requirement)
+    if not store_code or not company_code:
+        print(f"[Config] Cannot fetch device config: store_code and company_code are required")
+        return None
+    
     print(f"[Config] Fetching device config from API for {terminal_code}...")
     
     try:
-        # Build query params with all identifiers
-        params = {'terminal_code': terminal_code}
-        if company_code:
-            params['company_code'] = company_code
+        # Build query params with all identifiers (REQUIRED for security)
+        params = {
+            'terminal_code': terminal_code,
+            'company_code': company_code,
+            'store_code': store_code
+        }
         if brand_code:
             params['brand_code'] = brand_code
-        if store_code:
-            params['store_code'] = store_code
         
         response = requests.get(
             f"{edge_server}/api/terminal/config",
@@ -170,6 +206,208 @@ def fetch_terminal_config_from_api(config):
     except Exception as e:
         print(f"[Config] Unexpected error: {e}")
         return None
+
+
+class ValidationErrorDialog(QDialog):
+    """Custom styled error dialog for terminal validation failures"""
+    
+    def __init__(self, error_type, error_message, config=None):
+        super().__init__()
+        self.setWindowTitle("YOGYA POS - Terminal Validation")
+        self.setModal(True)
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        # ========== HEADER ==========
+        header_layout = QHBoxLayout()
+        
+        # Error icon (large red X)
+        icon_label = QLabel("⚠️")
+        icon_font = QFont()
+        icon_font.setPointSize(48)
+        icon_label.setFont(icon_font)
+        icon_label.setStyleSheet("color: #DC2626;")
+        header_layout.addWidget(icon_label)
+        
+        # Title and subtitle
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(5)
+        
+        title_label = QLabel("Terminal Validation Failed")
+        title_font = QFont()
+        title_font.setPointSize(16)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setStyleSheet("color: #1F2937;")
+        title_layout.addWidget(title_label)
+        
+        subtitle_label = QLabel("Cannot start POS application")
+        subtitle_font = QFont()
+        subtitle_font.setPointSize(10)
+        subtitle_label.setFont(subtitle_font)
+        subtitle_label.setStyleSheet("color: #6B7280;")
+        title_layout.addWidget(subtitle_label)
+        
+        header_layout.addLayout(title_layout)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+        
+        # Separator line
+        separator = QLabel()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background-color: #E5E7EB;")
+        layout.addWidget(separator)
+        
+        # ========== ERROR MESSAGE ==========
+        error_box = QTextEdit()
+        error_box.setReadOnly(True)
+        error_box.setMinimumHeight(200)
+        
+        # Format error message with HTML
+        html_content = self._format_error_html(error_type, error_message, config)
+        error_box.setHtml(html_content)
+        
+        # Style the text box
+        error_box.setStyleSheet("""
+            QTextEdit {
+                background-color: #FEF2F2;
+                border: 2px solid #FCA5A5;
+                border-radius: 8px;
+                padding: 15px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 11pt;
+            }
+        """)
+        layout.addWidget(error_box)
+        
+        # ========== SUGGESTIONS ==========
+        suggestions = self._get_suggestions(error_type)
+        if suggestions:
+            suggestion_label = QLabel("💡 <b>What to do:</b>")
+            suggestion_label.setStyleSheet("color: #1F2937; font-size: 11pt;")
+            layout.addWidget(suggestion_label)
+            
+            suggestion_text = QLabel(suggestions)
+            suggestion_text.setWordWrap(True)
+            suggestion_text.setStyleSheet("""
+                color: #374151;
+                font-size: 10pt;
+                background-color: #F3F4F6;
+                padding: 12px;
+                border-radius: 6px;
+                border-left: 4px solid #3B82F6;
+            """)
+            layout.addWidget(suggestion_text)
+        
+        # ========== BUTTONS ==========
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        close_button = QPushButton("Close Application")
+        close_button.setMinimumWidth(150)
+        close_button.setMinimumHeight(40)
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #DC2626;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 11pt;
+                font-weight: bold;
+                padding: 10px 20px;
+            }
+            QPushButton:hover {
+                background-color: #B91C1C;
+            }
+            QPushButton:pressed {
+                background-color: #991B1B;
+            }
+        """)
+        close_button.clicked.connect(self.accept)
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+        
+        # Window styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: white;
+            }
+        """)
+    
+    def _format_error_html(self, error_type, error_message, config):
+        """Format error message as HTML"""
+        html = "<div style='font-family: Segoe UI, Arial; color: #991B1B;'>"
+        
+        # Error type heading
+        if error_type == "not_found":
+            html += "<h3 style='color: #DC2626; margin-top: 0;'>❌ Terminal Not Found</h3>"
+        elif error_type == "config_missing":
+            html += "<h3 style='color: #DC2626; margin-top: 0;'>📋 Configuration Missing</h3>"
+        elif error_type == "connection_error":
+            html += "<h3 style='color: #DC2626; margin-top: 0;'>🔌 Connection Error</h3>"
+        else:
+            html += "<h3 style='color: #DC2626; margin-top: 0;'>⚠️ Validation Error</h3>"
+        
+        # Error message
+        html += f"<p style='color: #7F1D1D; font-size: 11pt; line-height: 1.6;'>{error_message.replace(chr(10), '<br>')}</p>"
+        
+        # Config values if provided
+        if config:
+            html += "<hr style='border: none; border-top: 1px solid #FCA5A5; margin: 15px 0;'>"
+            html += "<p style='color: #6B7280; font-size: 10pt; margin-bottom: 8px;'><b>Configuration Values:</b></p>"
+            html += "<table style='width: 100%; border-collapse: collapse; font-size: 10pt;'>"
+            
+            fields = [
+                ('terminal_code', 'Terminal Code'),
+                ('store_code', 'Store Code'),
+                ('company_code', 'Company Code'),
+                ('brand_code', 'Brand Code'),
+                ('edge_server', 'Edge Server')
+            ]
+            
+            for key, label in fields:
+                value = config.get(key, '<span style="color: #DC2626;">MISSING</span>')
+                if value and key != 'edge_server':
+                    value = f"<b>{value}</b>"
+                html += f"""
+                <tr>
+                    <td style='padding: 4px; color: #6B7280; width: 40%;'>{label}:</td>
+                    <td style='padding: 4px; color: #1F2937;'>{value}</td>
+                </tr>
+                """
+            
+            html += "</table>"
+        
+        html += "</div>"
+        return html
+    
+    def _get_suggestions(self, error_type):
+        """Get helpful suggestions based on error type"""
+        if error_type == "not_found":
+            return ("• Check that terminal_code matches your registered terminal<br>"
+                    "• Verify store_code matches the store where this terminal belongs<br>"
+                    "• Contact IT support to register this terminal if it's new")
+        
+        elif error_type == "config_missing":
+            return ("• Open <b>config.json</b> file in the launcher directory<br>"
+                    "• Add missing fields: terminal_code, store_code, company_code<br>"
+                    "• Save the file and restart the application")
+        
+        elif error_type == "connection_error":
+            return ("• Check that Edge Server is running (docker-compose up)<br>"
+                    "• Verify network connection and firewall settings<br>"
+                    "• Contact IT support if problem persists")
+        
+        else:
+            return "• Review your config.json file<br>• Contact IT support for assistance"
 
 
 def kill_process_on_port(port=5000):
@@ -392,11 +630,9 @@ class POSWindow(QWebEngineView):
         self.load(QUrl(url))
         print(f"[POSWindow] QUrl created from: {QUrl(url).toString()}", flush=True)
         
-        # Development mode: Windowed (comment out for production fullscreen)
-        self.resize(1366, 768)
-        self.show()
-        # Production mode: Fullscreen (uncomment for production)
-        # self.showFullScreen()
+        # Fullscreen mode
+        self.showFullScreen()
+        print("[POSWindow] Running in FULLSCREEN mode")
     
     def _on_load_started(self):
         """Called when page load starts"""
@@ -451,6 +687,19 @@ class POSWindow(QWebEngineView):
         level_names = {0: "INFO", 1: "WARNING", 2: "ERROR"}
         level_name = level_names.get(level, "UNKNOWN")
         print(f"[POS Console] [{level_name}] {message} (line {lineNumber})", flush=True)
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard events - Press ESC to exit fullscreen"""
+        if event.key() == Qt.Key.Key_Escape:
+            if self.isFullScreen():
+                print("[POSWindow] ESC pressed - Exiting fullscreen mode")
+                self.showNormal()
+                self.resize(1366, 768)
+            else:
+                print("[POSWindow] ESC pressed - Entering fullscreen mode")
+                self.showFullScreen()
+        else:
+            super().keyPressEvent(event)
     
     def closeEvent(self, event):
         """Close customer window and cleanup resources when main window closes"""
@@ -532,19 +781,31 @@ class CustomerDisplayWindow(QWebEngineView):
         # Move to secondary monitor if available
         screens = QApplication.screens()
         if len(screens) > 1:
-            # Place on second monitor
+            # Place on second monitor FULLSCREEN
+            print(f"[Customer Display] Detected {len(screens)} monitors")
             geometry = screens[1].geometry()
-            self.move(geometry.left(), geometry.top())
-            # Development mode: Windowed (comment out for production fullscreen)
-            self.resize(1024, 768)
-            self.show()
-            # Production mode: Fullscreen (uncomment for production)
-            # self.resize(geometry.width(), geometry.height())
-            # self.showFullScreen()
+            print(f"[Customer Display] Monitor 2 geometry: {geometry.width()}x{geometry.height()} at ({geometry.left()}, {geometry.top()})")
+            self.setGeometry(geometry)
+            self.showFullScreen()
+            print("[Customer Display] Running in FULLSCREEN mode on secondary monitor")
         else:
-            # No second monitor, show as window
-            self.resize(800, 600)
-            self.show()
+            # No second monitor - show fullscreen on primary
+            print("[Customer Display] Only 1 monitor detected - using primary monitor")
+            self.showFullScreen()
+            print("[Customer Display] Running in FULLSCREEN mode on primary monitor")
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard events - Press ESC to exit fullscreen"""
+        if event.key() == Qt.Key.Key_Escape:
+            if self.isFullScreen():
+                print("[Customer Display] ESC pressed - Exiting fullscreen mode")
+                self.showNormal()
+                self.resize(1024, 768)
+            else:
+                print("[Customer Display] ESC pressed - Entering fullscreen mode")
+                self.showFullScreen()
+        else:
+            super().keyPressEvent(event)
 
 
 def main():
@@ -601,13 +862,31 @@ def main():
     else:
         print("\n[INFO] Local API Server: SKIPPED (customer display disabled)")
     
-    # Validate terminal
-    validation = validate_terminal(config)
+    # ========================================
+    # VALIDATE TERMINAL CONFIGURATION (MANDATORY)
+    # ========================================
+    print("\n[*] Validating Terminal Configuration...")
+    success, error_type, validation_data, error_message = validate_terminal(config)
+    
+    if not success:
+        # Show custom error dialog and EXIT
+        print(f"[ERROR] Terminal validation failed!")
+        print(f"[ERROR] Type: {error_type}")
+        print(f"[ERROR] {error_message}")
+        
+        # Create and show custom styled error dialog
+        error_dialog = ValidationErrorDialog(error_type, error_message, config)
+        error_dialog.exec()
+        
+        print("[EXIT] Application terminated due to invalid configuration")
+        sys.exit(1)
+    
+    print(f"[Terminal] ✓ Configuration validated successfully")
     
     # Get POS URL with kiosk mode parameter
-    if validation and validation.get('success'):
-        edge_server = config.get('edge_server', 'http://127.0.0.1:8001')
-        redirect_url = validation.get('redirect_url')
+    edge_server = config.get('edge_server', 'http://127.0.0.1:8001')
+    redirect_url = validation_data.get('redirect_url')
+    if redirect_url:
         pos_url = f"{edge_server}{redirect_url}"
     else:
         # Fallback to default

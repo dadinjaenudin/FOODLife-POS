@@ -37,6 +37,7 @@ urlpatterns = [
     
     # Customer Display API
     path('api/customer-display/slideshow/', api_customer_display.get_slideshow_config, name='api_slideshow_config'),
+    path('api/customer-display/config/', api_customer_display.get_display_config, name='api_display_config'),
     path('api/customer-display/upload/', api_customer_display.upload_slide, name='api_upload_slide'),
     path('api/customer-display/slide/<int:slide_id>/', api_customer_display.update_slide, name='api_update_slide'),
     path('api/customer-display/slide/<int:slide_id>/delete/', api_customer_display.delete_slide, name='api_delete_slide'),

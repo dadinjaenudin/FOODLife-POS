@@ -771,7 +771,8 @@ class CustomerDisplayConfig(models.Model):
     
     # Branding
     brand_name = models.CharField(max_length=200, help_text="Display name on customer screen")
-    brand_logo_url = models.URLField(max_length=500, help_text="Logo URL (MinIO)")
+    brand_logo = models.ImageField(upload_to='display_logos/', null=True, blank=True, help_text="Upload brand logo")
+    brand_logo_url = models.URLField(max_length=500, blank=True, help_text="Logo URL (MinIO) - optional if logo uploaded")
     brand_tagline = models.CharField(max_length=200, blank=True, help_text="Tagline below brand name")
     
     # Running Text
@@ -812,6 +813,17 @@ class CustomerDisplayConfig(models.Model):
         elif self.brand:
             scope = f"Brand: {self.brand.code}"
         return f"{self.brand_name} ({scope})"
+    
+    def get_logo_url(self, request=None):
+        """
+        Get logo URL - prioritize uploaded file over brand_logo_url
+        Returns absolute URL if request provided, relative URL otherwise
+        """
+        if self.brand_logo:
+            if request:
+                return request.build_absolute_uri(self.brand_logo.url)
+            return self.brand_logo.url
+        return self.brand_logo_url or ''
 
 
 def receipt_logo_upload_path(instance, filename):

@@ -805,9 +805,22 @@ class KitchenAgent:
             
             while self.running:
                 print("[DEBUG] Loop iteration")
-                self.process_tickets()
-                self.send_heartbeat()
-                self.check_printers_health()
+                try:
+                    self.process_tickets()
+                except Exception as e:
+                    self.logger.error(f"Error in process_tickets: {e}")
+                    print(f"[DEBUG] Error in loop: {e}")
+                
+                try:
+                    self.send_heartbeat()
+                except Exception as e:
+                    self.logger.error(f"Error in send_heartbeat: {e}")
+                
+                try:
+                    self.check_printers_health()
+                except Exception as e:
+                    self.logger.error(f"Error in check_printers_health: {e}")
+                
                 time.sleep(self.poll_interval)
         
         except KeyboardInterrupt:
@@ -829,13 +842,18 @@ class KitchenAgent:
         """Process pending tickets for all stations"""
         try:
             # Fetch tickets for all monitored stations
+            self.logger.info(f"Checking for tickets - Stations: {self.station_codes}")
             tickets = self.db.fetch_pending_tickets(self.station_codes, self.max_tickets, self.brand_ids)
+            
+            self.logger.info(f"Fetched {len(tickets)} ticket(s)")
             
             if tickets:
                 self.logger.info(f"Found {len(tickets)} pending ticket(s)")
                 
                 for ticket in tickets:
                     self.process_single_ticket(ticket)
+            else:
+                self.logger.debug("No pending tickets found")
         
         except Exception as e:
             self.logger.error(f"Error processing tickets: {e}")

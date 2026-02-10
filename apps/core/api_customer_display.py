@@ -106,6 +106,12 @@ def get_slideshow_config(request):
             try:
                 brand = Brand.objects.select_related('company').get(code=brand_code)
                 brand_name = brand.name
+                # Get brand logo URL if available
+                if brand.logo:
+                    # Build full URL for logo
+                    request_scheme = request.scheme
+                    request_host = request.get_host()
+                    brand_logo = f"{request_scheme}://{request_host}{brand.logo.url}"
                 # Filter: brand-specific OR company-wide (no brand/store)
                 query = query.filter(
                     models.Q(brand=brand) | 
@@ -454,6 +460,141 @@ def update_slide(request, slide_id):
                 'order': slide.order,
                 'is_active': slide.is_active,
                 'updated_at': slide.updated_at.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@cors_allow_all
+@require_http_methods(['GET', 'OPTIONS'])
+def get_display_config(request):
+    """
+    Get customer display configuration (branding, theme, running text)
+    Filter by company, brand, store from query params
+    
+    GET /api/customer-display/config?company=YOGYA&brand=BOE&store=KPT
+    
+    Response:
+    {
+        "success": true,
+        "config": {
+            "brand_name": "YOGYA Food Life",
+            "brand_logo_url": "http://minio:9000/brands/logo.png",
+            "brand_tagline": "Nikmati berbagai menu pilihan",
+            "running_text": "Selamat datang di YOGYA Food Life...",
+            "running_text_speed": 50,
+            "theme": {
+                "primary_color": "#4F46E5",
+                "secondary_color": "#10B981",
+                "text_color": "#1F2937",
+                "billing_bg": "gradient",
+                "billing_text": "#FFFFFF"
+            }
+        }
+    }
+    """
+    try:
+        from .models import CustomerDisplayConfig
+        
+        # Get filter params
+        company_code = request.GET.get('company')
+        brand_code = request.GET.get('brand')
+        store_code = request.GET.get('store')
+        
+        # Resolve company, brand, store
+        company = None
+        brand = None
+        store = None
+        
+        if company_code:
+            try:
+                company = Company.objects.get(code=company_code)
+            except Company.DoesNotExist:
+                pass
+        
+        if brand_code:
+            try:
+                brand = Brand.objects.get(code=brand_code)
+            except Brand.DoesNotExist:
+                pass
+        
+        if store_code:
+            try:
+                store = Store.objects.get(store_code=store_code)
+            except Store.DoesNotExist:
+                pass
+        
+        # Find most specific config (store > brand > company)
+        config = None
+        
+        # Try store-specific config first
+        if store and company:
+            config = CustomerDisplayConfig.objects.filter(
+                company=company,
+                store=store,
+                is_active=True
+            ).first()
+        
+        # Try brand-specific config
+        if not config and brand and company:
+            config = CustomerDisplayConfig.objects.filter(
+                company=company,
+                brand=brand,
+                store__isnull=True,
+                is_active=True
+            ).first()
+        
+        # Try company-wide config
+        if not config and company:
+            config = CustomerDisplayConfig.objects.filter(
+                company=company,
+                brand__isnull=True,
+                store__isnull=True,
+                is_active=True
+            ).first()
+        
+        # If no config found, return default
+        if not config:
+            return JsonResponse({
+                'success': True,
+                'config': {
+                    'brand_name': 'POS System',
+                    'brand_logo_url': None,
+                    'brand_tagline': '',
+                    'running_text': '🎉 Selamat datang! • Welcome! • Terima kasih atas kunjungan Anda',
+                    'running_text_speed': 50,
+                    'theme': {
+                        'primary_color': '#4F46E5',
+                        'secondary_color': '#10B981',
+                        'text_color': '#1F2937',
+                        'billing_bg': 'gradient',
+                        'billing_text': '#FFFFFF'
+                    }
+                }
+            })
+        
+        # Build response
+        return JsonResponse({
+            'success': True,
+            'config': {
+                'brand_name': config.brand_name,
+                'brand_logo_url': config.get_logo_url(request),
+                'brand_tagline': config.brand_tagline,
+                'running_text': config.running_text,
+                'running_text_speed': config.running_text_speed,
+                'theme': {
+                    'primary_color': config.theme_primary_color,
+                    'secondary_color': config.theme_secondary_color,
+                    'text_color': config.theme_text_color,
+                    'billing_bg': config.theme_billing_bg,
+                    'billing_text': config.theme_billing_text
+                }
             }
         })
         

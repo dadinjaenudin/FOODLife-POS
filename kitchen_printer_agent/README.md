@@ -18,7 +18,8 @@ Autonomous agent untuk kitchen ticket printing. Dapat di-compile menjadi standal
 ### 1. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+python -m pip install psycopg2-binary python-escpos python-dotenv
+
 ```
 
 ### 2. Configure

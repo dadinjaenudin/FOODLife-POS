@@ -107,60 +107,153 @@ def load_display_config():
             company_code = json_config.get('company_code', company_code)
             brand_code = json_config.get('brand_code', brand_code)
             store_code = json_config.get('store_code', store_code)
+            print(f"[Config] Loaded from config.json: company={company_code}, brand={brand_code}, store={store_code}")
     except Exception as e:
         print(f"[Config] Warning: Could not load config.json: {e}")
     
-    # Try to fetch config from Django API (DATABASE)
+    # Fetch display config from Edge Server (branding, running text, theme)
+    display_config = None
     try:
         import requests
-        api_url = f"{edge_server}/api/customer-display/slideshow"
-        params = {
+        config_api_url = f"{edge_server}/api/customer-display/config"
+        config_params = {
             'company': company_code,
             'brand': brand_code,
             'store': store_code
         }
         
-        response = requests.get(api_url, params=params, timeout=3)
-        if response.status_code == 200:
-            api_data = response.json()
-            if api_data.get('success'):
-                return {
-                    'edge_server': edge_server,
-                    'company_code': company_code,
-                    'brand_code': brand_code,
-                    'store_code': store_code,
-                    'brand': api_data.get('brand', {}),
-                    'slideshow': api_data.get('slides', []),
-                    'running_text': api_data.get('running_text', ''),
-                    'running_text_speed': api_data.get('running_text_speed', 80),
-                    'theme': api_data.get('theme', {})
-                }
+        print(f"[Config] Fetching display config from: {config_api_url}")
+        print(f"[Config] Params: {config_params}")
+        
+        config_response = requests.get(config_api_url, params=config_params, timeout=5)
+        if config_response.status_code == 200:
+            config_data = config_response.json()
+            if config_data.get('success'):
+                display_config = config_data.get('config', {})
+                print(f"[Config] ✓ Display config loaded!")
+                print(f"[Config]   Brand: {display_config.get('brand_name')}")
+                print(f"[Config]   Running text: {display_config.get('running_text', '')[:50]}...")
+                print(f"[Config]   Speed: {display_config.get('running_text_speed')} px/s")
     except Exception as e:
-        print(f"[Config] API error: {e}")
+        print(f"[Config] Display config API error: {e}")
     
-    # Fallback to JSON file
+    # Fetch slideshow from Edge Server
+    slideshow_data = []
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        import requests
+        slideshow_api_url = f"{edge_server}/api/customer-display/slideshow"
+        slideshow_params = {
+            'company': company_code,
+            'brand': brand_code,
+            'store': store_code
+        }
+        
+        print(f"[Config] Fetching slideshow from: {slideshow_api_url}")
+        
+        slideshow_response = requests.get(slideshow_api_url, params=slideshow_params, timeout=5)
+        if slideshow_response.status_code == 200:
+            slideshow_json = slideshow_response.json()
+            if slideshow_json.get('success'):
+                slideshow_data = slideshow_json.get('slides', [])
+                print(f"[Config] ✓ Slideshow loaded: {len(slideshow_data)} slides")
     except Exception as e:
-        print(f"[Config] Error loading JSON: {e}")
-        return {
+        print(f"[Config] Slideshow API error: {e}")
+    
+    # Helper: Convert relative URLs to absolute URLs
+    def make_absolute_url(url, base_server):
+        """
+        Convert relative URLs to absolute URLs
+        Also replaces localhost URLs with actual edge server host
+        """
+        if not url:
+            return url
+        
+        # Replace localhost:9002 (MinIO hardcoded) with edge server host
+        # This handles URLs like: http://localhost:9002/customer-display/image.jpg
+        if 'localhost:9002' in url or '127.0.0.1:9002' in url:
+            # Extract edge server host (without the port)
+            # Example: http://192.168.1.100:8001 -> http://192.168.1.100:9002
+            if base_server.startswith('http://') or base_server.startswith('https://'):
+                # Parse edge server to get host and replace port
+                from urllib.parse import urlparse
+                parsed = urlparse(base_server)
+                # Build MinIO URL with same host but port 9002
+                minio_base = f"{parsed.scheme}://{parsed.hostname}:9002"
+                # Replace localhost with actual host
+                url = url.replace('http://localhost:9002', minio_base)
+                url = url.replace('http://127.0.0.1:9002', minio_base)
+                print(f"[Config] Replaced MinIO URL: {url}")
+                return url
+        
+        # Already absolute URL (and not localhost:9002)
+        if url.startswith('http://') or url.startswith('https://'):
+            return url
+        
+        # Relative URL - make absolute
+        if url.startswith('/'):
+            return f"{base_server}{url}"
+        return f"{base_server}/{url}"
+    
+    # Combine config and slideshow data
+    if display_config:
+        # Fix brand logo URL
+        brand_logo = display_config.get('brand_logo_url')
+        if brand_logo:
+            brand_logo = make_absolute_url(brand_logo, edge_server)
+        
+        # Fix slideshow image URLs
+        for slide in slideshow_data:
+            if 'image_url' in slide:
+                slide['image_url'] = make_absolute_url(slide['image_url'], edge_server)
+        
+        result = {
             'edge_server': edge_server,
             'company_code': company_code,
             'brand_code': brand_code,
             'store_code': store_code,
-            'brand': {'name': 'POS System', 'logo_url': None, 'tagline': ''},
-            'slideshow': [],
-            'running_text': 'Welcome!',
-            'running_text_speed': 80,
-            'theme': {
+            'brand': {
+                'name': display_config.get('brand_name', 'POS System'),
+                'logo_url': brand_logo,
+                'tagline': display_config.get('brand_tagline', '')
+            },
+            'slideshow': slideshow_data,
+            'running_text': display_config.get('running_text', 'Welcome!'),
+            'running_text_speed': display_config.get('running_text_speed', 50),
+            'theme': display_config.get('theme', {
                 'primary_color': '#667eea',
                 'secondary_color': '#764ba2',
                 'text_color': '#ffffff',
                 'billing_bg': 'rgba(255,255,255,0.95)',
                 'billing_text': '#333333'
-            }
+            })
         }
+        
+        print(f"[Config] Final config ready:")
+        print(f"[Config]   - Brand: {result['brand']['name']}")
+        print(f"[Config]   - Slides: {len(result['slideshow'])}")
+        print(f"[Config]   - Running text: {result['running_text'][:60]}...")
+        
+        return result
+    
+    # Fallback to default config
+    print("[Config] Using fallback default config")
+    return {
+        'edge_server': edge_server,
+        'company_code': company_code,
+        'brand_code': brand_code,
+        'store_code': store_code,
+        'brand': {'name': 'POS System', 'logo_url': None, 'tagline': ''},
+        'slideshow': slideshow_data if slideshow_data else [],
+        'running_text': 'Welcome!',
+        'running_text_speed': 50,
+        'theme': {
+            'primary_color': '#667eea',
+            'secondary_color': '#764ba2',
+            'text_color': '#ffffff',
+            'billing_bg': 'rgba(255,255,255,0.95)',
+            'billing_text': '#333333'
+        }
+    }
 
 
 def print_to_local_printer(data):

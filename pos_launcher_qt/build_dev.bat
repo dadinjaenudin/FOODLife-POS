@@ -11,6 +11,9 @@ echo.
 echo For quick testing only - does NOT create release package
 echo For production release, use: build_prod.bat
 echo.
+echo ⚠ IMPORTANT: Close all File Explorer windows before building!
+echo   If build fails with "file is being used", run: close_explorer.bat
+echo.
 
 REM Step 1: Verify Python installation
 echo [1/8] Checking Python installation...
@@ -46,28 +49,66 @@ python -m pip install pyinstaller==6.3.0 --quiet
 echo PyInstaller 6.3.0 installed!
 echo.
 
-REM Step 5: Clean previous build
-echo [5/8] Cleaning previous build artifacts...
-if exist build (
-    rmdir /s /q build
-    echo Removed build\ directory
+REM Step 5: Kill running processes to avoid file locks
+echo [5/9] Killing any running POS Launcher processes...
+
+REM Kill POSLauncher.exe
+taskkill /F /IM POSLauncher.exe >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo ✓ Killed POSLauncher.exe process
+    timeout /t 1 /nobreak >nul
+) else (
+    echo   No POSLauncher.exe process found (OK)
 )
+
+REM Kill any Python processes running pos_launcher_qt.py
+for /f "tokens=2" %%a in ('tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH 2^>nul ^| findstr /I "pos_launcher"') do (
+    echo ✓ Killing Python PID: %%~a
+    taskkill /F /PID %%~a >nul 2>&1
+)
+
+REM Check if any handles on dist folder
 if exist dist (
-    rmdir /s /q dist
-    echo Removed dist\ directory
+    echo Checking for file locks on dist\ folder...
+    handle "dist\POSLauncher" >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        echo WARNING: Handle.exe not found, can't check for locks
+    )
 )
-echo Clean complete!
+
+REM Wait for processes to fully terminate and release file handles
+echo Waiting for processes to release file handles...
+timeout /t 3 /nobreak >nul
+echo Process cleanup complete!
 echo.
 
-REM Step 6: Run PyInstaller
-echo [6/8] Building executable with PyInstaller...
+REM Step 6: Clean previous build
+echo [6/9] Cleaning previous build artifacts...
+
+REM Delete build directory
+if exist build (
+    echo Removing build\ directory...
+    rmdir /s /q build 2>nul
+    if exist build (
+        timeout /t 1 /nobreak >nul
+        rmdir /s /q build 2>nul
+    )
+    if not exist build (
+        echo ✓ Removed build\ directory
+    )
+)
+
+
+REM Step 7: Run PyInstaller
+echo [7/9] Building executable with PyInstaller...
 echo.
 echo =============================================================
 echo              PYINSTALLER BUILD OUTPUT
 echo =============================================================
 echo.
 
-python -m PyInstaller pos_launcher.spec --clean --noconfirm
+REM Build WITHOUT --clean flag (we already cleaned manually)
+python -m PyInstaller pos_launcher.spec --noconfirm
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ERROR: Build failed! Check the output above for errors.
@@ -78,8 +119,18 @@ echo.
 echo Build completed successfully!
 echo.
 
-REM Step 7: Copy config files to dist
-echo [7/8] Copying config files to dist...
+REM Clean up old dist_old folder after successful build
+if exist dist_old (
+    echo Removing old dist_old\ folder...
+    rmdir /s /q dist_old 2>nul
+    if not exist dist_old (
+        echo ✓ Cleaned up old build artifacts
+    )
+)
+echo.
+
+REM Step 8: Copy config files to dist
+echo [8/9] Copying config files to dist...
 if exist config.json (
     copy /Y config.json dist\POSLauncher\ >nul
     echo ✓ Copied config.json
@@ -88,8 +139,8 @@ if exist config.json (
 )
 echo.
 
-REM Step 8: Verify build output
-echo [8/8] Verifying build output...
+REM Step 9: Verify build output
+echo [9/9] Verifying build output...
 if exist "dist\POSLauncher\POSLauncher.exe" (
     echo Executable created: dist\POSLauncher\POSLauncher.exe
     for %%A in ("dist\POSLauncher\POSLauncher.exe") do echo Size: %%~zA bytes

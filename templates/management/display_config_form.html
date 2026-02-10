@@ -42,7 +42,7 @@
 {% endif %}
 
 <!-- Form -->
-<form method="POST" class="bg-white rounded-lg shadow p-6">
+<form method="POST" enctype="multipart/form-data" class="bg-white rounded-lg shadow p-6">
     {% csrf_token %}
     
     <div class="space-y-6">
@@ -67,19 +67,92 @@
                     <p class="mt-1 text-sm text-gray-500">Display name shown on customer screen</p>
                 </div>
                 
-                <!-- Brand Logo URL -->
+                <!-- Brand Logo Upload -->
                 <div class="md:col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Brand Logo URL
+                        Brand Logo
                     </label>
-                    <input 
-                        type="url" 
-                        name="brand_logo_url"
-                        value="{% if config %}{{ config.brand_logo_url }}{% endif %}"
-                        maxlength="500"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="https://minio.example.com/logos/brand-logo.png">
-                    <p class="mt-1 text-sm text-gray-500">Full MinIO URL to logo image</p>
+                    
+                    <!-- Current Logo Preview -->
+                    {% if config %}
+                        {% if config.brand_logo %}
+                            <div class="mb-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <div class="flex items-center gap-4">
+                                    <img src="{{ config.brand_logo.url }}" alt="Current logo" class="h-20 w-20 object-contain border border-gray-300 rounded">
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-gray-700">Current Logo (Uploaded)</p>
+                                        <p class="text-xs text-gray-500 mt-1">{{ config.brand_logo.name }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif config.brand_logo_url %}
+                            <div class="mb-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <div class="flex items-center gap-4">
+                                    <img src="{{ config.brand_logo_url }}" alt="Current logo" class="h-20 w-20 object-contain border border-gray-300 rounded" onerror="this.style.display='none'">
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-gray-700">Current Logo (URL)</p>
+                                        <p class="text-xs text-gray-500 mt-1 break-all">{{ config.brand_logo_url }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                    
+                    <!-- Upload New Logo -->
+                    <div class="mb-3">
+                        <label class="block">
+                            <div class="flex items-center gap-2 px-4 py-2 bg-indigo-50 border-2 border-dashed border-indigo-300 rounded-lg cursor-pointer hover:bg-indigo-100 transition">
+                                <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <span class="text-sm font-medium text-indigo-700">Upload Logo Image</span>
+                                <span class="text-xs text-indigo-500">(PNG, JPG - Max 2MB)</span>
+                            </div>
+                            <input 
+                                type="file" 
+                                name="brand_logo"
+                                accept="image/png,image/jpeg,image/jpg"
+                                class="hidden"
+                                id="brand_logo_input"
+                                onchange="previewLogo(this)">
+                        </label>
+                        <div id="logo_preview" class="mt-2 hidden">
+                            <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                                <div class="flex items-center gap-3">
+                                    <img id="logo_preview_img" class="h-16 w-16 object-contain border border-emerald-300 rounded">
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-emerald-700">New logo selected</p>
+                                        <p id="logo_preview_name" class="text-xs text-emerald-600 mt-1"></p>
+                                    </div>
+                                    <button type="button" onclick="clearLogoPreview()" class="text-red-500 hover:text-red-700">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- OR Divider -->
+                    <div class="flex items-center gap-3 my-3">
+                        <div class="flex-1 border-t border-gray-300"></div>
+                        <span class="text-sm text-gray-500 font-medium">OR</span>
+                        <div class="flex-1 border-t border-gray-300"></div>
+                    </div>
+                    
+                    <!-- Logo URL (MinIO) -->
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-2">External Logo URL (MinIO)</label>
+                        <input 
+                            type="url" 
+                            name="brand_logo_url"
+                            value="{% if config %}{{ config.brand_logo_url }}{% endif %}"
+                            maxlength="500"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="https://minio.example.com/logos/brand-logo.png">
+                        <p class="mt-1 text-xs text-gray-500">💡 Upload file above OR paste external URL here</p>
+                    </div>
                 </div>
                 
                 <!-- Brand Tagline -->
@@ -368,5 +441,46 @@ function syncColorInputs() {
 }
 
 document.addEventListener('DOMContentLoaded', syncColorInputs);
+
+// Logo preview functions
+function previewLogo(input) {
+    const preview = document.getElementById('logo_preview');
+    const previewImg = document.getElementById('logo_preview_img');
+    const previewName = document.getElementById('logo_preview_name');
+    
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        
+        // Validate file size (2MB max)
+        if (file.size > 2 * 1024 * 1024) {
+            alert('File size must be less than 2MB');
+            input.value = '';
+            return;
+        }
+        
+        // Validate file type
+        if (!file.type.match('image/(png|jpeg|jpg)')) {
+            alert('Only PNG and JPG files are allowed');
+            input.value = '';
+            return;
+        }
+        
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            previewName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+            preview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function clearLogoPreview() {
+    const input = document.getElementById('brand_logo_input');
+    const preview = document.getElementById('logo_preview');
+    input.value = '';
+    preview.classList.add('hidden');
+}
 </script>
 {% endblock %}

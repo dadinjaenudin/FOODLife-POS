@@ -270,8 +270,23 @@
                         for proper data synchronization.
                     </p>
                     <p>
-                        <strong>Note:</strong> Both Brand and Store Brand data are automatically synchronized from HO. 
-                        Any brands or assignments not included in the HO sync response will be removed from the Edge database.
+                        <strong>Sync Behavior:</strong> Both Brand and Store Brand data are automatically synchronized from HO. 
+                        Brands or assignments not included in the HO sync response are handled differently:
+                    </p>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li>
+                            <strong>Soft Delete (With Transactions):</strong> If a brand has existing transactions (bills/orders), it will be deactivated 
+                            (<code class="bg-blue-100 px-1 rounded">is_active=False</code>) instead of deleted. This preserves data integrity and allows 
+                            historical reports to display correctly. The brand record and all transaction data remain in the database.
+                        </li>
+                        <li>
+                            <strong>Hard Delete (No Transactions):</strong> If a brand has never been used in any transaction, it will be completely 
+                            removed from the database to keep it clean.
+                        </li>
+                    </ul>
+                    <p class="mt-2 bg-amber-50 border-l-4 border-amber-400 p-2 rounded">
+                        <strong>⚠️ Important:</strong> Brands with transactions are protected and cannot be permanently deleted. This ensures your 
+                        historical transaction data remains intact and foreign key relationships are preserved.
                     </p>
                 </div>
             </div>
