@@ -2,6 +2,6 @@
   "terminal_code": "BOE-001",
   "company_code": "YOGYA",
   "brand_code": "BOE",
-  "store_code": "SND",
+  "store_code": "SDN",
   "edge_server": "http://127.0.0.1:8001"
 }

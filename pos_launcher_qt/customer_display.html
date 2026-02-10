@@ -39,14 +39,14 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 70%;
+            right: 0;
             background: #f8f9fa;
             border-bottom: 2px solid #e9ecef;
             padding: 0.75rem 1.5rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 10;
+            z-index: 100;
         }
         
         .header-logo {
@@ -101,7 +101,7 @@
         /* ========== SLIDESHOW (LEFT 70%) ========== */
         .slideshow-container {
             background: #f8f9fa;
-            padding: 5.5rem 1rem 3.5rem 1rem;
+            padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -114,12 +114,15 @@
         .slide {
             display: none;
             width: 100%;
-            height: 100%;
+            height: 100vh;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             text-align: center;
             animation: fadeIn 0.5s ease-in-out;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
         
         .slide.active {
@@ -134,10 +137,9 @@
         /* Slide Images from MinIO */
         .slide-image {
             width: 100%;
-            height: 100%;
-            object-fit: contain;
-            max-height: 100%;
-            border-radius: 10px;
+            height: 100vh;
+            object-fit: cover;
+            border-radius: 0;
         }
         
         .slide-error {
@@ -168,11 +170,12 @@
         
         .slide-indicators {
             position: absolute;
-            bottom: 2rem;
+            bottom: 3.5rem;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             gap: 0.5rem;
+            z-index: 20;
         }
         
         .slide-indicator {
@@ -192,7 +195,7 @@
         /* ========== BILLING INFO (RIGHT 30% FULL HEIGHT) ========== */
         .billing-container {
             background: white;
-            padding: 0.5rem;
+            padding: 0;
             color: #333;
             display: flex;
             flex-direction: column;
@@ -210,15 +213,16 @@
             font-size: 1.5rem;
             font-weight: bold;
             color: #667eea;
-            margin-bottom: 1rem;
-            padding-bottom: 0.75rem;
+            margin: 0;
+            padding: 1.5rem 1rem 0.75rem 1rem;
             border-bottom: 3px solid #667eea;
         }
         
         .items-list {
             flex: 1;
             overflow-y: auto;
-            margin-bottom: 1rem;
+            margin: 0;
+            padding: 1rem;
         }
         
         .empty-bill {
@@ -228,6 +232,7 @@
             align-items: center;
             justify-content: center;
             color: #999;
+            padding: 2rem 1rem;
         }
         
         .empty-bill svg {
@@ -246,12 +251,12 @@
             position: absolute;
             bottom: 0;
             left: 0;
-            width: 70%;
+            right: 0;
             background: #f8f9fa;
             border-top: 2px solid #e9ecef;
             padding: 0.5rem 1rem;
             overflow: hidden;
-            z-index: 10;
+            z-index: 100;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -385,25 +390,30 @@
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <div class="header">
-        <div class="header-logo" id="header-logo">
-            🏪
-        </div>
-        <div class="header-text">
-            <h1 id="brand-name">Loading...</h1>
-            <p id="brand-tagline"></p>
-        </div>
-    </div>
-    
     <!-- Main Content -->
     <div class="main-content">
-        <!-- Slideshow (Left 40%) -->
+        <!-- Slideshow (Left 70%) -->
         <div class="slideshow-container">
+            <!-- Header -->
+            <div class="header">
+                <div class="header-logo" id="header-logo">
+                    🏪
+                </div>
+                <div class="header-text">
+                    <h1 id="brand-name">Loading...</h1>
+                </div>
+            </div>
+            
             <div id="slideshow-slides">
                 <!-- Slides will be loaded here -->
             </div>
             <div class="slide-indicators" id="slide-indicators"></div>
+            
+            <!-- Footer (Running Text + Connection Status) -->
+            <div class="footer">
+                <div class="running-text" id="running-text">Loading...</div>
+                <span class="connection-status status-disconnected" id="connection-status">Connecting...</span>
+            </div>
         </div>
         
         <!-- Billing Info (Right 55%) - Bill Panel Mirror -->
@@ -423,12 +433,6 @@
             
 
         </div>
-    </div>
-    
-    <!-- Footer (Running Text + Connection Status) -->
-    <div class="footer">
-        <div class="running-text" id="running-text">Loading...</div>
-        <span class="connection-status status-disconnected" id="connection-status">Connecting...</span>
     </div>
     
     <!-- Modal Overlay for Customer Display -->
@@ -538,7 +542,6 @@
             
             const brand = config.brand;
             document.getElementById('brand-name').textContent = brand.name || 'POS System';
-            document.getElementById('brand-tagline').textContent = brand.tagline || '';
             
             // Logo
             if (brand.logo_url) {
