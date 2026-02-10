@@ -63,6 +63,19 @@
     #floor-plan-modal .fixed.bottom-0 {
         display: none !important;
     }
+
+    /* Bulletproof grid: prevent any child from exceeding column width */
+    .product-card * {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .product-card img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
+    }
 </style>
 {% endblock %}
 
@@ -70,12 +83,13 @@
 {% csrf_token %}
 
 <!-- ==================================================
-     POS MAIN INTERFACE - 3 COLUMN LAYOUT
-     1. Left: Icon-only sidebar navigation (64px)
-     2. Center: Main content with header, categories, products, footer (flex-1)
-     3. Right: Bill panel with order summary (384px)
+     POS MAIN INTERFACE - 3 COLUMN LAYOUT (Fixed 1024px)
+     1. Left: Sidebar navigation (160px / w-40)
+     2. Center: Main content with header, categories, products (576px / w-[576px])
+     3. Right: Bill panel with order summary (288px / w-72)
+     Total: 1024px exactly - optimized for 1024x768 resolution
      ================================================== -->
-<div class="flex h-screen bg-gray-50" x-data="posModal()">
+<div class="bg-gray-50" x-data="posModal()" style="display:flex; flex-wrap:nowrap; width:1024px; height:100vh; overflow:hidden; margin:0 auto;">
     
     <!-- Custom Modal for Shift Warning -->
     <div x-show="modal.show" 
@@ -136,140 +150,140 @@
         </div>
     </div>
 
-    <!-- ==================== LEFT: SIDEBAR (Icon + Text Navigation) ==================== -->
-    <aside class="w-48 bg-white flex flex-col">
+    <!-- ==================== LEFT: SIDEBAR - Compact for 1024x768 ==================== -->
+    <aside class="bg-white flex flex-col" style="width:160px; min-width:160px; max-width:160px; flex-shrink:0;">
 
-        <!-- Branding Logo -->
+        <!-- Branding Logo - Compact -->
         <div>
-            <div class="h-16 flex flex-col items-center justify-center px-4 gap-1">
+            <div class="h-12 flex flex-col items-center justify-center px-2 gap-0.5">
                 {% if store_config.login_logo %}
-                <div class="w-10 h-10 rounded-full overflow-hidden bg-green-50 border-2 border-green-200 flex-shrink-0">
+                <div class="w-8 h-8 rounded-full overflow-hidden bg-green-50 border-2 border-green-200 flex-shrink-0">
                     <img src="{{ store_config.login_logo.url }}" alt="Logo" class="w-full h-full object-contain p-0.5">
                 </div>
                 {% endif %}
-                <span class="text-sm font-bold text-gray-900 text-center" style="font-family:'Outfit',sans-serif;">{{ store_config.brand.name }}</span>
+                <span class="text-xs font-bold text-gray-900 text-center truncate w-full" style="font-family:'Outfit',sans-serif;">{{ store_config.brand.name }}</span>
             </div>
-            
-            <!-- User Info -->
-            <div class="flex flex-col items-center gap-2 px-4 pb-3">
+
+            <!-- User Info - Compact -->
+            <div class="flex flex-col items-center gap-1 px-2 pb-2">
                 {% if request.user.profile_photo %}
-                <img src="{{ request.user.profile_photo.url }}" alt="" class="w-24 h-24 rounded-full object-cover border-2 border-gray-200">
+                <img src="{{ request.user.profile_photo.url }}" alt="" class="w-16 h-16 rounded-full object-cover border-2 border-gray-200">
                 {% else %}
-                <div class="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-3xl font-bold">
+                <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-2xl font-bold">
                     {{ request.user.get_full_name.0|default:request.user.username.0|upper }}
                 </div>
                 {% endif %}
-                <span class="text-xs font-medium text-gray-700 text-center truncate w-full">{{ request.user.get_full_name|default:request.user.username }}</span>
+                <span class="text-[10px] font-medium text-gray-700 text-center truncate w-full">{{ request.user.get_full_name|default:request.user.username }}</span>
             </div>
         </div>
 
-        <!-- Main Navigation -->
-        <nav class="flex-1 py-3 px-3 space-y-1 overflow-y-auto">
+        <!-- Main Navigation - Compact -->
+        <nav class="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto">
             <!-- Menu (Active) -->
-            <a href="{% url 'pos:main' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold bg-green-600 text-white transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+            <a href="{% url 'pos:main' %}" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold bg-green-600 text-white transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
                 <span>Menu</span>
             </a>
 
             <!-- Table Services -->
-            <button onclick="openFloorPlanModal()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-                <span>Table Services</span>
+            <button onclick="openFloorPlanModal()" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                <span>Tables</span>
             </button>
 
             <!-- My Shift -->
-            <button onclick="openMyShiftDashboard()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <button onclick="openMyShiftDashboard()" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 <span>My Shift</span>
             </button>
 
             <!-- Reprint -->
-            <button onclick="openReprintReconciliation()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            <button onclick="openReprintReconciliation()" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200 w-full">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                 <span>Reprint</span>
             </button>
 
-            <div class="h-px bg-gray-100 my-2"></div>
+            <div class="h-px bg-gray-100 my-1"></div>
 
             <!-- Shift Status -->
-            <div id="shift-status-sidebar" hx-get="{% url 'pos:shift_status' %}" hx-trigger="load, every 30s" hx-swap="innerHTML" class="py-1"></div>
+            <div id="shift-status-sidebar" hx-get="{% url 'pos:shift_status' %}" hx-trigger="load, every 30s" hx-swap="innerHTML" class="py-0.5"></div>
 
-            <div class="h-px bg-gray-100 my-2"></div>
+            <div class="h-px bg-gray-100 my-1"></div>
 
-            <!-- Kitchen Stations -->
-            <a href="{% url 'kitchen:kds_station' 'kitchen' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+            <!-- Kitchen Stations - Compact -->
+            <a href="{% url 'kitchen:kds_station' 'kitchen' %}" target="_blank" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
                 <span>Kitchen</span>
             </a>
 
-            <a href="{% url 'kitchen:kds_station' 'bar' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            <a href="{% url 'kitchen:kds_station' 'bar' %}" target="_blank" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 <span>Bar</span>
             </a>
 
-            <a href="{% url 'kitchen:kds_station' 'dessert' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 15.546c-.523 0-1.046.151-1.5.454a2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0A1.75 1.75 0 003 15.546M12 3v1m0 11v1m-4-7h1m6 0h1M7.757 5.757l.707.707m6.072 6.072l.707.707M5.757 12.243l.707-.707m6.072-6.072l.707-.707"/></svg>
+            <a href="{% url 'kitchen:kds_station' 'dessert' %}" target="_blank" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 15.546c-.523 0-1.046.151-1.5.454a2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0A1.75 1.75 0 003 15.546M12 3v1m0 11v1m-4-7h1m6 0h1M7.757 5.757l.707.707m6.072 6.072l.707.707M5.757 12.243l.707-.707m6.072-6.072l.707-.707"/></svg>
                 <span>Dessert</span>
             </a>
 
-            <a href="{% url 'pos:queue_display' %}" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+            <a href="{% url 'pos:queue_display' %}" target="_blank" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
                 <span>Queue</span>
             </a>
 
-            <a href="{% url 'core:profile_settings' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <a href="{% url 'core:profile_settings' %}" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-900 hover:bg-green-50 hover:text-green-600 transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 <span>Settings</span>
             </a>
         </nav>
 
-        <!-- Bottom: Logout -->
-        <div class="px-3 py-3">
-            <a href="{% url 'core:logout' %}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 hover:text-red-600 transition-all duration-200">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <!-- Bottom: Logout - Compact -->
+        <div class="px-2 py-2">
+            <a href="{% url 'core:logout' %}" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 hover:text-red-600 transition-all duration-200">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 <span>Logout</span>
             </a>
         </div>
     </aside>
 
     <!-- ==================== CENTER: MAIN CONTENT ==================== -->
-    <main class="flex-1 flex flex-col">
+    <main class="flex flex-col" style="width:576px; min-width:576px; max-width:576px; flex-shrink:0; overflow:hidden;">
 
-        <!-- Header: Search Bar -->
-        <header class="bg-gray-50 px-6 py-4">
-            <div class="flex items-center justify-between gap-4">
-                <div class="flex items-center gap-4 flex-1">
+        <!-- Header: Search Bar - Compact for 1024x768 -->
+        <header class="bg-gray-50 px-4 py-2">
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 flex-1">
                     <!-- Hamburger (optional visual) -->
-                    <button class="p-2 hover:bg-gray-100 rounded-lg transition-colors" onclick="document.querySelector('aside').classList.toggle('hidden')">
-                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    <button class="p-1.5 hover:bg-gray-100 rounded-md transition-colors" onclick="document.querySelector('aside').classList.toggle('hidden')">
+                        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                     </button>
 
-                    <!-- Search Bar -->
-                    <div class="flex-1 relative max-w-xl">
-                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <!-- Search Bar - Compact -->
+                    <div class="flex-1 relative max-w-md">
+                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                         </svg>
-                        <input type="text" id="product-search" placeholder="Search Product here..."
-                            class="w-full pl-12 pr-4 py-3 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100 focus:bg-white transition-all"
+                        <input type="text" id="product-search" placeholder="Search Product..."
+                            class="w-full pl-9 pr-3 py-2 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-100 focus:bg-white transition-all"
                             hx-get="{% url 'pos:products' %}" hx-trigger="keyup changed delay:300ms"
                             hx-target="#product-grid" hx-include="this" name="search">
                     </div>
                 </div>
 
                 <!-- Right: Shift Status + Notification -->
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
                     <!-- Shift Status Indicator -->
-                    <div id="header-shift-status" 
-                         hx-get="{% url 'pos:shift_status_header' %}" 
-                         hx-trigger="load, every 30s, shiftStatusChanged from:body" 
+                    <div id="header-shift-status"
+                         hx-get="{% url 'pos:shift_status_header' %}"
+                         hx-trigger="load, every 30s, shiftStatusChanged from:body"
                          hx-swap="innerHTML">
-                        <div class="px-3 py-2 bg-gray-200 rounded-lg animate-pulse">
-                            <span class="text-xs text-gray-500">Loading...</span>
+                        <div class="px-2 py-1 bg-gray-200 rounded-md animate-pulse">
+                            <span class="text-[10px] text-gray-500">Loading...</span>
                         </div>
                     </div>
-                    
-                    <button class="p-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors relative">
-                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+
+                    <button class="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors relative">
+                        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
                     </button>
                 </div>
             </div>
@@ -292,23 +306,29 @@
                     </button>
                 </div>
             </div>
-        <!-- Category Filter - Icon Card Style -->
-        <nav class="bg-gray-50 px-6 py-4">
+        <!-- Category Filter - Compact for 1024x768 -->
+        <nav class="bg-gray-50 px-4 py-2">
             <!-- Level 1 (Parent) Categories -->
-            <div class="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-                <a href="{% url 'pos:main' %}"
-                   class="flex-shrink-0 flex flex-col items-center gap-1.5 px-4 py-2 rounded-2xl border-2 transition-all duration-200 min-w-[80px] {% if not selected_parent %}border-green-500 bg-green-50{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
-                    <div class="w-8 h-8 flex items-center justify-center">
-                        <svg class="w-6 h-6 {% if not selected_parent %}text-green-600{% else %}text-gray-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+            <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                <button
+                   hx-get="{% url 'pos:products' %}"
+                   hx-target="#product-grid"
+                   hx-swap="innerHTML swap:200ms settle:300ms"
+                   class="flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl border-2 transition-all duration-200 min-w-[60px] {% if not selected_parent %}border-green-500 bg-green-50{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
+                    <div class="w-6 h-6 flex items-center justify-center">
+                        <svg class="w-5 h-5 {% if not selected_parent %}text-green-600{% else %}text-gray-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
                         </svg>
                     </div>
-                    <span class="text-xs font-bold {% if not selected_parent %}text-green-700{% else %}text-gray-700{% endif %}">All</span>
-                    <span class="text-[10px] {% if not selected_parent %}text-green-500{% else %}text-gray-400{% endif %}">{{ products|length }} Items</span>
-                </a>
+                    <span class="text-[10px] font-bold {% if not selected_parent %}text-green-700{% else %}text-gray-700{% endif %}">All</span>
+                    <span class="text-[9px] {% if not selected_parent %}text-green-500{% else %}text-gray-400{% endif %}">{{ products|length }}</span>
+                </button>
 
                 {% for category in parent_categories %}
-                <a href="{% url 'pos:main' %}?parent={{ category.id }}"
+                <button
+                   hx-get="{% url 'pos:products' %}?parent={{ category.id }}"
+                   hx-target="#product-grid"
+                   hx-swap="innerHTML swap:200ms settle:300ms"
                    class="flex-shrink-0 flex flex-col items-center gap-1.5 px-4 py-2 rounded-2xl border-2 transition-all duration-200 min-w-[80px] {% if selected_parent and selected_parent.id == category.id %}border-green-500 bg-green-50{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
                     <div class="w-8 h-8 flex items-center justify-center">
                         {% if category.icon %}
@@ -320,7 +340,7 @@
                         {% endif %}
                     </div>
                     <span class="text-xs font-bold {% if selected_parent and selected_parent.id == category.id %}text-green-700{% else %}text-gray-700{% endif %}">{{ category.name }}</span>
-                </a>
+                </button>
                 {% endfor %}
             </div>
 
@@ -348,7 +368,7 @@
         </nav>
 
         <!-- Product Grid Container (Responsive, scrollable) -->
-        <section id="product-grid" class="flex-1 p-4 overflow-y-auto bg-gray-50" style="padding-bottom: 6rem;">
+        <section id="product-grid" class="flex-1 bg-gray-50" style="overflow-y:auto; overflow-x:hidden; padding:1rem; padding-bottom:6rem;">
             {% include 'pos/partials/product_grid.html' %}
         </section>
         </div>
@@ -555,9 +575,7 @@
     </main>
 
     <!-- ==================== RIGHT: BILL PANEL ==================== -->
-    <aside class="w-96 bg-white border-l flex flex-col shadow-lg" id="bill-panel">
-        {% include 'pos/partials/bill_panel.html' %}
-    </aside>
+    {% include 'pos/partials/bill_panel.html' %}
 
 </div>
 

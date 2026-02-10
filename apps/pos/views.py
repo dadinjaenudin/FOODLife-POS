@@ -12,6 +12,7 @@ import json
 from .models import Bill, BillItem, Payment, BillLog
 from apps.core.models import Product, Category, ModifierOption, Store, Modifier, POSTerminal
 from apps.core.models_session import StoreSession, CashierShift, ShiftPaymentSummary
+from apps.core.minio_client import get_minio_endpoint_for_request
 from apps.tables.models import Table
 
 
@@ -302,7 +303,7 @@ def pos_main(request):
                 bill_items_dict[item.product_id] = item.quantity
     
     # MinIO settings for product images
-    minio_endpoint = 'http://localhost:9002'
+    minio_endpoint = get_minio_endpoint_for_request(request)
     minio_bucket = 'product-images'
     
     context = {
@@ -494,19 +495,27 @@ def product_list(request):
     # Get active bill from session
     bill_id = request.session.get('active_bill_id')
     bill = None
+    bill_items_dict = {}
     if bill_id:
-        bill = Bill.objects.filter(id=bill_id, status='open').first()
-    
+        bill = Bill.objects.filter(id=bill_id, status__in=['open', 'hold']).prefetch_related('items').first()
+        if bill:
+            for item in bill.items.filter(status='pending', is_void=False):
+                if item.product_id in bill_items_dict:
+                    bill_items_dict[item.product_id] += item.quantity
+                else:
+                    bill_items_dict[item.product_id] = item.quantity
+
     # MinIO settings
-    minio_endpoint = 'http://localhost:9002'
+    minio_endpoint = get_minio_endpoint_for_request(request)
     minio_bucket = 'product-images'
-    
+
     is_modal = request.GET.get('modal') == '1'
     template = 'pos/partials/product_grid_mini.html' if is_modal else 'pos/partials/product_grid.html'
-    
+
     return render(request, template, {
-        'products': products, 
+        'products': products,
         'bill': bill,
+        'bill_items_dict': bill_items_dict,
         'minio_endpoint': minio_endpoint,
         'minio_bucket': minio_bucket,
     })
@@ -805,7 +814,7 @@ def quick_add_product(request, bill_id, product_id):
             )
         ).first()
         
-        minio_endpoint = 'http://localhost:9002'
+        minio_endpoint = get_minio_endpoint_for_request(request)
         minio_bucket = 'product-images'
         
         product_card_html = render_to_string('pos/partials/product_card.html', {
@@ -880,7 +889,7 @@ def quick_remove_product(request, bill_id, product_id):
             )
         ).first()
         
-        minio_endpoint = 'http://localhost:9002'
+        minio_endpoint = get_minio_endpoint_for_request(request)
         minio_bucket = 'product-images'
         
         product_card_html = render_to_string('pos/partials/product_card.html', {

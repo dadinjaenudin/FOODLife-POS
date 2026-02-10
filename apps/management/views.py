@@ -16,6 +16,7 @@ import logging
 
 from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto, Brand, Company, StoreBrand
 from apps.core.models_session import StoreSession
+from apps.core.minio_client import get_minio_endpoint_for_request
 from apps.pos.models import Bill, Payment
 from apps.tables.models import Table, TableArea
 from apps.promotions.models import Promotion
@@ -2396,7 +2397,7 @@ def products(request):
         products_page = paginator.page(paginator.num_pages)
     
     # Get MinIO settings (browser-accessible URL)
-    minio_endpoint = 'http://localhost:9002'  # External browser access
+    minio_endpoint = get_minio_endpoint_for_request(request)
     minio_bucket = 'product-images'
     
     context = {
@@ -3681,7 +3682,7 @@ def product_detail(request, product_id):
     )
     
     # MinIO settings for product images
-    minio_endpoint = 'http://localhost:9002'
+    minio_endpoint = get_minio_endpoint_for_request(request)
     minio_bucket = 'product-images'
     
     context = {

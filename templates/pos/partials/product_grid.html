@@ -1,6 +1,6 @@
 {% load humanize %}
-<!-- Product Grid - Professional F&B POS Layout -->
-<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+<!-- Product Grid - Fixed 3 columns for 1024x768 resolution -->
+<div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0.75rem; width:100%; overflow:hidden;">
     {% for product in products %}
     {% include 'pos/partials/product_card.html' with product=product bill=bill bill_items_dict=bill_items_dict minio_endpoint=minio_endpoint minio_bucket=minio_bucket %}
     {% empty %}

@@ -167,6 +167,27 @@ def get_minio_url(bucket_name, object_name):
     return f"{public_url}/{bucket_name}/{object_name}"
 
 
+def get_minio_endpoint_for_request(request):
+    """
+    Derive MinIO public endpoint dynamically from the Django request host.
+    Since MinIO runs on the same machine as Django (exposed on port 9002),
+    we take the hostname from the request and append the MinIO port.
+
+    This ensures images load correctly from both localhost and remote computers.
+    """
+    from urllib.parse import urlparse
+
+    minio_public_url = getattr(settings, 'MINIO_PUBLIC_URL', 'http://localhost:9002')
+    parsed = urlparse(minio_public_url)
+    minio_port = parsed.port or 9002
+
+    host = request.get_host()
+    hostname = host.split(':')[0]
+    scheme = 'https' if request.is_secure() else 'http'
+
+    return f"{scheme}://{hostname}:{minio_port}"
+
+
 def list_objects(bucket_name, prefix=''):
     """
     List objects in bucket with optional prefix
