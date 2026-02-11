@@ -27,7 +27,13 @@
     "interval_seconds": 60,
     "timeout_seconds": 5
   },
-  
+
+  "health_server": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5001
+  },
+
   "printer": {
     "_comment": "Printer config is now fetched from database (kitchen_stationprinter table)",
     "default_timeout": 5,

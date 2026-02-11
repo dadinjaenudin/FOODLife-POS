@@ -1,10 +1,58 @@
+{% comment %}
+============================================================================
+BILL ITEMS LIST (bill_items.html)
+============================================================================
+File ini menampilkan DAFTAR ITEM yang ada di dalam bill (keranjang belanja).
+Dipanggil dari bill_panel.html menggunakan include tag.
+
+CONTEXT VARIABLES (dari views.py):
+- bill : Object bill aktif, mengandung bill.items.all (semua item)
+
+SETIAP ITEM MEMILIKI:
+- item.product.name    : Nama produk
+- item.product.image   : Gambar produk (Django ImageField)
+- item.quantity         : Jumlah yang dipesan
+- item.total            : Harga total (harga x qty + modifier)
+- item.modifiers        : List modifier yang ditambahkan (misal: Extra Cheese)
+- item.notes            : Catatan khusus (misal: "Tidak pakai sambal")
+- item.status           : Status item ("pending" atau "sent")
+- item.is_void          : Apakah item sudah di-void (dibatalkan)
+
+STATUS ITEM:
+- "pending"  : Belum dikirim ke dapur, BISA diedit/hapus
+- "sent"     : Sudah dikirim ke dapur, TIDAK BISA diedit (hanya bisa void)
+
+LAYOUT SETIAP ITEM:
+┌──────┬─────────────────────┬──────────┐
+│ IMG  │ Nama Produk   [Sent]│   Harga  │
+│ 40px │ Mod: Extra Cheese   │          │
+│      │ Note: No sambal     │ [E] [X]  │
+│      │ [- qty +]           │          │
+└──────┴─────────────────────┴──────────┘
+============================================================================
+{% endcomment %}
+
 {% load humanize %}
 
+{# LOOP SETIAP ITEM DI BILL #}
 {% for item in bill.items.all %}
+
+{# Skip item yang sudah di-void (dibatalkan) #}
 {% if not item.is_void %}
-<!-- Compact item card for 1024x768 -->
+
+{% comment %}
+ITEM CARD
+- Warna hijau (bg-green-50) jika status "sent" (sudah ke dapur)
+- Warna putih (bg-white) jika status "pending" (belum ke dapur)
+- Layout: flex horizontal (gambar | info | harga+aksi)
+{% endcomment %}
 <div class="{% if item.status == 'sent' %}bg-green-50 border-green-200{% else %}bg-white border-gray-100 hover:shadow-md{% endif %} rounded-md p-1.5 flex gap-1.5 border transition-all">
-    <!-- Product Image - Smaller -->
+
+    {% comment %}
+    KOLOM 1: GAMBAR PRODUK (40x40px)
+    - Tampilkan gambar jika ada
+    - Jika tidak ada, tampilkan ikon: checkmark (sent) atau garpu sendok (pending)
+    {% endcomment %}
     {% if item.product.image %}
     <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="w-10 h-10 object-cover rounded-md flex-shrink-0 {% if item.status == 'sent' %}opacity-70{% endif %}">
     {% else %}
@@ -14,8 +62,10 @@
     {% endif %}
 
 
-    <!-- Item Info - Compact -->
+    {# KOLOM 2: INFO ITEM (nama, modifier, notes, qty controls) #}
     <div class="flex-1 min-w-0">
+
+        {# Nama produk + badge "Sent" #}
         <div class="flex items-center gap-1">
             <h4 class="font-semibold {% if item.status == 'sent' %}text-green-900{% else %}text-gray-900{% endif %} text-xs truncate">{{ item.product.name }}</h4>
             {% if item.status == 'sent' %}
@@ -23,6 +73,7 @@
             {% endif %}
         </div>
 
+        {% comment %} Modifier (jika ada) - Contoh: "Mod: Extra Cheese (+5,000), No Onion" {% endcomment %}
         {% if item.modifiers %}
         <div class="mt-0.5 text-[9px] text-gray-500 truncate">
             <span class="font-semibold text-gray-600">Mod:</span>
@@ -35,12 +86,19 @@
         </div>
         {% endif %}
 
+        {% comment %} Catatan khusus (jika ada) - Contoh: "Tidak pakai sambal" {% endcomment %}
         {% if item.notes %}
         <p class="text-[9px] text-blue-600 mt-0.5 italic truncate">{{ item.notes }}</p>
         {% endif %}
 
-        <!-- Quantity Controls - Compact -->
+        {% comment %}
+        QUANTITY CONTROLS
+        Tombol [-] qty [+] untuk ubah jumlah item.
+        - Menggunakan HTMX: POST ke update_item_qty, replace #bill-panel
+        - Disabled jika status "sent" (sudah ke dapur, tidak bisa diubah)
+        {% endcomment %}
         <div class="flex items-center gap-0.5 {% if item.status == 'sent' %}bg-green-100{% else %}bg-gray-50{% endif %} rounded-md p-0.5 mt-1 inline-flex">
+            {# Tombol KURANGI [-] #}
             <button
                 class="w-5 h-5 rounded bg-white hover:bg-gray-200 flex items-center justify-center text-gray-700 font-bold shadow-sm transition-all active:scale-95"
                 hx-post="{% url 'pos:update_item_qty' item.id %}"
@@ -53,7 +111,11 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4"></path>
                 </svg>
             </button>
+
+            {# Tampilan QUANTITY #}
             <span class="w-6 text-center text-xs font-bold {% if item.status == 'sent' %}text-green-900{% else %}text-gray-900{% endif %}">{{ item.quantity }}</span>
+
+            {# Tombol TAMBAH [+] #}
             <button
                 class="w-5 h-5 rounded bg-white hover:bg-blue-50 flex items-center justify-center text-blue-600 font-bold shadow-sm transition-all active:scale-95"
                 hx-post="{% url 'pos:update_item_qty' item.id %}"
@@ -70,14 +132,22 @@
     </div>
 
 
-    <!-- Price & Actions - Compact -->
+    {# KOLOM 3: HARGA + TOMBOL AKSI #}
     <div class="flex flex-col items-end justify-between">
+
+        {# Harga total item (harga x qty + modifier) #}
         <div class="font-bold text-gray-900 text-right whitespace-nowrap text-xs">Rp {{ item.total|floatformat:0|intcomma }}</div>
 
-        <!-- Actions: Edit & Delete/Void - Compact -->
+        {% comment %}
+        TOMBOL AKSI
+        Berbeda tergantung status item:
+        - "pending": Edit modifier + Hapus item
+        - "sent": Void item (butuh PIN supervisor)
+        {% endcomment %}
         <div class="flex items-center gap-0.5">
             {% if item.status == 'pending' %}
-            <!-- Edit Modifier Button (only for pending items) -->
+
+            {% comment %} Tombol EDIT MODIFIER (hanya untuk item pending) - Buka modal ubah modifier/catatan {% endcomment %}
             <button
                 class="w-6 h-6 rounded-md hover:bg-blue-50 flex items-center justify-center text-blue-600 transition-all"
                 hx-get="{% url 'pos:edit_item_modal' item.id %}"
@@ -87,7 +157,8 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                 </svg>
             </button>
-            <!-- Remove (for pending items) -->
+
+            {% comment %} Tombol HAPUS ITEM (hanya untuk item pending) - Buka modal konfirmasi hapus {% endcomment %}
             <button
                 class="w-6 h-6 rounded-md hover:bg-red-50 flex items-center justify-center text-red-500 transition-all"
                 hx-get="{% url 'pos:confirm_remove_item' item.id %}"
@@ -97,8 +168,14 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                 </svg>
             </button>
+
             {% else %}
-            <!-- Void (for sent items - requires supervisor PIN) -->
+
+            {% comment %}
+            Tombol VOID (hanya untuk item yang sudah "sent")
+            Item sudah ke dapur, tidak bisa dihapus biasa.
+            Harus void dengan PIN supervisor untuk keamanan/audit.
+            {% endcomment %}
             <button
                 class="w-6 h-6 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 transition-all"
                 hx-get="{% url 'pos:void_item' item.id %}"
@@ -113,6 +190,8 @@
     </div>
 </div>
 {% endif %}
+
+{# EMPTY STATE: Tampilkan jika bill tidak punya item sama sekali #}
 {% empty %}
 <div class="text-center py-12 text-gray-400">
     <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">

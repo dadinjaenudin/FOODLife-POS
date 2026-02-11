@@ -121,7 +121,7 @@
                     <span class="font-bold text-blue-600 ml-1" x-text="'Table ' + (selectedTableNum || '-')"></span>
                 </div>
                 <button type="button"
-                        @click="if (!selectedTable) { alert('Please select a table'); return; }
+                        @click="if (!selectedTable) { showToast('Please select a table', 'warning'); return; }
                                 const formData = new FormData();
                                 formData.append('new_table_id', selectedTable);
                                 fetch('{% url "pos:move_table" bill.id %}', {
@@ -135,12 +135,12 @@
                                         $el.closest('.fixed').remove();
                                         window.location.reload();
                                     } else {
-                                        alert(data.error || 'Failed to move table');
+                                        showToast(data.error || 'Failed to move table', 'error');
                                     }
                                 })
                                 .catch(error => {
                                     console.error('Error:', error);
-                                    alert('An error occurred while moving table');
+                                    showToast('An error occurred while moving table', 'error');
                                 });"
                         :disabled="!selectedTable"
                         :class="!selectedTable ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg transform hover:-translate-y-0.5'"

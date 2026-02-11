@@ -1,13 +1,73 @@
+{% comment %}
+============================================================================
+PRODUCT CARD (product_card.html)
+============================================================================
+File ini menampilkan SATU kartu produk di halaman POS.
+Dipanggil dari product_grid.html menggunakan "include" tag untuk setiap produk.
+
+CONTEXT VARIABLES (variabel yang dikirim dari views.py):
+- product            : Object produk (nama, harga, foto, stok, dll)
+- bill               : Object bill/tagihan yang sedang aktif (None jika belum ada)
+- bill_items_dict    : Dictionary {product_id: quantity} untuk produk yang sudah ada di bill
+- stock_status_dict  : Dictionary {product_id: {remaining, daily_stock, is_out, is_low}} dari StoreProductStock
+                       Jika product TIDAK ADA di dict ini → dianggap selalu available (no stock tracking)
+- minio_endpoint     : URL server MinIO untuk load gambar (contoh: http://192.168.1.100:9002)
+- minio_bucket       : Nama bucket MinIO (contoh: "product-images")
+
+LAYOUT:
+Kartu produk menggunakan Flexbox vertikal (atas ke bawah):
+┌─────────────────┐
+│   GAMBAR (4:3)   │  <- aspect-ratio 4:3, cocok untuk foto makanan
+├─────────────────┤
+│ Nama Produk      │  <- max 2 baris, tinggi fixed 2rem
+│ Harga    [Badge] │  <- harga + badge Veg/Non-Veg
+│ [  Add to Dish  ]│  <- tombol aksi (di-pin ke bawah)
+└─────────────────┘
+
+STATES (kondisi kartu):
+1. Ada bill + stok tersedia + sudah di cart  -> border hijau + stepper quantity
+2. Ada bill + stok tersedia + belum di cart  -> tombol "Add to Dish" hijau
+3. Ada bill + stok habis (dari StoreProductStock) -> overlay "Out of Stock" + tombol disabled
+4. Tidak ada bill aktif                      -> opacity rendah + tombol disabled
+NOTE: Stok dicek dari stock_status_dict (StoreProductStock).
+      Jika produk TIDAK ADA di stock_status_dict → selalu available.
+============================================================================
+{% endcomment %}
+
 {% load humanize %}
 {% load currency_filters %}
-<div class="product-card bg-white rounded-xl shadow-sm transition-all duration-200 {% if bill and product.stock_quantity and product.id in bill_items_dict %}ring-2 ring-green-500{% endif %} {% if not product.stock_quantity or not bill %}opacity-60{% endif %}"
+
+{% comment %}
+STOCK STATUS LOOKUP
+stock_info = stock_status_dict[product.id] jika produk di-track di StoreProductStock.
+Jika None → produk tidak di-track → selalu available.
+product_available: True jika produk bisa dijual (tidak out-of-stock).
+{% endcomment %}
+{% with stock_status_dict|get_item:product.id as stock_info %}
+
+{% comment %}
+CARD CONTAINER
+- Flexbox column: gambar di atas, info di bawah
+- ring-2 ring-green-500: border hijau jika produk sudah ada di bill (cart)
+- opacity-60: kartu semi-transparan jika stok habis atau belum ada bill
+{% endcomment %}
+<div class="product-card bg-white rounded-xl shadow-sm transition-all duration-200 {% if bill and product.id in bill_items_dict %}{% if not stock_info or not stock_info.is_out %}ring-2 ring-green-500{% endif %}{% endif %} {% if not bill %}opacity-60{% elif stock_info and stock_info.is_out %}opacity-60{% endif %}"
      data-product-id="{{ product.id }}"
      id="product-card-{{ product.id }}"
      style="display:flex; flex-direction:column; width:100%; min-width:0; overflow:hidden;">
 
-    <!-- Product Image - 4:3 aspect ratio (best for F&B) -->
+    {% comment %}
+    SECTION 1: GAMBAR PRODUK
+    - Menggunakan aspect-ratio 4:3 (standar foto makanan/F&B)
+    - Gambar di-crop secara otomatis ke tengah (object-fit:cover)
+    - Ada 3 sumber gambar (prioritas):
+      1. MinIO (primary_photos) - foto dari cloud storage
+      2. Django ImageField (product.image) - foto upload langsung
+      3. Placeholder SVG - ikon default jika tidak ada foto
+    {% endcomment %}
     <div class="relative bg-gray-100" style="width:100%; aspect-ratio:4/3; overflow:hidden; flex-shrink:0;">
-        <!-- Badge Area (New/Popular) - Top Left -->
+
+        {# BADGE: Label promo/populer di pojok kiri atas #}
         {% if product.is_new or product.is_popular %}
         <div class="absolute top-2 left-2 z-10">
             {% if product.is_new %}
@@ -22,6 +82,13 @@
         </div>
         {% endif %}
 
+        {% comment %}
+        GAMBAR DARI MINIO (Cloud Storage)
+        URL Format: minio_endpoint/bucket/object_key?v=checksum
+        - minio_endpoint: dinamis berdasarkan IP yang diakses (bukan localhost)
+        - checksum: untuk cache-busting (browser refresh jika gambar berubah)
+        - onerror: jika gambar gagal load, tampilkan placeholder SVG
+        {% endcomment %}
         {% if product.primary_photos|length > 0 %}
             {% with product.primary_photos.0 as photo %}
             <img src="{{ minio_endpoint }}/{{ minio_bucket }}/{{ photo.object_key }}?v={{ photo.checksum|slice:':8' }}"
@@ -30,11 +97,15 @@
                  loading="lazy"
                  onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center\'><svg class=\'w-10 h-10 text-gray-300\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z\'/></svg></div>';">
             {% endwith %}
+
+        {# GAMBAR DARI DJANGO ImageField (Fallback ke-2) #}
         {% elif product.image %}
         <img src="{{ product.image.url }}"
              alt="{{ product.name }}"
              style="width:100%; height:100%; object-fit:cover; object-position:center center; display:block;"
              loading="lazy">
+
+        {# PLACEHOLDER: Ikon default jika tidak ada gambar sama sekali #}
         {% else %}
         <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg, #f9fafb, #f3f4f6);">
             <svg class="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,32 +114,56 @@
         </div>
         {% endif %}
 
-        <!-- Out of Stock Overlay -->
-        {% if not product.stock_quantity %}
+        {% comment %}
+        OVERLAY & BADGES: Stok status dari StoreProductStock
+        Jika produk ada di stock_status_dict → cek is_out / is_low
+        Jika produk TIDAK ada di stock_status_dict → selalu available (no overlay)
+        {% endcomment %}
+        {% if stock_info and stock_info.is_out %}
         <div class="absolute inset-0 bg-black/50 flex items-center justify-center">
             <span class="bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg">Out of Stock</span>
         </div>
+        {% elif stock_info and stock_info.is_low %}
+        <div class="absolute top-2 right-2 z-10">
+            <span class="bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-md">
+                Low: {{ stock_info.remaining|floatformat:0 }}
+            </span>
+        </div>
         {% endif %}
 
-        <!-- No Active Bill Overlay -->
-        {% if not bill and product.stock_quantity %}
+        {% comment %}
+        OVERLAY: Belum Ada Bill Aktif
+        Tampilkan overlay putih semi-transparan jika belum ada bill
+        (user harus buka bill dulu sebelum bisa menambah produk)
+        {% endcomment %}
+        {% if not bill %}
         <div class="absolute inset-0 bg-white/30 backdrop-blur-[0.5px]"></div>
         {% endif %}
     </div>
 
-    <!-- Product Info - Fixed remaining space -->
+    {% comment %}
+    SECTION 2: INFO PRODUK
+    - flex:1 = mengisi sisa ruang yang tersedia
+    - Flexbox column agar tombol bisa di-pin ke bawah (margin-top:auto)
+    {% endcomment %}
     <div style="padding:0.5rem; flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0;">
-        <!-- Product Name - Fixed 2 lines -->
+
+        {% comment %} NAMA PRODUK - Fixed height 2rem (2 baris), line-clamp-2 {% endcomment %}
         <h3 class="font-semibold text-gray-900 text-xs leading-tight line-clamp-2" style="height:2rem; margin-bottom:0.25rem; overflow:hidden; word-break:break-word;">
             {{ product.name }}
         </h3>
 
-        <!-- Price and Category Badge -->
+        {% comment %}
+        HARGA + BADGE KATEGORI
+        - Kiri: harga produk
+        - Kanan: badge Veg (hijau) atau Non-Veg (merah) berdasarkan nama kategori
+        {% endcomment %}
         <div class="flex items-center justify-between" style="margin-bottom:0.25rem; flex-shrink:0;">
-            <div class="text-gray-900 font-bold text-sm" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${{ product.price|floatformat:2 }}</div>
+            <div class="text-gray-900 font-bold text-sm" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Rp. {{ product.price|rupiah }}</div>
             {% with product.categories.all|first as category %}
             {% if category %}
             <div class="flex items-center gap-1 flex-shrink-0">
+                {# Titik hijau = Vegetarian, Titik merah = Non-Veg #}
                 <div class="w-2 h-2 rounded-full {% if 'veg' in category.name|lower or 'salad' in category.name|lower %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
                 <span class="text-[10px] font-medium text-gray-600">{% if 'veg' in category.name|lower or 'salad' in category.name|lower %}Veg{% else %}Non Veg{% endif %}</span>
             </div>
@@ -76,11 +171,34 @@
             {% endwith %}
         </div>
 
-        <!-- Quantity Stepper or Add Button - Pinned to bottom -->
+        {% comment %}
+        SECTION 3: TOMBOL AKSI (di-pin ke bawah kartu)
+        margin-top:auto = dorong tombol ke bawah kartu
+
+        Ada 4 kondisi:
+        1. Bill aktif + stok tersedia + sudah di cart  -> Quantity Stepper (- qty +)
+        2. Bill aktif + stok tersedia + belum di cart  -> Tombol "Add to Dish"
+        3. Tidak ada bill aktif                        -> Tombol disabled (abu-abu)
+        4. Stok habis (dari StoreProductStock)         -> Tombol "Out of Stock" disabled
+        NOTE: Jika produk tidak di-track (stock_info=None) → dianggap available
+        {% endcomment %}
         <div style="margin-top:auto; flex-shrink:0;">
-        {% if bill and product.stock_quantity %}
-            {% if product.id in bill_items_dict %}
-            <!-- Quantity Stepper -->
+        {% if bill %}
+            {% if stock_info and stock_info.is_out %}
+
+            {# TOMBOL DISABLED: Stok habis (dari StoreProductStock) #}
+            <button class="w-full py-1.5 bg-gray-200 text-gray-400 text-xs font-semibold rounded-md cursor-not-allowed" disabled>
+                Out of Stock
+            </button>
+
+            {% elif product.id in bill_items_dict %}
+
+            {% comment %}
+            QUANTITY STEPPER
+            Muncul jika produk sudah ditambahkan ke bill.
+            Tombol [-] dan [+] menggunakan JavaScript quickRemoveProduct/quickAddProduct
+            (fungsi didefinisikan di product_grid.html)
+            {% endcomment %}
             <div class="flex items-center justify-between bg-green-500 rounded-md overflow-hidden">
                 <button class="w-8 h-8 flex items-center justify-center text-white hover:bg-green-600 transition-colors"
                         onclick="quickRemoveProduct('{{ bill.id }}', '{{ product.id }}')">
@@ -88,6 +206,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M20 12H4"/>
                     </svg>
                 </button>
+                {# Tampilkan jumlah qty dari bill_items_dict menggunakan custom filter "get_item" #}
                 <span class="flex-1 text-center text-white font-bold text-sm">{{ bill_items_dict|get_item:product.id }}</span>
                 <button class="w-8 h-8 flex items-center justify-center text-white hover:bg-green-600 transition-colors"
                         onclick="quickAddProduct('{{ bill.id }}', '{{ product.id }}')">
@@ -96,8 +215,16 @@
                     </svg>
                 </button>
             </div>
+
             {% else %}
-            <!-- Add to Dish Button -->
+
+            {% comment %}
+            TOMBOL "ADD TO DISH"
+            Muncul jika produk belum ada di bill dan stok tersedia.
+            - onclick: cek shift aktif dulu (checkShiftActive dari main.html)
+            - hx-get: buka modal untuk pilih modifier/catatan
+            - hx-target: modal ditampilkan di #modal-container
+            {% endcomment %}
             <button class="w-full py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-md transition-colors"
                     onclick="if (!checkShiftActive()) return false;"
                     hx-get="{% url 'pos:add_item_modal' bill.id product.id %}"
@@ -105,15 +232,15 @@
                 Add to Dish
             </button>
             {% endif %}
-        {% elif not bill %}
+
+        {% else %}
+
+        {# TOMBOL DISABLED: Belum ada bill aktif #}
         <button class="w-full py-1.5 bg-gray-200 text-gray-400 text-xs font-semibold rounded-md cursor-not-allowed" disabled>
             Add to Dish
-        </button>
-        {% else %}
-        <button class="w-full py-1.5 bg-gray-200 text-gray-400 text-xs font-semibold rounded-md cursor-not-allowed" disabled>
-            Out of Stock
         </button>
         {% endif %}
         </div>
     </div>
 </div>
+{% endwith %}

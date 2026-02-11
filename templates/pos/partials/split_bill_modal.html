@@ -254,7 +254,7 @@ function updateSplitSummary() {
 function submitSplitBill() {
     const checkboxes = document.querySelectorAll('input[name="split_items"]:checked');
     if (checkboxes.length === 0) {
-        alert('Please select at least one item to split');
+        showToast('Please select at least one item to split', 'warning');
         return;
     }
     
@@ -337,7 +337,7 @@ function submitSplitBill() {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error: ' + error.message);
+        showToast('Error: ' + error.message, 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg><span>Split Bill</span>';
     });
@@ -466,7 +466,7 @@ function payBill(billId) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Failed to open payment modal');
+        showToast('Failed to open payment modal', 'error');
     });
 }
 </script>

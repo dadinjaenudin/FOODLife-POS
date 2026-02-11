@@ -333,3 +333,134 @@ class PrintJob(models.Model):
     def __str__(self):
         return f"PrintJob #{self.id} - {self.job_type} for {self.terminal_id}"
 
+
+class StoreProductStock(models.Model):
+    """
+    Store-level product stock management (independent from HO sync).
+
+    IMPORTANT DESIGN DECISIONS:
+    - NO FK constraint to core.Product because core_product table may be
+      delete+inserted daily during HO sync, which would break FK references.
+    - Uses product_sku + brand as stable identifier for matching products.
+    - Only products in this table are stock-tracked.
+      Products NOT in this table are considered ALWAYS AVAILABLE.
+    - daily_stock = opening stock set by store staff each day.
+    - sold_qty = incremented when items are sent to kitchen.
+    - remaining = daily_stock - sold_qty (computed property).
+
+    DAILY WORKFLOW:
+    1. Store staff sets daily_stock for each tracked product (morning)
+    2. When cashier sends items to kitchen, sold_qty increases
+    3. When items are voided, sold_qty decreases (restore)
+    4. Product card shows "Out of Stock" when remaining <= 0
+    5. Next day, staff resets sold_qty and sets new daily_stock
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Product reference - NO FK constraint (HO sync may delete+insert core_product)
+    # product_id stored for quick lookup, product_sku+brand for stable matching
+    product_id = models.UUIDField(
+        db_index=True,
+        help_text='Reference to core_product.id (not FK - may change on sync)'
+    )
+    product_sku = models.CharField(max_length=50, db_index=True, help_text='SKU from core_product')
+    product_name = models.CharField(max_length=200, help_text='Cached product name for display')
+    brand = models.ForeignKey(
+        'core.Brand', on_delete=models.CASCADE, related_name='store_stocks',
+        help_text='Brand this stock record belongs to'
+    )
+
+    # Stock management
+    daily_stock = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text='Opening stock for the day (set by store staff)'
+    )
+    sold_qty = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text='Quantity sold/sent to kitchen today'
+    )
+
+    # Settings
+    low_stock_alert = models.IntegerField(
+        default=5,
+        help_text='Show warning when remaining stock falls below this number'
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether this product is being stock-tracked'
+    )
+
+    # Tracking
+    last_reset_date = models.DateField(
+        null=True, blank=True,
+        help_text='Last date stock was reset/restocked'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pos_store_product_stock'
+        verbose_name = 'Store Product Stock'
+        verbose_name_plural = 'Store Product Stocks'
+        unique_together = [['product_sku', 'brand']]
+        ordering = ['product_name']
+        indexes = [
+            models.Index(fields=['brand', 'is_active']),
+            models.Index(fields=['product_id']),
+        ]
+
+    @property
+    def remaining_stock(self):
+        """Calculate remaining stock: opening - sold"""
+        return self.daily_stock - self.sold_qty
+
+    @property
+    def is_out_of_stock(self):
+        """True if no stock remaining"""
+        return self.remaining_stock <= 0
+
+    @property
+    def is_low_stock(self):
+        """True if stock is low but not zero"""
+        remaining = self.remaining_stock
+        return 0 < remaining <= self.low_stock_alert
+
+    def deduct_stock(self, qty):
+        """Deduct stock when items sent to kitchen"""
+        from decimal import Decimal
+        self.sold_qty += Decimal(str(qty))
+        self.save(update_fields=['sold_qty', 'updated_at'])
+
+    def restore_stock(self, qty):
+        """Restore stock when items are voided"""
+        from decimal import Decimal
+        self.sold_qty = max(Decimal('0'), self.sold_qty - Decimal(str(qty)))
+        self.save(update_fields=['sold_qty', 'updated_at'])
+
+    def reset_daily(self, new_stock=None):
+        """Reset stock for new day"""
+        from decimal import Decimal
+        if new_stock is not None:
+            self.daily_stock = Decimal(str(new_stock))
+        self.sold_qty = Decimal('0')
+        self.last_reset_date = timezone.now().date()
+        self.save(update_fields=['daily_stock', 'sold_qty', 'last_reset_date', 'updated_at'])
+
+    def sync_product_id(self):
+        """
+        Re-match product_id after HO sync (in case UUID changed).
+        Call this after daily sync to update product_id reference.
+        """
+        from apps.core.models import Product
+        product = Product.objects.filter(sku=self.product_sku, brand=self.brand).first()
+        if product and str(product.id) != str(self.product_id):
+            self.product_id = product.id
+            self.product_name = product.name
+            self.save(update_fields=['product_id', 'product_name', 'updated_at'])
+            return True
+        return False
+
+    def __str__(self):
+        remaining = self.remaining_stock
+        return f"{self.product_name} [{self.product_sku}] - Stock: {remaining}/{self.daily_stock}"
+

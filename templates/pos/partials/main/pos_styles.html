@@ -1,0 +1,107 @@
+{% comment %}
+============================================================================
+POS STYLES (pos_styles.html)
+============================================================================
+File ini berisi semua CSS STYLES khusus untuk halaman POS.
+Dipanggil dari main.html di dalam block "extra_head".
+
+ISI:
+- Typography: Font system (offline-friendly, tidak perlu download font)
+- Scrollbar Hide: Sembunyikan scrollbar pada navigasi kategori
+- Floor Plan Animations: Animasi slide-in/slide-out untuk modal floor plan
+- Floor Plan Widget Hiding: Sembunyikan widget saat floor plan modal terbuka
+- Product Card Rules: Aturan CSS agar gambar produk tidak meluap dari grid
+
+CATATAN:
+- Menggunakan system fonts agar bisa jalan tanpa internet
+- Animasi slideInLeft/slideOutLeft digunakan oleh floor_plan.html
+============================================================================
+{% endcomment %}
+
+<!-- Using system fonts for offline mode -->
+<style>
+    {% comment %} TYPOGRAPHY: System fonts untuk mode offline (tidak perlu download font dari Google) {% endcomment %}
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 600;
+    }
+
+    {% comment %} SCROLLBAR HIDE: Sembunyikan scrollbar pada navigasi kategori (tetap bisa scroll) {% endcomment %}
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    {% comment %}
+    FLOOR PLAN ANIMATIONS
+    Digunakan saat buka/tutup modal Floor Plan:
+    - slideInLeft: Modal masuk dari kiri ke kanan (buka)
+    - slideOutLeft: Modal keluar dari kanan ke kiri (tutup)
+    {% endcomment %}
+    @keyframes slideInLeft {
+        from {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideOutLeft {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+    }
+
+    .animate-slideInLeft {
+        animation: slideInLeft 0.3s ease-out forwards;
+    }
+
+    .animate-slideOutLeft {
+        animation: slideOutLeft 0.3s ease-in forwards;
+    }
+
+    {% comment %}
+    FLOOR PLAN WIDGET HIDING
+    Saat modal floor plan terbuka, sembunyikan widget-widget di footer
+    agar tidak mengganggu tampilan floor plan.
+    {% endcomment %}
+    #floor-plan-modal #kitchen-printer-widget,
+    #floor-plan-modal #printer-status-widget,
+    #floor-plan-modal #pos-footer,
+    #floor-plan-modal [id*="widget"],
+    #floor-plan-modal .fixed.bottom-0 {
+        display: none !important;
+    }
+
+    {% comment %}
+    PRODUCT CARD CSS RULES
+    Mencegah elemen anak dari product card meluap keluar dari kolom grid.
+    Penting untuk menjaga layout grid 3 kolom tetap rapi.
+    {% endcomment %}
+    .product-card * {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .product-card img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
+    }
+</style>

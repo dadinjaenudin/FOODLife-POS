@@ -15,9 +15,11 @@ import time
 import json
 import logging
 import socket
+import threading
 from datetime import datetime
 from enum import Enum
 from abc import ABC, abstractmethod
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Optional imports dengan fallback
 try:
@@ -104,6 +106,12 @@ class Config:
             # Parse comma-separated station IDs: "1,2,3" -> [1,2,3]
             station_ids = [int(sid.strip()) for sid in os.getenv('STATION_IDS').split(',')]
             self.config['agent']['station_ids'] = station_ids
+
+        # Health server overrides
+        if os.getenv('HEALTH_SERVER_PORT'):
+            if 'health_server' not in self.config:
+                self.config['health_server'] = {}
+            self.config['health_server']['port'] = int(os.getenv('HEALTH_SERVER_PORT'))
     
     def create_default_config(self):
         """Create default configuration file"""
@@ -135,7 +143,13 @@ class Config:
                 "interval_seconds": 60,
                 "timeout_seconds": 5
             },
-            
+
+            "health_server": {
+                "enabled": True,
+                "host": "0.0.0.0",
+                "port": 5001
+            },
+
             "printer": {
                 "_comment": "Printer config is fetched from database (kitchen_stationprinter table)",
                 "default_timeout": 5,
@@ -433,33 +447,57 @@ class DatabaseManager:
             self.logger.error(f"Database connection failed: {e}")
             raise
     
-    def get_printer_for_station(self, station_code):
-        """Get printer configuration from database for station"""
+    def get_printer_for_station(self, station_code, brand_id=None):
+        """Get printer configuration from database for station + brand.
+
+        In multi-brand food courts, each brand has its own printer per station.
+        brand_id ensures the ticket is routed to the correct brand's printer.
+        """
         try:
             cursor = self.conn.cursor()
-            
-            query = """
-                SELECT 
-                    printer_name,
-                    printer_ip,
-                    printer_port,
-                    is_active,
-                    priority,
-                    COALESCE(printer_brand, 'HRPT') as printer_brand,
-                    COALESCE(printer_type, 'network') as printer_type,
-                    COALESCE(timeout_seconds, 5) as timeout_seconds
-                FROM kitchen_stationprinter
-                WHERE station_code = %s AND is_active = true
-                ORDER BY priority ASC
-                LIMIT 1
-            """
-            
-            cursor.execute(query, (station_code,))
+
+            if brand_id:
+                # Multi-brand: match station + brand for correct printer routing
+                query = """
+                    SELECT
+                        printer_name,
+                        printer_ip,
+                        printer_port,
+                        is_active,
+                        priority,
+                        COALESCE(printer_brand, 'HRPT') as printer_brand,
+                        COALESCE(printer_type, 'network') as printer_type,
+                        COALESCE(timeout_seconds, 5) as timeout_seconds
+                    FROM kitchen_stationprinter
+                    WHERE station_code = %s AND brand_id = %s AND is_active = true
+                    ORDER BY priority ASC
+                    LIMIT 1
+                """
+                cursor.execute(query, (station_code, brand_id))
+            else:
+                # Fallback: single-brand or brand not set on ticket
+                query = """
+                    SELECT
+                        printer_name,
+                        printer_ip,
+                        printer_port,
+                        is_active,
+                        priority,
+                        COALESCE(printer_brand, 'HRPT') as printer_brand,
+                        COALESCE(printer_type, 'network') as printer_type,
+                        COALESCE(timeout_seconds, 5) as timeout_seconds
+                    FROM kitchen_stationprinter
+                    WHERE station_code = %s AND is_active = true
+                    ORDER BY priority ASC
+                    LIMIT 1
+                """
+                cursor.execute(query, (station_code,))
+
             result = cursor.fetchone()
             cursor.close()
-            
+
             if not result:
-                self.logger.warning(f"No printer found for station {station_code}")
+                self.logger.warning(f"No printer found for station {station_code} (brand_id={brand_id})")
                 return None
             
             # Get all values from database - no hardcoding!
@@ -494,7 +532,7 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             query = """
-                SELECT id, station_code, printer_ip, printer_port
+                SELECT id, station_code, printer_name, printer_ip, printer_port
                 FROM kitchen_stationprinter
                 WHERE station_code = ANY(%s) AND is_active = true
             """
@@ -509,8 +547,9 @@ class DatabaseManager:
                 {
                     'id': r[0],
                     'station_code': r[1],
-                    'printer_ip': r[2],
-                    'printer_port': r[3] or 9100
+                    'printer_name': r[2] or '',
+                    'printer_ip': r[3],
+                    'printer_port': r[4] or 9100
                 }
                 for r in rows
             ]
@@ -546,7 +585,7 @@ class DatabaseManager:
             cursor = self.conn.cursor()
             
             query = """
-                SELECT 
+                SELECT
                     kt.id,
                     kt.printer_target,
                     kt.status,
@@ -557,7 +596,8 @@ class DatabaseManager:
                     b.id as bill_id,
                     b.bill_number,
                     COALESCE(t.number, 'N/A') as table_number,
-                    b.customer_name
+                    b.customer_name,
+                    kt.brand_id
                 FROM kitchen_kitchenticket kt
                 JOIN pos_bill b ON kt.bill_id = b.id
                 LEFT JOIN tables_table t ON b.table_id = t.id
@@ -590,6 +630,7 @@ class DatabaseManager:
                     'bill_number': ticket[8],
                     'table_number': ticket[9],
                     'customer_name': ticket[10] or '',
+                    'brand_id': ticket[11],  # Brand ID for multi-brand printer routing
                     'items': []
                 }
                 
@@ -630,11 +671,11 @@ class DatabaseManager:
             return []
     
     def mark_ticket_printing(self, ticket_id):
-        """Mark ticket as printing"""
+        """Mark ticket as printing and increment attempt counter"""
         try:
             cursor = self.conn.cursor()
             cursor.execute(
-                "UPDATE kitchen_kitchenticket SET status = 'printing' WHERE id = %s",
+                "UPDATE kitchen_kitchenticket SET status = 'printing', print_attempts = print_attempts + 1 WHERE id = %s",
                 (ticket_id,)
             )
             cursor.close()
@@ -728,6 +769,93 @@ class DatabaseManager:
 
 
 # ============================================================================
+# HEALTH SERVER (HTTP)
+# ============================================================================
+
+class HealthRequestHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the Kitchen Agent health server.
+
+    Endpoints:
+      GET /health             -> Agent status, uptime, version
+      GET /api/printers/status -> Cached printer health (from last TCP check)
+    """
+
+    def do_GET(self):
+        if self.path == '/health':
+            self._handle_health()
+        elif self.path == '/api/printers/status':
+            self._handle_printers_status()
+        else:
+            self._send_json(404, {'error': 'Not found'})
+
+    def do_OPTIONS(self):
+        """Handle CORS preflight"""
+        self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
+
+    def _handle_health(self):
+        agent = self.server.agent
+        uptime = int(time.time() - agent.start_time)
+        response = {
+            'status': 'ok',
+            'agent_name': agent.agent_name,
+            'version': agent.config.get('agent', 'version', default='1.0.0'),
+            'uptime_seconds': uptime,
+            'tickets_processed': agent.tickets_processed,
+            'station_codes': agent.station_codes,
+            'poll_interval': agent.poll_interval,
+            'timestamp': datetime.now().isoformat()
+        }
+        self._send_json(200, response)
+
+    def _handle_printers_status(self):
+        agent = self.server.agent
+        printers_list = list(agent.printer_health_cache.values())
+
+        online_count = sum(1 for p in printers_list if p.get('is_online'))
+        offline_count = sum(1 for p in printers_list if not p.get('is_online'))
+
+        if not printers_list:
+            overall = 'unknown'
+        elif offline_count > 0:
+            overall = 'offline' if online_count == 0 else 'degraded'
+        else:
+            overall = 'online'
+
+        response = {
+            'overall': overall,
+            'counts': {
+                'total': len(printers_list),
+                'online': online_count,
+                'offline': offline_count,
+            },
+            'printers': printers_list,
+            'last_check': agent.last_health_check_iso,
+            'timestamp': datetime.now().isoformat()
+        }
+        self._send_json(200, response)
+
+    def _send_json(self, status_code, data):
+        response_bytes = json.dumps(data).encode('utf-8')
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(response_bytes)))
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(response_bytes)
+
+    def _send_cors_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+
+    def log_message(self, format, *args):
+        """Suppress default stderr logging to avoid polluting agent log"""
+        pass
+
+
+# ============================================================================
 # KITCHEN AGENT
 # ============================================================================
 
@@ -758,12 +886,22 @@ class KitchenAgent:
         self.health_check_interval = self.config.get('health_check', 'interval_seconds', default=60)
         self.health_check_timeout = self.config.get('health_check', 'timeout_seconds', default=5)
         
+        # Health server config
+        self.health_server_host = self.config.get('health_server', 'host', default='0.0.0.0')
+        self.health_server_port = self.config.get('health_server', 'port', default=5001)
+        self.health_server_enabled = self.config.get('health_server', 'enabled', default=True)
+        self.health_server = None
+
+        # Printer health cache (populated by check_printers_health, read by health server)
+        self.printer_health_cache = {}
+        self.last_health_check_iso = None
+
         # Statistics
         self.start_time = time.time()
         self.tickets_processed = 0
         self.last_heartbeat = 0
         self.last_health_check = 0
-        
+
         self.running = False
         self.logger.info("Kitchen Agent initialized")
     
@@ -784,6 +922,31 @@ class KitchenAgent:
         self.logger = logging.getLogger('KitchenAgent')
         self.logger.info(f"Logging to: {log_file}")
     
+    def start_health_server(self):
+        """Start HTTP health server on a daemon thread"""
+        if not self.health_server_enabled:
+            self.logger.info("Health server disabled in config")
+            return
+
+        try:
+            server = HTTPServer(
+                (self.health_server_host, self.health_server_port),
+                HealthRequestHandler
+            )
+            server.agent = self  # Pass reference so handler can access agent state
+
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            self.health_server = server
+            self.logger.info(
+                f"Health server started on {self.health_server_host}:{self.health_server_port}"
+            )
+        except OSError as e:
+            self.logger.error(f"Failed to start health server: {e}")
+            self.logger.error("Port may already be in use. Continuing without health server.")
+            self.health_server = None
+
     def start(self):
         """Start the agent"""
         try:
@@ -800,6 +963,9 @@ class KitchenAgent:
             self.logger.info(f"Health Check Interval: {self.health_check_interval}s")
             self.logger.info("=" * 60)
             
+            # Start HTTP health server (non-blocking daemon thread)
+            self.start_health_server()
+
             print("[DEBUG] Logger setup complete, entering loop")
             self.running = True
             
@@ -865,15 +1031,17 @@ class KitchenAgent:
         ticket_id = ticket['id']
         bill_number = ticket['bill_number']
         printer_target = ticket['printer_target']
-        
-        self.logger.info(f"Processing bill #{bill_number} (ID: {ticket_id}, Target: {printer_target})")
-        
+        brand_id = ticket.get('brand_id')
+
+        self.logger.info(f"Processing bill #{bill_number} (ID: {ticket_id}, Target: {printer_target}, Brand: {brand_id})")
+
         try:
-            # Get printer config from database using printer_target (station code)
-            printer_config = self.db.get_printer_for_station(printer_target)
-            
+            # Get printer config from database using printer_target + brand_id
+            # brand_id ensures correct routing in multi-brand food courts
+            printer_config = self.db.get_printer_for_station(printer_target, brand_id=brand_id)
+
             if not printer_config:
-                error_msg = f"No printer configured for station {printer_target}"
+                error_msg = f"No printer configured for station {printer_target} (brand_id={brand_id})"
                 self.logger.error(error_msg)
                 self.db.mark_ticket_failed(ticket_id, error_msg)
                 return
@@ -900,7 +1068,6 @@ class KitchenAgent:
         
         except Exception as e:
             self.logger.error(f"Error processing ticket {ticket_id}: {e}")
-            self.db.mark_ticket_failed(ticket_id, str(e))
             self.db.mark_ticket_failed(ticket_id, str(e))
     
     def send_heartbeat(self):
@@ -969,7 +1136,21 @@ class KitchenAgent:
                     error_message=error_message
                 )
 
+                # Cache result for health server HTTP endpoint
+                self.printer_health_cache[printer['id']] = {
+                    'id': printer['id'],
+                    'station_code': printer['station_code'],
+                    'printer_name': printer.get('printer_name', ''),
+                    'printer_ip': printer['printer_ip'],
+                    'printer_port': printer['printer_port'],
+                    'is_online': is_online,
+                    'response_time_ms': response_time_ms,
+                    'error_message': error_message,
+                    'checked_at': datetime.now().isoformat()
+                }
+
             self.last_health_check = current_time
+            self.last_health_check_iso = datetime.now().isoformat()
 
         except Exception:
             # Don't fail agent if health check fails
@@ -979,10 +1160,18 @@ class KitchenAgent:
         """Stop the agent"""
         self.logger.info("Stopping Kitchen Agent...")
         self.running = False
-        
+
+        # Shutdown health server
+        if self.health_server:
+            try:
+                self.health_server.shutdown()
+                self.logger.info("Health server stopped")
+            except Exception:
+                pass
+
         if self.db:
             self.db.close()
-        
+
         self.logger.info("Kitchen Agent stopped")
 
 

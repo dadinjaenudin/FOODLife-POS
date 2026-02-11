@@ -52,8 +52,9 @@ urlpatterns = [
     path('bill/<int:bill_id>/data/', views.bill_data_json, name='bill_data_json'),
     path('bill/<int:bill_id>/reprint-kitchen/', views.reprint_kitchen, name='reprint_kitchen'),
     
-    # Held bills
+    # Held bills & Recent orders
     path('held/', views.held_bills, name='held_bills'),
+    path('recent/', views.recent_bills, name='recent_bills'),
     
     # Member
     path('bill/<int:bill_id>/member-pin/', views.member_pin_modal, name='member_pin_modal'),

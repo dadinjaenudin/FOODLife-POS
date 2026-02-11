@@ -1,0 +1,353 @@
+{% extends 'management/base.html' %}
+{% load humanize %}
+
+{% block title %}Stock Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-1.5">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-1.5">
+        <div>
+            <h1 class="text-xl font-bold text-gray-800">Store Product Stock</h1>
+            <p class="text-xs text-gray-600">Manage daily stock for tracked products. Products not listed here are always available.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <form method="post" action="{% url 'management:stock_reset_all' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors text-xs font-semibold"
+                        onclick="return confirm('Reset semua sold_qty ke 0? (Daily stock tetap)')">
+                    Reset All Daily
+                </button>
+            </form>
+            <form method="post" action="{% url 'management:stock_sync_product_ids' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs font-semibold"
+                        title="Re-match product IDs after HO sync">
+                    Sync Product IDs
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if messages %}
+    <div class="mb-2 space-y-2">
+        {% for message in messages %}
+        <div class="px-3 py-2 rounded-lg text-xs border
+            {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-700
+            {% elif message.tags == 'success' %}bg-green-50 border-green-200 text-green-700
+            {% elif message.tags == 'warning' %}bg-yellow-50 border-yellow-200 text-yellow-700
+            {% else %}bg-blue-50 border-blue-200 text-blue-700{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-3 gap-3 mb-3">
+        <div class="bg-white rounded-lg shadow p-3 border-l-4 border-blue-500">
+            <p class="text-xs text-gray-500">Tracked Products</p>
+            <p class="text-2xl font-bold text-gray-800">{{ total_tracked }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
+            <p class="text-xs text-gray-500">Out of Stock</p>
+            <p class="text-2xl font-bold text-red-600">{{ total_out_of_stock }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-3 border-l-4 border-amber-500">
+            <p class="text-xs text-gray-500">Low Stock</p>
+            <p class="text-2xl font-bold text-amber-600">{{ total_low_stock }}</p>
+        </div>
+    </div>
+
+    <!-- Add Product to Track -->
+    <div class="bg-white rounded-lg shadow p-3 mb-3">
+        <h2 class="text-sm font-bold text-gray-800 mb-2">Add Product to Stock Tracking</h2>
+        <form method="post" action="{% url 'management:stock_add_product' %}" class="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+            {% csrf_token %}
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-0.5">Product</label>
+                <select name="product_id" required
+                        class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">-- Select Product --</option>
+                    {% for product in available_products %}
+                    <option value="{{ product.id }}">{{ product.name }} ({{ product.sku }}) - {{ product.brand.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-0.5">Daily Stock</label>
+                <input type="number" name="daily_stock" value="100" min="0" step="1" required
+                       class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-0.5">Low Stock Alert</label>
+                <input type="number" name="low_stock_alert" value="5" min="0" step="1"
+                       class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <button type="submit" class="w-full px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                    + Add to Track
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Search & Filter -->
+    <div class="bg-white rounded-lg shadow p-2.5 mb-1.5">
+        <form method="get" class="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-0.5">Search</label>
+                <input type="text" name="search" value="{{ search }}" placeholder="Product name or SKU..."
+                       class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-700 mb-0.5">Status</label>
+                <select name="status" class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+                    <option value="out_of_stock" {% if status_filter == 'out_of_stock' %}selected{% endif %}>Out of Stock</option>
+                    <option value="low_stock" {% if status_filter == 'low_stock' %}selected{% endif %}>Low Stock</option>
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="w-full px-2.5 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
+                    Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Stock Table -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="w-full text-xs">
+            <thead class="bg-gray-50 border-b">
+                <tr>
+                    <th class="px-3 py-2 text-left font-semibold text-gray-600">Product</th>
+                    <th class="px-3 py-2 text-left font-semibold text-gray-600">SKU</th>
+                    <th class="px-3 py-2 text-left font-semibold text-gray-600">Brand</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Daily Stock</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Sold</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Remaining</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Alert</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Status</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Last Reset</th>
+                    <th class="px-3 py-2 text-center font-semibold text-gray-600">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for stock in stocks %}
+                <tr class="hover:bg-gray-50 {% if stock.is_out_of_stock %}bg-red-50{% elif stock.is_low_stock %}bg-amber-50{% endif %}">
+                    <td class="px-3 py-2 font-medium text-gray-900">{{ stock.product_name }}</td>
+                    <td class="px-3 py-2 text-gray-500 font-mono">{{ stock.product_sku }}</td>
+                    <td class="px-3 py-2 text-gray-500">{{ stock.brand.name }}</td>
+                    <td class="px-3 py-2 text-center font-semibold text-gray-700">{{ stock.daily_stock|floatformat:0 }}</td>
+                    <td class="px-3 py-2 text-center font-semibold text-gray-700">{{ stock.sold_qty|floatformat:0 }}</td>
+                    <td class="px-3 py-2 text-center font-bold
+                        {% if stock.is_out_of_stock %}text-red-600
+                        {% elif stock.is_low_stock %}text-amber-600
+                        {% else %}text-green-600{% endif %}">
+                        {{ stock.remaining_stock|floatformat:0 }}
+                    </td>
+                    <td class="px-3 py-2 text-center text-gray-500">{{ stock.low_stock_alert }}</td>
+                    <td class="px-3 py-2 text-center">
+                        {% if stock.is_out_of_stock %}
+                        <span class="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-bold">OUT</span>
+                        {% elif stock.is_low_stock %}
+                        <span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">LOW</span>
+                        {% else %}
+                        <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold">OK</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-center text-gray-400">
+                        {% if stock.last_reset_date %}{{ stock.last_reset_date }}{% else %}-{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                        <div class="flex items-center justify-center gap-1">
+                            <button type="button"
+                                    class="px-1.5 py-0.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-semibold"
+                                    title="Edit stock settings"
+                                    onclick="openEditModal('{{ stock.id }}', '{{ stock.product_name|escapejs }}', '{{ stock.daily_stock|floatformat:0 }}', '{{ stock.sold_qty|floatformat:0 }}', '{{ stock.low_stock_alert }}')">
+                                Edit
+                            </button>
+                            <form method="post" action="{% url 'management:stock_reset_daily' stock.id %}" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="px-1.5 py-0.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-semibold"
+                                        title="Reset sold to 0" onclick="return confirm('Reset sold qty to 0?')">
+                                    Reset
+                                </button>
+                            </form>
+                            <form method="post" action="{% url 'management:stock_remove' stock.id %}" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="px-1.5 py-0.5 bg-red-500 hover:bg-red-600 text-white rounded text-[10px] font-semibold"
+                                        title="Remove from tracking" onclick="return confirm('Remove this product from stock tracking?')">
+                                    Remove
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="10" class="px-3 py-8 text-center text-gray-400">
+                        <svg class="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                        </svg>
+                        <p class="text-sm font-medium">No products tracked yet</p>
+                        <p class="text-xs mt-1">Add products above to start tracking daily stock</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Info Box -->
+    <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div class="flex items-start gap-2">
+            <svg class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+            </svg>
+            <div class="text-xs text-blue-800">
+                <p class="font-semibold mb-1">How Stock Management Works</p>
+                <ul class="space-y-0.5 text-blue-600">
+                    <li>- Only products added here are stock-tracked. Others are always available.</li>
+                    <li>- Set <strong>Daily Stock</strong> each morning for tracked products.</li>
+                    <li>- <strong>Sold</strong> increases automatically when items are sent to kitchen.</li>
+                    <li>- When <strong>Remaining</strong> reaches 0, product shows "Out of Stock" in POS.</li>
+                    <li>- Use <strong>Reset All Daily</strong> to reset sold qty to 0 for all products at start of day.</li>
+                    <li>- After HO sync, click <strong>Sync Product IDs</strong> to re-match products.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Stock Modal -->
+<div id="editStockModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeEditModal()"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md relative">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between px-5 py-3 border-b bg-gray-50 rounded-t-xl">
+                <h3 class="text-sm font-bold text-gray-800">Edit Stock</h3>
+                <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <form id="editStockForm" method="post" action="">
+                {% csrf_token %}
+                <div class="px-5 py-4 space-y-3">
+                    <!-- Product Name (read-only) -->
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-0.5">Product</label>
+                        <p id="editProductName" class="text-sm font-semibold text-gray-900"></p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Daily Stock -->
+                        <div>
+                            <label for="editDailyStock" class="block text-xs font-medium text-gray-700 mb-0.5">Daily Stock</label>
+                            <input type="number" id="editDailyStock" name="daily_stock" min="0" step="1" required
+                                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   oninput="updateRemainingPreview()">
+                        </div>
+
+                        <!-- Sold Qty -->
+                        <div>
+                            <label for="editSoldQty" class="block text-xs font-medium text-gray-700 mb-0.5">Sold Qty</label>
+                            <input type="number" id="editSoldQty" name="sold_qty" min="0" step="1" required
+                                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   oninput="updateRemainingPreview()">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Low Stock Alert -->
+                        <div>
+                            <label for="editLowStockAlert" class="block text-xs font-medium text-gray-700 mb-0.5">Low Stock Alert</label>
+                            <input type="number" id="editLowStockAlert" name="low_stock_alert" min="0" step="1" required
+                                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <!-- Remaining Preview -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-0.5">Remaining (preview)</label>
+                            <div id="editRemainingPreview" class="px-3 py-2 text-sm font-bold rounded-lg bg-gray-100 text-gray-700">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex items-center justify-end gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
+                    <button type="button" onclick="closeEditModal()"
+                            class="px-4 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openEditModal(stockId, productName, dailyStock, soldQty, lowStockAlert) {
+    const modal = document.getElementById('editStockModal');
+    const form = document.getElementById('editStockForm');
+
+    // Set form action URL
+    form.action = '/management/stock/' + stockId + '/update/';
+
+    // Populate fields
+    document.getElementById('editProductName').textContent = productName;
+    document.getElementById('editDailyStock').value = dailyStock;
+    document.getElementById('editSoldQty').value = soldQty;
+    document.getElementById('editLowStockAlert').value = lowStockAlert;
+
+    // Update remaining preview
+    updateRemainingPreview();
+
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+function closeEditModal() {
+    document.getElementById('editStockModal').classList.add('hidden');
+}
+
+function updateRemainingPreview() {
+    const daily = parseInt(document.getElementById('editDailyStock').value) || 0;
+    const sold = parseInt(document.getElementById('editSoldQty').value) || 0;
+    const remaining = daily - sold;
+    const el = document.getElementById('editRemainingPreview');
+
+    el.textContent = remaining;
+
+    // Color based on status
+    el.className = 'px-3 py-2 text-sm font-bold rounded-lg ';
+    if (remaining <= 0) {
+        el.className += 'bg-red-100 text-red-700';
+    } else {
+        const alert = parseInt(document.getElementById('editLowStockAlert').value) || 0;
+        if (remaining <= alert) {
+            el.className += 'bg-amber-100 text-amber-700';
+        } else {
+            el.className += 'bg-green-100 text-green-700';
+        }
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeEditModal();
+});
+</script>
+{% endblock %}

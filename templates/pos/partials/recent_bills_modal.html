@@ -1,0 +1,89 @@
+{% load humanize %}
+{% comment %}
+============================================================================
+RECENT BILLS MODAL (recent_bills_modal.html)
+============================================================================
+Modal yang menampilkan daftar 15 bill terakhir.
+Kasir bisa melihat status, reprint receipt, atau view detail.
+
+DIPANGGIL DARI: sidebar.html via HTMX (tombol "Recent")
+CONTEXT VARIABLES:
+- bills : QuerySet 15 bill terakhir (paid, open, hold, void, cancelled)
+============================================================================
+{% endcomment %}
+
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+        <!-- Header -->
+        <div class="px-4 py-3 border-b bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-t-xl flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-bold">Recent Orders</h2>
+                <p class="text-xs text-indigo-200">Last {{ bills|length }} orders</p>
+            </div>
+            <button onclick="closeModal()"
+                    class="text-white hover:bg-white/20 rounded-lg p-1.5 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Bills List -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-2">
+            {% for bill in bills %}
+            <div class="border rounded-lg p-3 hover:bg-gray-50 transition">
+                <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                        <span class="font-mono text-sm font-bold text-gray-800">{{ bill.bill_number }}</span>
+                        {% if bill.status == 'paid' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700">PAID</span>
+                        {% elif bill.status == 'open' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">OPEN</span>
+                        {% elif bill.status == 'hold' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">HOLD</span>
+                        {% elif bill.status == 'void' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">VOID</span>
+                        {% elif bill.status == 'cancelled' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">CANCELLED</span>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs text-gray-500">{{ bill.created_at|date:"H:i" }}</span>
+                </div>
+                <div class="flex items-center justify-between text-sm">
+                    <div class="text-gray-600">
+                        {% if bill.table %}Table {{ bill.table.number }}{% else %}Takeaway{% endif %}
+                        <span class="text-gray-400 mx-1">&middot;</span>
+                        {{ bill.items.count }} items
+                    </div>
+                    <span class="font-bold text-gray-900">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                </div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs text-gray-400">{{ bill.created_by.username }} &middot; {{ bill.created_at|date:"d M Y" }}</span>
+                    {% if bill.status == 'paid' %}
+                    <button onclick="window.open('/pos/bill/{{ bill.id }}/print-preview/', 'PrintReceipt', 'width=400,height=600')"
+                            class="text-xs px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-md font-semibold hover:bg-indigo-200 transition">
+                        Reprint
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-12 text-gray-400">
+                <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <p class="text-sm">No recent orders</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 py-3 border-t bg-gray-50 rounded-b-xl">
+            <button onclick="closeModal()"
+                    class="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium text-sm">
+                Close
+            </button>
+        </div>
+    </div>
+</div>

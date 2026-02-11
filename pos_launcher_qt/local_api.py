@@ -965,6 +965,307 @@ def health_check():
     })
 
 
+@app.route('/api/printer/status', methods=['GET'])
+def printer_status():
+    """Check actual printer hardware status.
+
+    Returns printer name, connection status, and any error conditions.
+    Uses win32print on Windows and CUPS on Linux to query the physical printer.
+
+    Response:
+    {
+        "printer_name": "EPSON TM-T82",
+        "printer_status": "ready",       // ready | offline | error | warning | unknown
+        "status_code": 0,                // raw status bitmask (Windows)
+        "status_flags": [],              // human-readable list of active flags
+        "message": "Printer Ready"       // display message
+    }
+    """
+    system = platform.system()
+
+    try:
+        if system == 'Windows':
+            return jsonify(_get_printer_status_windows())
+        elif system == 'Linux':
+            return jsonify(_get_printer_status_linux())
+        else:
+            return jsonify({
+                'printer_name': None,
+                'printer_status': 'unknown',
+                'status_code': -1,
+                'status_flags': [],
+                'message': f'Unsupported platform: {system}'
+            })
+    except Exception as e:
+        return jsonify({
+            'printer_name': None,
+            'printer_status': 'error',
+            'status_code': -1,
+            'status_flags': [],
+            'message': str(e)
+        })
+
+
+def _get_printer_status_windows():
+    """Query printer hardware status on Windows using win32print"""
+    try:
+        import win32print
+    except ImportError:
+        return {
+            'printer_name': None,
+            'printer_status': 'error',
+            'status_code': -1,
+            'status_flags': [],
+            'message': 'win32print not installed'
+        }
+
+    try:
+        printer_name = win32print.GetDefaultPrinter()
+    except Exception:
+        return {
+            'printer_name': None,
+            'printer_status': 'offline',
+            'status_code': -1,
+            'status_flags': [],
+            'message': 'No default printer configured'
+        }
+
+    # Status flag definitions (win32print constants)
+    STATUS_FLAGS = {
+        0x00000002: 'error',
+        0x00000008: 'paper_jam',
+        0x00000010: 'paper_out',
+        0x00000040: 'paper_problem',
+        0x00000080: 'offline',
+        0x00000200: 'busy',
+        0x00000400: 'printing',
+        0x00001000: 'not_available',
+        0x00008000: 'initializing',
+        0x00010000: 'warming_up',
+        0x00020000: 'toner_low',
+        0x00040000: 'no_toner',
+        0x00100000: 'user_intervention',
+        0x00400000: 'door_open',
+        0x01000000: 'power_save',
+    }
+
+    # Human-readable messages for status flags
+    STATUS_MESSAGES = {
+        'error': 'Printer Error',
+        'paper_jam': 'Paper Jam',
+        'paper_out': 'Paper Out',
+        'paper_problem': 'Paper Problem',
+        'offline': 'Printer Offline',
+        'busy': 'Printer Busy',
+        'printing': 'Printing...',
+        'not_available': 'Printer Not Available',
+        'initializing': 'Initializing...',
+        'warming_up': 'Warming Up...',
+        'toner_low': 'Toner Low',
+        'no_toner': 'No Toner',
+        'user_intervention': 'User Intervention Required',
+        'door_open': 'Cover Open',
+        'power_save': 'Power Save Mode',
+    }
+
+    hprinter = None
+    try:
+        hprinter = win32print.OpenPrinter(printer_name)
+        # GetPrinter level 2 includes Status field
+        printer_info = win32print.GetPrinter(hprinter, 2)
+        status_code = printer_info.get('Status', 0) if isinstance(printer_info, dict) else printer_info[18]
+
+        # Decode status flags
+        active_flags = []
+        for flag_bit, flag_name in STATUS_FLAGS.items():
+            if status_code & flag_bit:
+                active_flags.append(flag_name)
+
+        # Determine overall status
+        error_flags = {'error', 'paper_jam', 'paper_out', 'paper_problem', 'offline',
+                       'not_available', 'no_toner', 'user_intervention'}
+        warning_flags = {'door_open', 'toner_low', 'power_save'}
+        busy_flags = {'busy', 'printing', 'initializing', 'warming_up'}
+
+        if status_code == 0:
+            # Spooler says OK - but verify physical connectivity via WMI.
+            # win32print.GetPrinter often reports status=0 even when USB is unplugged
+            # because the printer driver is still installed. WMI detects actual disconnection.
+            wmi_result = _wmi_printer_check(printer_name)
+            if wmi_result == 'offline':
+                printer_status = 'offline'
+                message = 'Printer Disconnected'
+                active_flags = ['offline']
+            else:
+                printer_status = 'ready'
+                message = 'Printer Ready'
+        elif any(f in error_flags for f in active_flags):
+            printer_status = 'offline'
+            # Use the first error flag's message
+            for f in active_flags:
+                if f in error_flags:
+                    message = STATUS_MESSAGES.get(f, 'Printer Error')
+                    break
+            else:
+                message = 'Printer Error'
+        elif any(f in warning_flags for f in active_flags):
+            printer_status = 'warning'
+            message = STATUS_MESSAGES.get(active_flags[0], 'Warning')
+        elif any(f in busy_flags for f in active_flags):
+            printer_status = 'ready'
+            message = STATUS_MESSAGES.get(active_flags[0], 'Busy')
+        else:
+            printer_status = 'ready'
+            message = 'Printer Ready'
+
+        return {
+            'printer_name': printer_name,
+            'printer_status': printer_status,
+            'status_code': status_code,
+            'status_flags': active_flags,
+            'message': message
+        }
+    except Exception as e:
+        return {
+            'printer_name': printer_name,
+            'printer_status': 'offline',
+            'status_code': -1,
+            'status_flags': [],
+            'message': f'Cannot query printer: {str(e)}'
+        }
+    finally:
+        if hprinter is not None:
+            try:
+                win32print.ClosePrinter(hprinter)
+            except Exception:
+                pass
+
+
+def _wmi_printer_check(printer_name):
+    """Use WMI via COM to detect physical printer connectivity (USB disconnection).
+
+    win32print.GetPrinter() only queries the spooler which caches status.
+    WMI Win32_Printer.WorkOffline detects actual USB disconnection.
+
+    Returns: 'ready', 'offline', or None (if WMI check fails).
+    """
+    try:
+        import pythoncom
+        import win32com.client
+
+        # COM must be initialized per-thread (Flask threaded=True)
+        pythoncom.CoInitialize()
+        result = 'offline'
+        try:
+            wmi = win32com.client.GetObject("winmgmts:")
+            # Escape single quotes in printer name for WQL query
+            escaped = printer_name.replace("\\", "\\\\").replace("'", "\\'")
+            query = f"SELECT WorkOffline, PrinterStatus FROM Win32_Printer WHERE Name = '{escaped}'"
+            printers = wmi.ExecQuery(query)
+
+            for printer in printers:
+                # WorkOffline = True when USB is physically disconnected
+                if printer.WorkOffline:
+                    result = 'offline'
+                    break
+                # PrinterStatus: 3=Idle, 4=Printing, 5=Warmup, 7=Offline
+                elif printer.PrinterStatus == 7:
+                    result = 'offline'
+                    break
+                else:
+                    result = 'ready'
+                    break
+
+            # Explicitly release COM objects BEFORE CoUninitialize
+            # to prevent "Win32 exception occurred releasing IUnknown" errors
+            del printer
+        except NameError:
+            pass  # printer was never assigned (empty query result)
+        finally:
+            try:
+                del printers
+            except (NameError, UnboundLocalError):
+                pass
+            try:
+                del wmi
+            except (NameError, UnboundLocalError):
+                pass
+            # Force release any remaining COM pointers before uninitializing
+            import gc
+            gc.collect()
+            pythoncom.CoUninitialize()
+
+        return result
+    except Exception as e:
+        print(f"[Printer Status] WMI check failed: {e}")
+        return None  # WMI unavailable, trust GetPrinter result
+
+
+def _get_printer_status_linux():
+    """Query printer hardware status on Linux using CUPS"""
+    try:
+        import cups
+    except ImportError:
+        return {
+            'printer_name': None,
+            'printer_status': 'error',
+            'status_code': -1,
+            'status_flags': [],
+            'message': 'pycups not installed'
+        }
+
+    try:
+        conn = cups.Connection()
+        printers = conn.getPrinters()
+
+        if not printers:
+            return {
+                'printer_name': None,
+                'printer_status': 'offline',
+                'status_code': -1,
+                'status_flags': [],
+                'message': 'No printers configured'
+            }
+
+        # Get default or first printer
+        default_printer = conn.getDefault()
+        printer_name = default_printer if default_printer else list(printers.keys())[0]
+        printer_info = printers.get(printer_name, {})
+
+        # CUPS printer states: 3=idle, 4=printing, 5=stopped
+        state = printer_info.get('printer-state', 0)
+        state_message = printer_info.get('printer-state-message', '')
+
+        if state == 3:  # IPP_PRINTER_IDLE
+            printer_status = 'ready'
+            message = 'Printer Ready'
+        elif state == 4:  # IPP_PRINTER_PROCESSING
+            printer_status = 'ready'
+            message = 'Printing...'
+        elif state == 5:  # IPP_PRINTER_STOPPED
+            printer_status = 'offline'
+            message = state_message or 'Printer Stopped'
+        else:
+            printer_status = 'unknown'
+            message = state_message or 'Unknown State'
+
+        return {
+            'printer_name': printer_name,
+            'printer_status': printer_status,
+            'status_code': state,
+            'status_flags': [state_message] if state_message else [],
+            'message': message
+        }
+    except Exception as e:
+        return {
+            'printer_name': None,
+            'printer_status': 'error',
+            'status_code': -1,
+            'status_flags': [],
+            'message': str(e)
+        }
+
+
 @app.route('/api/customer-display/config', methods=['GET'])
 def get_display_config():
     """Get customer display configuration"""

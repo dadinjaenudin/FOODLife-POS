@@ -1,6 +1,9 @@
 networks:
   pos_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16  # Explicit subnet to avoid conflict with LAN 172.17.x.x
 
 services:
   # PostgreSQL Database untuk Edge Server
@@ -158,6 +161,37 @@ services:
       - EDGE_MINIO_ACCESS_KEY=foodlife_admin
       - EDGE_MINIO_SECRET_KEY=foodlife_secret_2026
       - EDGE_MINIO_SECURE=False
+
+  # Kitchen Printer Agent - polls DB for print tickets, sends to network printers
+  # Uses network_mode: host so container can reach LAN printers (172.17.x.x)
+  # without Docker bridge subnet conflict
+  kitchen_agent:
+    build: .
+    container_name: fnb_kitchen_agent
+    network_mode: host
+    entrypoint: []
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        while ! nc -z localhost 5433; do sleep 1; done &&
+        echo 'Database is ready!' &&
+        python kitchen_printer_agent/kitchen_agent.py
+      "
+    environment:
+      - DB_HOST=localhost
+      - DB_PORT=5433
+      - DB_NAME=fnb_edge_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - AGENT_NAME=Kitchen-Agent-1
+      - STATION_IDS=1,2,3
+      - HEALTH_SERVER_PORT=5001
+    volumes:
+      - .:/app
+    depends_on:
+      edge_db:
+        condition: service_healthy
+    restart: unless-stopped
 
   # MinIO Object Storage untuk Product Images (Edge Storage - fallback/cache)
   edge_minio:

@@ -305,7 +305,20 @@ def pos_main(request):
     # MinIO settings for product images
     minio_endpoint = get_minio_endpoint_for_request(request)
     minio_bucket = 'product-images'
-    
+
+    # Build stock status dict from StoreProductStock
+    # Only products in StoreProductStock are tracked; others are always available
+    from apps.pos.models import StoreProductStock
+    stock_records = StoreProductStock.objects.filter(brand=brand, is_active=True)
+    stock_status_dict = {}
+    for sr in stock_records:
+        stock_status_dict[sr.product_id] = {
+            'remaining': sr.remaining_stock,
+            'daily_stock': sr.daily_stock,
+            'is_out': sr.is_out_of_stock,
+            'is_low': sr.is_low_stock,
+        }
+
     context = {
         'categories': categories,
         'parent_categories': parent_categories,
@@ -322,6 +335,7 @@ def pos_main(request):
         'terminal': terminal,  # Add terminal to context
         'minio_endpoint': minio_endpoint,
         'minio_bucket': minio_bucket,
+        'stock_status_dict': stock_status_dict,
     }
     return render(request, 'pos/main.html', context)
 
@@ -392,10 +406,35 @@ def kitchen_printer_status(request):
 
 @login_required
 def kitchen_agent_status(request):
-    """Kitchen agent service status for POS widget"""
-    import subprocess
+    """Kitchen agent service status for POS widget.
 
-    status = 'unknown'
+    Try HTTP health endpoint first (cross-platform), fallback to systemctl (Linux only).
+    """
+    import urllib.request
+
+    # --- Try HTTP health endpoint (kitchen_agent.py health server) ---
+    # kitchen_agent uses network_mode:host, so reach it via:
+    #   - host.docker.internal (from Docker containers → host network)
+    #   - 127.0.0.1 (when Django runs on same host outside Docker)
+    agent_port = 5001
+    for host in ('host.docker.internal', '127.0.0.1'):
+        try:
+            req = urllib.request.Request(f'http://{host}:{agent_port}/health')
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                import json as _json
+                data = _json.loads(resp.read().decode())
+                return JsonResponse({
+                    'status': 'running',
+                    'agent_name': data.get('agent_name', ''),
+                    'uptime_seconds': data.get('uptime_seconds', 0),
+                    'tickets_processed': data.get('tickets_processed', 0),
+                    'source': 'http',
+                })
+        except Exception:
+            continue
+
+    # --- Fallback: systemctl (Linux only) ---
+    import subprocess
     try:
         result = subprocess.run(
             ['systemctl', 'is-active', 'kitchen-agent'],
@@ -403,14 +442,12 @@ def kitchen_agent_status(request):
             text=True,
             timeout=2
         )
-        if result.returncode == 0:
-            status = 'running'
-        else:
-            status = 'stopped'
+        status = 'running' if result.returncode == 0 else 'stopped'
+        return JsonResponse({'status': status, 'source': 'systemctl'})
     except Exception:
-        status = 'unknown'
+        pass
 
-    return JsonResponse({'status': status})
+    return JsonResponse({'status': 'unknown', 'source': 'none'})
 
 
 @login_required
@@ -509,6 +546,18 @@ def product_list(request):
     minio_endpoint = get_minio_endpoint_for_request(request)
     minio_bucket = 'product-images'
 
+    # Stock status from StoreProductStock
+    from apps.pos.models import StoreProductStock
+    stock_records = StoreProductStock.objects.filter(brand=brand, is_active=True)
+    stock_status_dict = {}
+    for sr in stock_records:
+        stock_status_dict[sr.product_id] = {
+            'remaining': sr.remaining_stock,
+            'daily_stock': sr.daily_stock,
+            'is_out': sr.is_out_of_stock,
+            'is_low': sr.is_low_stock,
+        }
+
     is_modal = request.GET.get('modal') == '1'
     template = 'pos/partials/product_grid_mini.html' if is_modal else 'pos/partials/product_grid.html'
 
@@ -516,6 +565,7 @@ def product_list(request):
         'products': products,
         'bill': bill,
         'bill_items_dict': bill_items_dict,
+        'stock_status_dict': stock_status_dict,
         'minio_endpoint': minio_endpoint,
         'minio_bucket': minio_bucket,
     })
@@ -986,14 +1036,28 @@ def void_item(request, item_id):
         return HttpResponse('This item has been processed and cannot be voided', status=403)
     
     # Void the item
+    was_sent = item.status != 'pending'  # Track if item was already sent to kitchen
     item.is_void = True
     item.void_reason = reason
     item.void_by = supervisor  # Record who approved (supervisor, not cashier)
     item.save()
-    
+
+    # Restore stock if item was already sent to kitchen (stock was deducted at send time)
+    if was_sent:
+        from apps.pos.models import StoreProductStock
+        stock_record = StoreProductStock.objects.filter(
+            product_id=item.product_id,
+            brand=item.bill.brand,
+            is_active=True
+        ).first()
+        if stock_record:
+            stock_record.restore_stock(item.quantity)
+            print(f"  [Stock] Restored {item.quantity} for {item.product.name} "
+                  f"(remaining: {stock_record.remaining_stock})")
+
     # Recalculate bill totals
     item.bill.calculate_totals()
-    
+
     # Create audit log
     BillLog.objects.create(
         bill=item.bill,
@@ -1003,7 +1067,8 @@ def void_item(request, item_id):
             'product': item.product.name,
             'reason': reason,
             'approved_by': supervisor.get_full_name(),
-            'approved_by_pin': supervisor_pin[:2] + '****'  # Partial PIN for audit
+            'approved_by_pin': supervisor_pin[:2] + '****',  # Partial PIN for audit
+            'stock_restored': was_sent,
         }
     )
     
@@ -1402,6 +1467,17 @@ def held_bills(request):
 
 
 @login_required
+def recent_bills(request):
+    """List recent bills (last 15) for quick access - HTMX"""
+    bills = Bill.objects.filter(
+        brand=request.user.brand,
+        status__in=['paid', 'open', 'hold', 'void', 'cancelled']
+    ).select_related('table', 'created_by').order_by('-created_at')[:15]
+
+    return render(request, 'pos/partials/recent_bills_modal.html', {'bills': bills})
+
+
+@login_required
 def member_pin_modal(request, bill_id):
     """Show member PIN input modal"""
     bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
@@ -1455,20 +1531,57 @@ def refresh_bill_panel(request, bill_id):
 @require_http_methods(["POST"])
 def send_to_kitchen(request, bill_id):
     """Send pending items to kitchen - HTMX
-    
-    Uses new KitchenTicket system - creates tickets for printer polling
+
+    Uses new KitchenTicket system - creates tickets for printer polling.
+    Checks StoreProductStock for out-of-stock items before sending.
     """
     bill = get_object_or_404(Bill, id=bill_id)
-    
+
     # CRITICAL: Only get items that are pending (not yet sent)
     pending_items = bill.items.filter(status='pending', is_void=False)
-    
+
     if not pending_items.exists():
         # Don't remove bill panel, just show alert and return same panel
         response = render_bill_panel(request, bill)
         response['HX-Trigger'] = '{"showNotification": {"message": "Tidak ada item baru untuk dikirim", "type": "warning"}}'
         return response
-    
+
+    # === STOCK CHECK ===
+    # Check StoreProductStock for out-of-stock/insufficient items
+    # Skip if force=1 (cashier confirmed from modal)
+    force_send = request.POST.get('force') == '1'
+    if not force_send:
+        from apps.pos.models import StoreProductStock
+        stock_warnings = []
+
+        for item in pending_items.select_related('product'):
+            stock_record = StoreProductStock.objects.filter(
+                product_id=item.product_id,
+                brand=bill.brand,
+                is_active=True
+            ).first()
+
+            if stock_record:
+                remaining = stock_record.remaining_stock
+                if remaining < item.quantity:
+                    stock_warnings.append({
+                        'product_name': item.product.name,
+                        'quantity_ordered': item.quantity,
+                        'remaining_stock': max(0, remaining),
+                        'is_out': remaining <= 0,
+                    })
+
+        if stock_warnings:
+            # Return confirmation modal instead of sending
+            response = render(request, 'pos/partials/stock_warning_modal.html', {
+                'bill': bill,
+                'stock_warnings': stock_warnings,
+                'pending_count': pending_items.count(),
+            })
+            response['HX-Retarget'] = '#modal-container'
+            response['HX-Reswap'] = 'innerHTML'
+            return response
+
     try:
         from apps.kitchen.services import create_kitchen_tickets
         
@@ -1489,12 +1602,26 @@ def send_to_kitchen(request, bill_id):
         # IMPORTANT: Update status BEFORE creating kitchen tickets to prevent race condition
         updated_count = pending_items.update(status='sent')
         print(f"\nUpdated {updated_count} items to 'sent' status")
-        
+
+        # === STOCK DEDUCTION ===
+        # Deduct stock from StoreProductStock for items just sent to kitchen
+        from apps.pos.models import StoreProductStock
+        for item in bill.items.filter(id__in=pending_item_ids).select_related('product'):
+            stock_record = StoreProductStock.objects.filter(
+                product_id=item.product_id,
+                brand=bill.brand,
+                is_active=True
+            ).first()
+            if stock_record:
+                stock_record.deduct_stock(item.quantity)
+                print(f"  [Stock] Deducted {item.quantity} from {item.product.name} "
+                      f"(remaining: {stock_record.remaining_stock})")
+
         # Print status of all items AFTER update
         print("\nItem status AFTER update:")
         for item in bill.items.all():
             print(f"  - Item #{item.id}: {item.product.name} - Status: {item.status}")
-        
+
         # Get terminal config for auto print flags
         from apps.core.models import POSTerminal
         terminal = None

@@ -23,6 +23,8 @@ def trigger_client_event(response, event_name, data=None):
 @ensure_csrf_cookie
 def table_map(request):
     """Table floor plan"""
+    from django.db.models import Count, Q
+
     areas = TableArea.objects.filter(
         brand=request.user.brand,
         is_active=True
@@ -39,7 +41,43 @@ def table_map(request):
             tables = getattr(area, 'active_tables', [])
             area.table_count = len(tables)
             unique_areas.append(area)
-    
+
+    # Set default bill display values on ALL tables first (ensures valid JSON in template)
+    for area in unique_areas:
+        for table in getattr(area, 'active_tables', []):
+            table.bill_number_display = ''
+            table.bill_total_display = 0
+            table.bill_created_at_iso = ''
+            table.bill_guest_count = 0
+            table.bill_items_count = 0
+            table.bill_status_display = ''
+
+    # Enrich tables that have active bills
+    try:
+        all_table_ids = [t.id for area in unique_areas for t in getattr(area, 'active_tables', [])]
+        if all_table_ids:
+            active_bills = Bill.objects.filter(
+                table_id__in=all_table_ids,
+                status__in=['open', 'hold']
+            ).annotate(
+                active_items_count=Count('items', filter=Q(items__is_void=False))
+            ).select_related('table')
+
+            for bill in active_bills:
+                # Find and enrich the matching table object
+                for area in unique_areas:
+                    for table in getattr(area, 'active_tables', []):
+                        if str(table.id) == str(bill.table_id):
+                            table.bill_number_display = bill.bill_number or ''
+                            table.bill_total_display = float(bill.total or 0)
+                            table.bill_created_at_iso = bill.created_at.isoformat() if bill.created_at else ''
+                            table.bill_guest_count = bill.guest_count or 0
+                            table.bill_items_count = bill.active_items_count
+                            table.bill_status_display = bill.status or ''
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'Error enriching floor plan bill data: {e}')
+
     return render(request, 'tables/floor_plan.html', {'areas': unique_areas})
 
 

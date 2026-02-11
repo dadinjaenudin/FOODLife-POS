@@ -99,4 +99,13 @@ urlpatterns = [
     # Session Management
     path('session/', views.session_management, name='session_open_form'),
     path('session/close/', views.session_close, name='session_close'),
+
+    # Store Product Stock Management
+    path('stock/', views.stock_management, name='stock_management'),
+    path('stock/add/', views.stock_add_product, name='stock_add_product'),
+    path('stock/<uuid:stock_id>/update/', views.stock_update, name='stock_update'),
+    path('stock/<uuid:stock_id>/reset/', views.stock_reset_daily, name='stock_reset_daily'),
+    path('stock/<uuid:stock_id>/remove/', views.stock_remove, name='stock_remove'),
+    path('stock/reset-all/', views.stock_reset_all, name='stock_reset_all'),
+    path('stock/sync-product-ids/', views.stock_sync_product_ids, name='stock_sync_product_ids'),
 ]

@@ -1,0 +1,70 @@
+{% comment %}
+============================================================================
+HEADER SEARCH BAR (header_search.html)
+============================================================================
+Bar pencarian produk di bagian ATAS area konten utama.
+Berisi: tombol hamburger, search input (HTMX), status shift, notifikasi.
+
+DIPANGGIL DARI: main.html via include tag
+
+CONTEXT VARIABLES (dari views.py):
+- Tidak ada context khusus (menggunakan Django URL tags)
+
+FITUR:
+- Search input menggunakan HTMX: ketik → tunggu 300ms → kirim request
+  ke pos:products → hasil ditampilkan di #product-grid
+- Shift status header auto-refresh tiap 30 detik via HTMX
+- Tombol hamburger untuk toggle sidebar (opsional)
+============================================================================
+{% endcomment %}
+
+<header class="bg-gray-50 px-4 py-2">
+    <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 flex-1">
+            {% comment %} Tombol Hamburger: Toggle visibility sidebar (klik untuk show/hide) {% endcomment %}
+            <button class="p-1.5 hover:bg-gray-100 rounded-md transition-colors" onclick="document.querySelector('aside').classList.toggle('hidden')">
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+
+            {% comment %}
+            SEARCH BAR (HTMX)
+            - hx-get: Kirim request GET ke pos:products saat user mengetik
+            - hx-trigger: Trigger setelah keyup + delay 300ms (debounce)
+            - hx-target: Hasil pencarian ditampilkan di #product-grid
+            - name="search": Parameter yang dikirim ke backend
+            {% endcomment %}
+            <div class="flex-1 relative max-w-md">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input type="text" id="product-search" placeholder="Search Product..."
+                    class="w-full pl-9 pr-3 py-2 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-100 focus:bg-white transition-all"
+                    hx-get="{% url 'pos:products' %}" hx-trigger="keyup changed delay:300ms"
+                    hx-target="#product-grid" hx-include="this" name="search">
+            </div>
+        </div>
+
+        {% comment %} KANAN: Status Shift + Tombol Notifikasi {% endcomment %}
+        <div class="flex items-center gap-2">
+            {% comment %}
+            SHIFT STATUS HEADER (HTMX)
+            - Auto-refresh tiap 30 detik
+            - Juga refresh saat event "shiftStatusChanged" di-trigger
+            - Menampilkan badge "Shift Active" atau "No Shift"
+            {% endcomment %}
+            <div id="header-shift-status"
+                 hx-get="{% url 'pos:shift_status_header' %}"
+                 hx-trigger="load, every 30s, shiftStatusChanged from:body"
+                 hx-swap="innerHTML">
+                <div class="px-2 py-1 bg-gray-200 rounded-md animate-pulse">
+                    <span class="text-[10px] text-gray-500">Loading...</span>
+                </div>
+            </div>
+
+            {# Tombol Notifikasi (bell icon) #}
+            <button class="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors relative">
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            </button>
+        </div>
+    </div>
+</header>

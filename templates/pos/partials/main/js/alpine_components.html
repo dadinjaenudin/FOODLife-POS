@@ -1,0 +1,210 @@
+{% comment %}
+============================================================================
+ALPINE.JS COMPONENTS (alpine_components.html)
+============================================================================
+File ini berisi definisi ALPINE.JS COMPONENTS yang digunakan di halaman POS.
+Alpine.js adalah library JavaScript ringan untuk menambah interaktivitas ke HTML.
+
+DIPANGGIL DARI: main.html via include tag (di bagian bawah, setelah HTML)
+
+KOMPONEN:
+1. posModal()   - Modal warning/konfirmasi (digunakan saat shift belum aktif)
+2. quickOrder() - Quick order flow (pilih produk → bayar langsung tanpa bill)
+
+CATATAN:
+- posModal() digunakan oleh x-data di main.html container utama
+- quickOrder() digunakan oleh modal Quick Order
+- Kedua fungsi ini HARUS didefinisikan secara global (window scope)
+============================================================================
+{% endcomment %}
+
+<script>
+    {% comment %}
+    ====================================================================
+    posModal() - Alpine.js Component untuk Modal Warning/Konfirmasi
+    ====================================================================
+    Digunakan oleh elemen utama POS: <div x-data="posModal()">
+
+    CARA PAKAI:
+    1. Di HTML: <div x-data="posModal()">
+    2. Di JS: component.showModal({ title, message, confirmText, onConfirm })
+    3. Modal muncul dengan animasi fade-in
+    4. User klik Confirm → jalankan onConfirm callback
+    5. User klik Cancel → tutup modal
+
+    CONTOH PENGGUNAAN (dari checkShiftActive):
+    component.showModal({
+        title: 'Shift Belum Dibuka',
+        message: 'Silakan buka shift terlebih dahulu...',
+        confirmText: 'Buka Shift',
+        onConfirm: () => { openShiftModal(); }
+    });
+    ====================================================================
+    {% endcomment %}
+    function posModal() {
+        return {
+            modal: {
+                show: false,
+                title: '',
+                message: '',
+                confirmText: 'OK',
+                cancelText: 'Batal',
+                onConfirm: () => { this.modal.show = false; }
+            },
+
+            showModal(options) {
+                this.modal = {
+                    show: true,
+                    title: options.title || '',
+                    message: options.message || '',
+                    confirmText: options.confirmText || 'OK',
+                    cancelText: options.cancelText || 'Batal',
+                    onConfirm: options.onConfirm || (() => { this.modal.show = false; })
+                };
+            }
+        };
+    }
+
+    {% comment %}
+    ====================================================================
+    quickOrder() - Alpine.js Component untuk Quick Order
+    ====================================================================
+    Flow pemesanan cepat tanpa perlu buat bill terlebih dahulu.
+    Digunakan di modal Quick Order yang dibuka dari bill_panel.html.
+
+    FITUR:
+    - Tambah/kurang item ke keranjang sementara (client-side)
+    - Hitung total otomatis
+    - Format angka ke Rupiah (pemisah ribuan)
+    - Input nominal pembayaran
+    - Submit order ke server via fetch API
+    - Update customer display (jika mode kiosk)
+
+    STATE:
+    - items[]        : Array item di keranjang {product_id, name, price, quantity}
+    - customerName   : Nama pelanggan (opsional)
+    - paymentMethod  : Metode bayar ('cash' / 'qris' / dll)
+    - paymentAmount  : Nominal pembayaran
+    ====================================================================
+    {% endcomment %}
+    function quickOrder() {
+        console.log('Alpine.js quickOrder() initialized:', new Date().toISOString());
+        return {
+            items: [],
+            customerName: '',
+            paymentMethod: 'cash',
+            paymentAmount: 0,
+
+            {# Computed: Total harga semua item #}
+            get total() {
+                return this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            },
+
+            {# Computed: Nominal pembayaran yang sudah diformat (dengan pemisah ribuan) #}
+            get formattedPaymentAmount() {
+                return this.formatNumber(this.paymentAmount);
+            },
+
+            set formattedPaymentAmount(value) {
+                this.paymentAmount = parseInt(value.replace(/,/g, '')) || 0;
+            },
+
+            {# Tambah item ke keranjang (jika sudah ada, qty +1) #}
+            addItem(productId, name, price) {
+                console.log('Adding item:', productId, name, price);
+                const existingItem = this.items.find(item => item.product_id === productId);
+                if (existingItem) {
+                    existingItem.quantity++;
+                } else {
+                    this.items.push({
+                        product_id: productId,
+                        name: name,
+                        price: price,
+                        quantity: 1
+                    });
+                }
+                this.paymentAmount = this.total;
+                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
+            },
+
+            {# Hapus item dari keranjang berdasarkan index #}
+            removeItem(index) {
+                this.items.splice(index, 1);
+                this.paymentAmount = this.total;
+                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
+            },
+
+            {# Tambah qty item +1 #}
+            increaseQty(index) {
+                this.items[index].quantity++;
+                this.paymentAmount = this.total;
+                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
+            },
+
+            {# Kurangi qty item -1 (jika qty=1, hapus item) #}
+            decreaseQty(index) {
+                if (this.items[index].quantity > 1) {
+                    this.items[index].quantity--;
+                    this.paymentAmount = this.total;
+                    updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
+                } else {
+                    this.removeItem(index);
+                }
+            },
+
+            {# Parse format angka Indonesia (10.000,00) ke number (10000) #}
+            parseIndonesianNumber(str) {
+                return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+            },
+
+            {# Format angka ke Rupiah: 10000 → "Rp 10,000" #}
+            formatRupiah(amount) {
+                const num = Math.round(amount).toString();
+                const formatted = num.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                console.log('formatRupiah:', amount, '=>', 'Rp ' + formatted);
+                return 'Rp ' + formatted;
+            },
+
+            {# Format angka dengan pemisah ribuan tanpa prefix Rp: 10000 → "10,000" #}
+            formatNumber(amount) {
+                const num = Math.round(amount).toString();
+                return num.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            },
+
+            {% comment %}
+            submitOrder - Kirim order ke server
+            Endpoint: POST /pos/quick-order/create/
+            Data: items (JSON), payment_method, payment_amount, customer_name
+            Response: HTML modal success/error yang di-render di #modal-container
+            {% endcomment %}
+            submitOrder() {
+                if (this.items.length === 0 || this.paymentAmount < this.total) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('items', JSON.stringify(this.items));
+                formData.append('payment_method', this.paymentMethod);
+                formData.append('payment_amount', this.paymentAmount);
+                formData.append('customer_name', this.customerName);
+                formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+                fetch('/pos/quick-order/create/', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                    .then(response => response.text())
+                    .then(html => {
+                        document.getElementById('modal-container').innerHTML = html;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showToast('Failed to create order', 'error');
+                    });
+            }
+        }
+    }
+</script>

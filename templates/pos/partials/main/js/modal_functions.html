@@ -1,0 +1,299 @@
+{% comment %}
+============================================================================
+MODAL FUNCTIONS (modal_functions.html)
+============================================================================
+File ini berisi fungsi-fungsi JavaScript untuk mengelola MODAL di POS.
+Modal = popup/dialog yang muncul di atas halaman utama.
+
+DIPANGGIL DARI: main.html via include tag
+
+FUNGSI-FUNGSI:
+- closeHeldBillsModal()       : Tutup modal "Held Bills"
+- cancelHeldBill(billId)      : Batalkan bill yang di-hold
+- showToast(message, type)    : Tampilkan notifikasi toast (pojok kanan atas)
+- openReprintReconciliation() : Buka modal cetak ulang rekonsiliasi shift
+- printReconciliation(id)     : Cetak laporan rekonsiliasi shift
+- openMyShiftDashboard()      : Buka modal dashboard "My Shift"
+- printInterimReport()        : Cetak laporan interim shift
+
+EVENT LISTENERS:
+- showNotification : Listener untuk menampilkan toast dari HTMX trigger
+- DOMContentLoaded : Category button active state management
+============================================================================
+{% endcomment %}
+
+<script>
+    {% comment %}
+    closeHeldBillsModal - Tutup modal daftar bill yang di-hold
+    Dipanggil dari tombol "Close" di modal Held Bills.
+    {% endcomment %}
+    function closeHeldBillsModal() {
+        const modalContainer = document.getElementById('modal-container');
+        if (modalContainer) {
+            modalContainer.innerHTML = '';
+            htmx.process(modalContainer);
+            console.log('Held Bills modal closed and processed');
+        }
+    }
+
+    {% comment %}
+    cancelHeldBill - Batalkan bill yang sedang di-hold
+    @param {string} billId - ID bill yang akan dibatalkan
+    Endpoint: POST /pos/bill/{billId}/cancel/
+    {% endcomment %}
+    function cancelHeldBill(billId) {
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        fetch(`/pos/bill/${billId}/cancel/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken,
+                'Content-Type': 'application/json'
+            }
+        }).then(response => {
+            if (response.ok) {
+                closeHeldBillsModal();
+                const billPanel = document.getElementById('bill-panel');
+                if (billPanel) {
+                    htmx.trigger(billPanel, 'refreshBillPanel');
+                }
+            }
+        });
+    }
+
+    {% comment %}
+    showToast - Tampilkan notifikasi toast di pojok kanan atas
+    @param {string} message - Pesan yang ditampilkan
+    @param {string} type    - Jenis toast: 'info', 'success', 'warning', 'error'
+    Toast otomatis hilang setelah 3 detik.
+    {% endcomment %}
+    function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 ${type === 'warning' ? 'bg-yellow-500 text-white' :
+            type === 'error' ? 'bg-red-500 text-white' :
+                type === 'success' ? 'bg-green-500 text-white' :
+                    'bg-blue-500 text-white'
+            }`;
+        toast.textContent = message;
+
+        document.body.appendChild(toast);
+
+        {# Animate in #}
+        setTimeout(() => toast.style.opacity = '1', 10);
+
+        {# Auto-remove setelah 3 detik #}
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    {# Listener: Tampilkan toast dari HTMX trigger event #}
+    document.addEventListener('showNotification', function (event) {
+        const detail = event.detail;
+        showToast(detail.message, detail.type || 'info');
+    });
+
+    {% comment %}
+    Category Button Active State Toggle
+    Mengelola styling tombol kategori (aktif/tidak aktif).
+    Saat user klik kategori, tombol yang diklik jadi hijau, sisanya reset.
+    {% endcomment %}
+    document.addEventListener('DOMContentLoaded', function () {
+        const categoryButtons = document.querySelectorAll('.category-btn');
+
+        categoryButtons.forEach(button => {
+            button.addEventListener('click', function () {
+                {# Reset semua tombol ke state default #}
+                categoryButtons.forEach(btn => {
+                    btn.classList.remove('bg-emerald-50', 'border-emerald-500', 'bg-black', 'bg-gray-900');
+                    btn.classList.add('bg-white', 'border-gray-200');
+
+                    const icon = btn.querySelector('div');
+                    if (icon) {
+                        icon.classList.remove('bg-emerald-500', 'bg-black', 'bg-gray-900');
+                        icon.classList.add('bg-gray-100');
+
+                        const svg = icon.querySelector('svg');
+                        if (svg) {
+                            svg.classList.remove('text-white');
+                            svg.classList.add('text-gray-600');
+                        }
+                    }
+                });
+
+                {# Set tombol yang diklik ke state aktif (hijau) #}
+                this.classList.remove('bg-white', 'border-gray-200', 'bg-black', 'bg-gray-900');
+                this.classList.add('bg-emerald-50', 'border-emerald-500');
+
+                const activeIcon = this.querySelector('div');
+                if (activeIcon) {
+                    activeIcon.classList.remove('bg-gray-100');
+                    activeIcon.classList.add('bg-emerald-500');
+
+                    const activeSvg = activeIcon.querySelector('svg');
+                    if (activeSvg) {
+                        activeSvg.classList.remove('text-gray-600');
+                        activeSvg.classList.add('text-white');
+                    }
+                }
+            });
+        });
+    });
+
+    {% comment %}
+    openReprintReconciliation - Buka modal cetak ulang rekonsiliasi
+    Fetch HTML modal dari server dan inject ke DOM.
+    Endpoint: GET /pos/shift/history/
+    {% endcomment %}
+    function openReprintReconciliation() {
+        fetch('/pos/shift/history/')
+            .then(response => response.text())
+            .then(html => {
+                const existingModal = document.getElementById('reprint-modal');
+                if (existingModal) {
+                    existingModal.remove();
+                }
+
+                document.body.insertAdjacentHTML('beforeend', html);
+
+                {# Format angka di modal setelah di-inject #}
+                setTimeout(() => {
+                    document.querySelectorAll('#reprint-modal .amount').forEach(function (el) {
+                        const value = el.textContent.trim();
+                        const formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                        el.textContent = formatted;
+                    });
+                }, 100);
+            })
+            .catch(error => {
+                console.error('Error loading shift history:', error);
+                showToast('Failed to load shift history', 'error');
+            });
+    }
+
+    {% comment %}
+    printReconciliation - Cetak laporan rekonsiliasi shift
+    @param {string} shiftId - ID shift yang akan dicetak
+    Buka halaman cetak di tab baru, tampilkan toast, tutup modal.
+    {% endcomment %}
+    function printReconciliation(shiftId) {
+        const printUrl = `/pos/shift/${shiftId}/print-reconciliation/`;
+        window.open(printUrl, '_blank', 'width=800,height=600');
+
+        {# Tampilkan toast sukses #}
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-50';
+        toast.innerHTML = `
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+        </svg>
+        <div>
+            <p class="font-bold">Opening Print...</p>
+            <p class="text-sm text-blue-100">Reconciliation report</p>
+        </div>
+    `;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }, 2000);
+
+        {# Tutup modal setelah delay singkat #}
+        setTimeout(() => {
+            const modal = document.getElementById('reprint-modal');
+            if (modal) modal.remove();
+        }, 500);
+    }
+
+    {% comment %}
+    openMyShiftDashboard - Buka modal dashboard "My Shift"
+    Menampilkan ringkasan shift yang sedang berjalan (total sales, jumlah order, dll).
+    Endpoint: GET /pos/shift/my-dashboard/
+    {% endcomment %}
+    function openMyShiftDashboard() {
+        fetch('/pos/shift/my-dashboard/')
+            .then(response => response.text())
+            .then(html => {
+                const existingModal = document.getElementById('my-shift-modal');
+                if (existingModal) {
+                    existingModal.remove();
+                }
+
+                document.body.insertAdjacentHTML('beforeend', html);
+
+                {# Format angka di modal #}
+                setTimeout(() => {
+                    document.querySelectorAll('#my-shift-modal .amount').forEach(function (el) {
+                        const value = el.textContent.trim();
+                        const formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                        el.textContent = formatted;
+                    });
+                }, 100);
+            })
+            .catch(error => {
+                console.error('Error loading shift dashboard:', error);
+
+                {# Tampilkan toast error #}
+                const toast = document.createElement('div');
+                toast.className = 'fixed top-4 right-4 bg-gradient-to-r from-red-500 to-rose-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-50';
+                toast.innerHTML = `
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <div>
+                    <p class="font-bold">Error</p>
+                    <p class="text-sm">Please open a shift first</p>
+                </div>
+            `;
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transition = 'opacity 0.3s';
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            });
+    }
+
+    {% comment %}
+    printInterimReport - Cetak laporan interim shift
+    Dipanggil dari tombol "Print" di modal My Shift Dashboard.
+    Mengambil shift ID dari data attribute modal, lalu buka halaman cetak.
+    {% endcomment %}
+    function printInterimReport() {
+        const modal = document.getElementById('my-shift-modal');
+        if (!modal) return;
+
+        const shiftId = modal.dataset.shiftId;
+        if (!shiftId) {
+            console.error('No shift ID found');
+            return;
+        }
+
+        const printUrl = `/pos/shift/${shiftId}/print-interim/`;
+        window.open(printUrl, '_blank', 'width=800,height=600');
+
+        {# Tampilkan toast #}
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-2 z-50';
+        toast.innerHTML = `
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+        </svg>
+        <div>
+            <p class="font-bold text-sm">Opening Print...</p>
+            <p class="text-xs text-blue-100">Interim report</p>
+        </div>
+    `;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }, 2000);
+    }
+</script>

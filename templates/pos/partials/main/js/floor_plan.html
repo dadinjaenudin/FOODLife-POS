@@ -1,0 +1,251 @@
+{% comment %}
+============================================================================
+FLOOR PLAN MODAL (floor_plan.html)
+============================================================================
+File ini berisi JavaScript untuk modal FLOOR PLAN (denah meja).
+Floor plan menampilkan layout meja restoran agar kasir bisa pilih meja.
+
+DIPANGGIL DARI: main.html via include tag
+
+FUNGSI-FUNGSI:
+- openFloorPlanModal()  : Buka modal floor plan (overlay di atas area konten)
+- closeFloorPlanModal() : Tutup modal floor plan dengan animasi slide-out
+
+EVENT LISTENERS:
+- keydown (Escape) : Tutup floor plan saat tekan ESC
+
+CARA KERJA:
+1. User klik "Tables" di sidebar
+2. openFloorPlanModal() membuat overlay HTML + loading spinner
+3. Fetch konten floor plan dari server (tables:floor_plan)
+4. Parse HTML response, ambil bagian konten utama
+5. Inject konten ke dalam overlay
+6. Execute script tags dari response (untuk Alpine.js floor plan)
+7. User pilih meja → redirect/buat bill baru
+
+CATATAN:
+- Modal menggunakan animasi slideInLeft/slideOutLeft (CSS di pos_styles.html)
+- Script floor plan di-track dengan flag window.floorPlanScriptsLoaded
+  untuk mencegah double-execution
+- Menggunakan {% url %} tag → HARUS tetap di template
+============================================================================
+{% endcomment %}
+
+<script>
+    {% comment %}
+    openFloorPlanModal - Buka modal floor plan
+    Membuat overlay HTML, fetch konten dari server, inject ke DOM.
+    {% endcomment %}
+    function openFloorPlanModal() {
+        {# Cegah buka ganda #}
+        const existingModal = document.getElementById('floor-plan-modal');
+        if (existingModal) {
+            console.log('Floor plan already open, skipping...');
+            return;
+        }
+
+        {# Buat overlay dengan header + loading spinner #}
+        const overlay = document.createElement('div');
+        overlay.id = 'floor-plan-modal';
+        overlay.className = 'absolute inset-0 bg-white z-50 animate-slideInLeft';
+        overlay.innerHTML = `
+            <div class="w-full h-full flex flex-col bg-gradient-to-br from-gray-50 to-white">
+                <!-- Header with Gradient -->
+                <div class="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 overflow-hidden shadow-lg">
+                    <div class="absolute inset-0 opacity-20">
+                        <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.3),transparent)]"></div>
+                    </div>
+
+                    <div class="relative flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center shadow-lg">
+                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold text-white tracking-tight">Floor Plan</h2>
+                                <p class="text-xs text-white/80 font-medium">Select your table</p>
+                            </div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="flex items-center gap-1.5">
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <div class="w-2.5 h-2.5 bg-green-400 rounded-full"></div>
+                                <span class="font-bold text-white text-xs">Available</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <div class="w-2.5 h-2.5 bg-red-400 rounded-full animate-pulse"></div>
+                                <span class="font-bold text-white text-xs">Occupied</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <div class="w-2.5 h-2.5 bg-amber-400 rounded-full"></div>
+                                <span class="font-bold text-white text-xs">Hold</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <div class="w-2.5 h-2.5 bg-purple-400 rounded-full"></div>
+                                <span class="font-bold text-white text-xs">Joined</span>
+                            </div>
+                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
+                                <div class="w-2.5 h-2.5 bg-gray-400 rounded-full"></div>
+                                <span class="font-bold text-white text-xs">Cleaning</span>
+                            </div>
+                        </div>
+
+                        <!-- Close Button -->
+                        <button onclick="closeFloorPlanModal()"
+                            class="w-9 h-9 bg-red-500/90 hover:bg-red-600 rounded-lg flex items-center justify-center transition-all group shadow-lg hover:shadow-xl">
+                            <svg class="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Content Area - Loading State -->
+                <div id="floor-plan-content" class="flex-1 overflow-hidden">
+                    <div class="flex items-center justify-center h-full">
+                        <div class="text-center">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
+                            <p class="text-gray-600 font-medium">Loading floor plan...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        {# Append overlay ke area konten (bukan body, agar tetap di dalam kolom tengah) #}
+        const contentArea = document.getElementById('pos-content-area');
+        if (contentArea) {
+            contentArea.appendChild(overlay);
+        }
+
+        {% comment %}
+        FETCH FLOOR PLAN CONTENT
+        1. Fetch HTML dari endpoint tables:floor_plan
+        2. Parse response, ambil konten utama (.min-h-screen)
+        3. Hapus header navigasi (tombol back)
+        4. Inject konten ke #floor-plan-content
+        5. Execute script tags untuk inisialisasi Alpine.js floor plan
+        {% endcomment %}
+        fetch('{% url "tables:floor_plan" %}')
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                const mainContentDoc = doc.querySelector('.min-h-screen');
+
+                if (mainContentDoc) {
+                    {# Hapus header dengan tombol back #}
+                    const header = mainContentDoc.querySelector('.sticky');
+                    if (header) {
+                        header.remove();
+                    }
+
+                    {# Inject konten #}
+                    const contentDiv = document.getElementById('floor-plan-content');
+                    contentDiv.innerHTML = mainContentDoc.innerHTML;
+
+                    console.log('Content inserted, checking for scripts...');
+
+                    {# Hapus script lama untuk mencegah duplikasi #}
+                    document.querySelectorAll('script.floor-plan-script').forEach(s => {
+                        s.remove();
+                        console.log('Removed old floor plan script');
+                    });
+
+                    {# Reset flag inisialisasi Alpine #}
+                    window.floorPlanInitialized = false;
+
+                    {# Cegah double-execution script #}
+                    if (window.floorPlanScriptsLoaded) {
+                        console.log('Floor plan scripts already loaded, skipping script execution');
+                        window.floorPlanLoading = false;
+                        return;
+                    }
+
+                    console.log('Executing floor plan scripts for the first time...');
+
+                    {# Execute script tags dari response #}
+                    const scripts = doc.querySelectorAll('script');
+                    let scriptCount = 0;
+                    scripts.forEach(script => {
+                        if (script.type === 'application/json' || script.src) {
+                            return;
+                        }
+
+                        if (script.textContent && (!script.type || script.type === 'text/javascript')) {
+                            try {
+                                const newScript = document.createElement('script');
+                                newScript.className = 'floor-plan-script';
+                                newScript.textContent = script.textContent;
+                                document.body.appendChild(newScript);
+                                scriptCount++;
+                            } catch (e) {
+                                console.error('Error appending script:', e);
+                            }
+                        }
+                    });
+
+                    console.log(`Executed ${scriptCount} scripts`);
+
+                    {# Tandai script sudah di-load #}
+                    window.floorPlanScriptsLoaded = true;
+                    window.floorPlanLoading = false;
+
+                    console.log('Floor plan loaded successfully');
+                }
+            })
+            .catch(error => {
+                window.floorPlanLoading = false;
+                console.error('Error loading floor plan:', error);
+                {# Tampilkan error state #}
+                document.getElementById('floor-plan-content').innerHTML = `
+                    <div class="flex items-center justify-center h-full">
+                        <div class="text-center p-8">
+                            <div class="text-red-600 mb-4">
+                                <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <p class="text-gray-700 font-medium mb-4">Failed to load floor plan</p>
+                            <button onclick="closeFloorPlanModal()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+    }
+
+    {% comment %}
+    closeFloorPlanModal - Tutup modal floor plan dengan animasi
+    Animasi slideOutLeft selama 300ms, lalu hapus element dari DOM.
+    Reset semua flag agar bisa di-buka lagi fresh.
+    {% endcomment %}
+    function closeFloorPlanModal() {
+        const overlay = document.getElementById('floor-plan-modal');
+        if (overlay) {
+            overlay.classList.add('animate-slideOutLeft');
+            setTimeout(() => {
+                overlay.remove();
+
+                {# Reset semua flag untuk fresh initialization saat buka lagi #}
+                window.floorPlanScriptsLoaded = false;
+                window.floorPlanLoading = false;
+                window.floorPlanInitialized = false;
+
+                console.log('Floor plan modal closed, all flags reset for next open');
+            }, 300);
+        }
+    }
+
+    {# Tutup floor plan saat tekan ESC #}
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('floor-plan-modal')) {
+            closeFloorPlanModal();
+        }
+    });
+</script>

@@ -5890,3 +5890,240 @@ def receipt_template_create_sample(request):
         messages.error(request, f'Failed to create sample template: {str(e)}')
         return redirect('management:receipt_template_list')
 
+
+# =============================================================================
+# STORE PRODUCT STOCK MANAGEMENT
+# =============================================================================
+
+@manager_required
+def stock_management(request):
+    """
+    Store Product Stock Management - Daily stock tracking.
+    Only products added here are stock-tracked.
+    Products NOT in this table are always available.
+    """
+    from apps.pos.models import StoreProductStock
+
+    store_config = Store.get_current()
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+
+    # Get global context brand filter from session
+    context_brand_id = request.session.get('context_brand_id', '')
+    if context_brand_id and context_brand_id in [str(bid) for bid in brand_ids]:
+        brand_ids = [context_brand_id]
+
+    # Get stock records
+    stocks = StoreProductStock.objects.filter(
+        brand_id__in=brand_ids, is_active=True
+    ).order_by('product_name')
+
+    # Search filter
+    search = request.GET.get('search', '')
+    if search:
+        stocks = stocks.filter(
+            Q(product_name__icontains=search) | Q(product_sku__icontains=search)
+        )
+
+    # Status filter
+    status_filter = request.GET.get('status', 'all')
+    if status_filter == 'out_of_stock':
+        # Filter in Python since remaining_stock is a property
+        stock_list = [s for s in stocks if s.is_out_of_stock]
+    elif status_filter == 'low_stock':
+        stock_list = [s for s in stocks if s.is_low_stock]
+    else:
+        stock_list = list(stocks)
+
+    # Get available products (not yet tracked) for "Add Product" dropdown
+    tracked_skus = StoreProductStock.objects.filter(
+        brand_id__in=brand_ids, is_active=True
+    ).values_list('product_sku', flat=True)
+
+    available_products = Product.objects.filter(
+        brand_id__in=brand_ids, is_active=True
+    ).exclude(sku__in=tracked_skus).order_by('name')
+
+    brands_list = Brand.objects.filter(id__in=brand_ids).order_by('name')
+
+    context = {
+        'stocks': stock_list,
+        'available_products': available_products,
+        'brands': brands_list,
+        'search': search,
+        'status_filter': status_filter,
+        'total_tracked': StoreProductStock.objects.filter(brand_id__in=brand_ids, is_active=True).count(),
+        'total_out_of_stock': sum(1 for s in stocks if s.is_out_of_stock),
+        'total_low_stock': sum(1 for s in stocks if s.is_low_stock),
+        'store_config': store_config,
+    }
+
+    return render(request, 'management/stock_management.html', context)
+
+
+@manager_required
+@require_POST
+def stock_add_product(request):
+    """Add a product to stock tracking"""
+    from apps.pos.models import StoreProductStock
+
+    product_id = request.POST.get('product_id')
+    daily_stock = request.POST.get('daily_stock', 0)
+    low_stock_alert = request.POST.get('low_stock_alert', 5)
+
+    if not product_id:
+        messages.error(request, 'Please select a product')
+        return redirect('management:stock_management')
+
+    try:
+        product = Product.objects.get(id=product_id)
+
+        stock, created = StoreProductStock.objects.get_or_create(
+            product_sku=product.sku,
+            brand=product.brand,
+            defaults={
+                'product_id': product.id,
+                'product_name': product.name,
+                'daily_stock': Decimal(str(daily_stock)),
+                'low_stock_alert': int(low_stock_alert),
+                'last_reset_date': timezone.now().date(),
+            }
+        )
+
+        if created:
+            messages.success(request, f'"{product.name}" added to stock tracking with daily stock: {daily_stock}')
+        else:
+            # Reactivate if was deactivated
+            if not stock.is_active:
+                stock.is_active = True
+                stock.daily_stock = Decimal(str(daily_stock))
+                stock.sold_qty = Decimal('0')
+                stock.low_stock_alert = int(low_stock_alert)
+                stock.product_id = product.id
+                stock.product_name = product.name
+                stock.last_reset_date = timezone.now().date()
+                stock.save()
+                messages.success(request, f'"{product.name}" reactivated with daily stock: {daily_stock}')
+            else:
+                messages.warning(request, f'"{product.name}" is already being tracked')
+
+    except Product.DoesNotExist:
+        messages.error(request, 'Product not found')
+    except Exception as e:
+        messages.error(request, f'Error: {str(e)}')
+
+    return redirect('management:stock_management')
+
+
+@manager_required
+@require_POST
+def stock_update(request, stock_id):
+    """Update stock record (daily_stock, low_stock_alert, sold_qty)"""
+    from apps.pos.models import StoreProductStock
+
+    try:
+        stock = get_object_or_404(StoreProductStock, id=stock_id)
+
+        update_fields = ['updated_at']
+
+        daily_stock = request.POST.get('daily_stock')
+        low_stock_alert = request.POST.get('low_stock_alert')
+        sold_qty = request.POST.get('sold_qty')
+
+        if daily_stock is not None:
+            stock.daily_stock = Decimal(str(daily_stock))
+            update_fields.append('daily_stock')
+        if low_stock_alert is not None:
+            stock.low_stock_alert = int(low_stock_alert)
+            update_fields.append('low_stock_alert')
+        if sold_qty is not None:
+            stock.sold_qty = Decimal(str(sold_qty))
+            update_fields.append('sold_qty')
+
+        stock.save(update_fields=update_fields)
+        messages.success(request, f'Stock updated for "{stock.product_name}"')
+
+    except Exception as e:
+        messages.error(request, f'Error: {str(e)}')
+
+    return redirect('management:stock_management')
+
+
+@manager_required
+@require_POST
+def stock_reset_daily(request, stock_id):
+    """Reset sold_qty to 0 and optionally set new daily_stock"""
+    from apps.pos.models import StoreProductStock
+
+    try:
+        stock = get_object_or_404(StoreProductStock, id=stock_id)
+        new_stock = request.POST.get('daily_stock')
+
+        if new_stock:
+            stock.reset_daily(new_stock=Decimal(str(new_stock)))
+        else:
+            stock.reset_daily()
+
+        messages.success(request, f'Daily stock reset for "{stock.product_name}"')
+
+    except Exception as e:
+        messages.error(request, f'Error: {str(e)}')
+
+    return redirect('management:stock_management')
+
+
+@manager_required
+@require_POST
+def stock_reset_all(request):
+    """Reset ALL stock items - sold_qty to 0, keep daily_stock"""
+    from apps.pos.models import StoreProductStock
+
+    store_config = Store.get_current()
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+
+    count = StoreProductStock.objects.filter(
+        brand_id__in=brand_ids, is_active=True
+    ).update(sold_qty=0, last_reset_date=timezone.now().date())
+
+    messages.success(request, f'Daily reset complete: {count} products reset to full stock')
+    return redirect('management:stock_management')
+
+
+@manager_required
+@require_POST
+def stock_remove(request, stock_id):
+    """Remove product from stock tracking (soft delete)"""
+    from apps.pos.models import StoreProductStock
+
+    try:
+        stock = get_object_or_404(StoreProductStock, id=stock_id)
+        stock.is_active = False
+        stock.save(update_fields=['is_active', 'updated_at'])
+        messages.success(request, f'"{stock.product_name}" removed from stock tracking')
+
+    except Exception as e:
+        messages.error(request, f'Error: {str(e)}')
+
+    return redirect('management:stock_management')
+
+
+@manager_required
+@require_POST
+def stock_sync_product_ids(request):
+    """Re-match product_id after HO sync (run after daily sync)"""
+    from apps.pos.models import StoreProductStock
+
+    store_config = Store.get_current()
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True)
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+
+    stocks = StoreProductStock.objects.filter(brand_id__in=brand_ids, is_active=True)
+    updated = 0
+    for stock in stocks:
+        if stock.sync_product_id():
+            updated += 1
+
+    messages.success(request, f'Sync complete: {updated} product IDs updated, {stocks.count()} total checked')
+    return redirect('management:stock_management')
+

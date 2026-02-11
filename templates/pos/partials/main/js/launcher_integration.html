@@ -1,0 +1,563 @@
+{% comment %}
+============================================================================
+LAUNCHER INTEGRATION (launcher_integration.html)
+============================================================================
+File ini berisi JavaScript untuk INTEGRASI dengan POS Launcher (pos.exe).
+POS Launcher adalah aplikasi PyQt yang menjalankan browser dalam mode kiosk
+dan menyediakan API lokal untuk printing dan customer display.
+
+DIPANGGIL DARI: main.html via include tag
+
+FITUR:
+- Kiosk Mode: Auto-fullscreen saat dibuka dari launcher
+- Terminal Config: Load konfigurasi terminal dari database
+- Customer Display: Kirim data bill/modal ke layar pelanggan
+- Local Printing: Kirim receipt ke printer lokal via API
+
+FUNGSI-FUNGSI:
+- loadTerminalConfig()              : Load config terminal dari server
+- isKioskMode()                     : Cek apakah running dalam mode kiosk
+- sendModalToCustomerDisplay()      : Kirim modal (payment) ke customer display
+- updateCustomerDisplay()           : Kirim bill panel ke customer display
+- sendReceiptToLocalPrinter(bill)   : Kirim receipt ke printer lokal
+
+LOCAL API:
+- URL: http://127.0.0.1:5000 (POS Launcher Flask server)
+- POST /api/customer-display/update : Update tampilan customer display
+- POST /api/print                    : Cetak receipt ke printer
+
+CATATAN:
+- Semua fungsi ini HANYA aktif jika running dalam mode kiosk
+  (localStorage kiosk_mode=1 atau URL parameter kiosk=1)
+- Jika tidak dalam mode kiosk, fungsi-fungsi ini return tanpa action
+- Menggunakan Django template tags ({{ request.user }}) → HARUS di template
+============================================================================
+{% endcomment %}
+
+<script>
+    {% comment %}
+    KIOSK AUTO-FULLSCREEN
+    Jika URL parameter kiosk=1, coba masuk mode fullscreen.
+    Dijalankan otomatis saat halaman load (IIFE).
+    {% endcomment %}
+    (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('kiosk') === '1') {
+            setTimeout(() => {
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen().catch(err => {
+                        console.log('Fullscreen failed:', err);
+                    });
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) {
+                    elem.msRequestFullscreen();
+                }
+            }, 1000);
+        }
+    })();
+
+    {# ==================== POS LAUNCHER INTEGRATION ==================== #}
+    {# Event-Based Hybrid: Send data to local API for printing and customer display #}
+
+    const LOCAL_API_URL = 'http://127.0.0.1:5000';
+
+    {# Terminal configuration dari database (di-load saat page load) #}
+    let terminalConfig = null;
+
+    {% comment %}
+    loadTerminalConfig - Load konfigurasi terminal dari server
+    Konfigurasi berisi: auto_print_receipt, auto_print_kitchen_order, print_to, dll.
+    Terminal code diambil dari localStorage (di-set oleh PyQt launcher) atau URL parameter.
+    Endpoint: GET /api/terminal/config?terminal_code=XXX
+    {% endcomment %}
+    async function loadTerminalConfig() {
+        try {
+            {# Ambil kode terminal dari localStorage (prioritas) atau URL parameter (fallback) #}
+            let terminalCode = localStorage.getItem('terminal_code');
+            let companyCode = localStorage.getItem('company_code');
+            let brandCode = localStorage.getItem('brand_code');
+            let storeCode = localStorage.getItem('store_code');
+
+            const urlParams = new URLSearchParams(window.location.search);
+
+            if (!terminalCode) {
+                terminalCode = urlParams.get('terminal');
+            }
+            if (!companyCode) {
+                companyCode = urlParams.get('company');
+            }
+            if (!brandCode) {
+                brandCode = urlParams.get('brand');
+            }
+            if (!storeCode) {
+                storeCode = urlParams.get('store');
+            }
+
+            if (!terminalCode) {
+                console.warn('Terminal code not found in localStorage or URL parameters');
+                return;
+            }
+
+            console.log('Loading terminal config:');
+            console.log('   Terminal:', terminalCode);
+            console.log('   Company:', companyCode || 'N/A');
+            console.log('   Brand:', brandCode || 'N/A');
+            console.log('   Store:', storeCode || 'N/A');
+
+            {# Build API URL dengan semua kode yang tersedia untuk validasi #}
+            let apiUrl = `/api/terminal/config?terminal_code=${terminalCode}`;
+            if (companyCode) apiUrl += `&company_code=${companyCode}`;
+            if (brandCode) apiUrl += `&brand_code=${brandCode}`;
+            if (storeCode) apiUrl += `&store_code=${storeCode}`;
+
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+
+            if (data.success) {
+                terminalConfig = data;
+                console.log('Terminal config loaded and validated:', terminalConfig);
+                console.log('   Auto Print Receipt:', terminalConfig.device_config?.auto_print_receipt);
+                console.log('   Auto Print Kitchen:', terminalConfig.device_config?.auto_print_kitchen_order);
+                console.log('   Print To:', terminalConfig.device_config?.print_to);
+            } else {
+                console.error('Failed to load terminal config:', data.error);
+            }
+        } catch (error) {
+            console.error('Error loading terminal config:', error);
+        }
+    }
+
+    {% comment %}
+    isKioskMode - Cek apakah running dalam mode kiosk
+    Return true jika: localStorage kiosk_mode=1 ATAU URL parameter kiosk=1
+    {% endcomment %}
+    function isKioskMode() {
+        if (localStorage.getItem('kiosk_mode') === '1') {
+            return true;
+        }
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('kiosk') === '1';
+    }
+
+    {% comment %}
+    sendModalToCustomerDisplay - Kirim modal ke customer display
+    HANYA mengirim modal PAYMENT (whitelist approach).
+    Modal internal (shift, hold bill, PIN, dll) TIDAK dikirim.
+
+    Cara kerja:
+    1. Cek apakah kiosk mode aktif
+    2. Cek apakah modal adalah payment modal (whitelist)
+    3. Capture Alpine.js data (amount, change, dll)
+    4. Clone modal, replace x-text/x-show dengan nilai aktual
+    5. Disable semua button dan input (read-only untuk pelanggan)
+    6. Kirim HTML ke local API
+    {% endcomment %}
+    function sendModalToCustomerDisplay() {
+        console.log('sendModalToCustomerDisplay() called');
+        console.log('Kiosk mode:', isKioskMode());
+
+        if (!isKioskMode()) {
+            console.log('Not in kiosk mode, skipping modal sync');
+            return;
+        }
+
+        const modalContainer = document.getElementById('modal-container');
+        console.log('Modal container:', modalContainer);
+        console.log('Modal container innerHTML length:', modalContainer ? modalContainer.innerHTML.trim().length : 0);
+
+        if (!modalContainer || !modalContainer.innerHTML.trim()) {
+            console.log('Modal container empty, clearing modal on customer display...');
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ show_modal: false, modal_html: null })
+            });
+            return;
+        }
+
+        {# BLACKLIST: Exclude Quick Order modal (staff-only) #}
+        const modalContent = modalContainer.innerHTML;
+
+        const isQuickOrder = modalContent.includes('Quick Order') ||
+                            modalContent.includes('quickOrder()') ||
+                            modalContent.includes('Select Products') ||
+                            modalContent.includes('Select items & pay instantly') ||
+                            modalContent.includes('z-[60]');
+
+        if (isQuickOrder) {
+            console.log('Quick Order modal detected - Skipping customer display sync (staff-only)');
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ show_modal: false, modal_html: null })
+            });
+            return;
+        }
+
+        {# WHITELIST: Hanya payment modal yang dikirim ke customer display #}
+        const isPaymentModal = modalContent.includes('Payment - ') &&
+                              (modalContent.includes('Payment Method') || modalContent.includes('Quick Amount'));
+
+        if (!isPaymentModal) {
+            console.log('Not a payment modal - Skipping customer display sync');
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ show_modal: false, modal_html: null })
+            });
+            return;
+        }
+
+        console.log('Modal is customer-facing (Payment related), proceeding with clone...');
+        console.log('Cloning modal for customer display...');
+
+        {# Capture Alpine.js data dari modal asli (sebelum clone) #}
+        const originalModal = modalContainer.querySelector('[x-data]');
+        let alpineData = null;
+        if (originalModal && originalModal._x_dataStack && originalModal._x_dataStack.length > 0) {
+            alpineData = originalModal._x_dataStack[0];
+            console.log('Alpine.js data captured:', {
+                amount: alpineData.amount,
+                amountDisplay: alpineData.amountDisplay,
+                remaining: alpineData.remaining,
+                change: alpineData.change,
+                method: alpineData.method,
+                payments: alpineData.payments
+            });
+        } else {
+            console.error('Failed to capture Alpine.js data!');
+        }
+
+        {# Clone modal #}
+        const modalClone = modalContainer.cloneNode(true);
+
+        {# Replace Alpine.js bindings (x-text, x-show) dengan nilai aktual #}
+        if (alpineData) {
+            const safeEval = (expr, context) => {
+                try {
+                    const func = new Function(...Object.keys(context), `return ${expr}`);
+                    return func(...Object.values(context));
+                } catch (e) {
+                    console.warn('Failed to eval:', expr, e);
+                    return null;
+                }
+            };
+
+            const context = {
+                formatNumber: alpineData.formatNumber.bind(alpineData),
+                remaining: alpineData.remaining,
+                change: alpineData.change,
+                amount: alpineData.amount,
+                method: alpineData.method,
+                payments: alpineData.payments
+            };
+
+            {# Process x-show (visibility) #}
+            const xShowElements = modalClone.querySelectorAll('[x-show]');
+            xShowElements.forEach(el => {
+                const xShowValue = el.getAttribute('x-show');
+                const result = safeEval(xShowValue, context);
+                if (result === false) {
+                    el.style.display = 'none';
+                } else {
+                    el.style.display = '';
+                }
+                el.removeAttribute('x-show');
+            });
+
+            {# Process x-text (text content) #}
+            const xTextElements = modalClone.querySelectorAll('[x-text]');
+            xTextElements.forEach(el => {
+                const xTextValue = el.getAttribute('x-text');
+                const result = safeEval(xTextValue, context);
+                if (result !== null) {
+                    el.textContent = result;
+                }
+                el.removeAttribute('x-text');
+            });
+        }
+
+        {# Disable semua button (read-only untuk pelanggan) #}
+        const buttons = modalClone.querySelectorAll('button');
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.7';
+            btn.removeAttribute('onclick');
+            btn.removeAttribute('hx-get');
+            btn.removeAttribute('hx-post');
+            btn.removeAttribute('hx-target');
+            btn.removeAttribute('hx-swap');
+            Array.from(btn.attributes).forEach(attr => {
+                if (attr.name.startsWith('@') || attr.name.startsWith('x-on:')) {
+                    btn.removeAttribute(attr.name);
+                }
+            });
+        });
+
+        {# Remove interactivity dari elemen lain #}
+        const interactiveElements = modalClone.querySelectorAll('[hx-get], [hx-post], [onclick], [x-on\\:click]');
+        interactiveElements.forEach(el => {
+            el.removeAttribute('hx-get');
+            el.removeAttribute('hx-post');
+            el.removeAttribute('hx-target');
+            el.removeAttribute('hx-swap');
+            el.removeAttribute('onclick');
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.name.startsWith('x-') || attr.name.startsWith('@')) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+
+        {# Set input fields ke read-only #}
+        const inputs = modalClone.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.readOnly = true;
+            input.disabled = true;
+            input.style.pointerEvents = 'none';
+        });
+
+        {# Remove SEMUA Alpine.js attributes dan event handlers dari clone #}
+        const allElements = modalClone.querySelectorAll('*');
+        allElements.forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.name.startsWith('x-') || attr.name.startsWith('@') || attr.name.startsWith(':')) {
+                    el.removeAttribute(attr.name);
+                }
+                if (attr.name.startsWith('on')) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+        console.log('Cleaned all Alpine.js attributes and event handlers from clone');
+
+        {# Set input values SETELAH remove Alpine attributes #}
+        if (alpineData) {
+            const amountInput = modalClone.querySelector('input[name="amount_display"]') ||
+                               modalClone.querySelector('input[type="text"][placeholder="0"]:not([type="hidden"])') ||
+                               modalClone.querySelector('input[placeholder="0"]');
+            if (amountInput) {
+                const formatNumber = (num) => {
+                    if (!num && num !== 0) return '0';
+                    const str = Math.floor(num).toString();
+                    return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                };
+
+                let displayValue = '';
+                if (alpineData.amountDisplay) {
+                    displayValue = alpineData.amountDisplay;
+                } else if (alpineData.amount) {
+                    try {
+                        displayValue = alpineData.formatNumber ? alpineData.formatNumber(alpineData.amount) : formatNumber(alpineData.amount);
+                    } catch (e) {
+                        displayValue = formatNumber(alpineData.amount);
+                    }
+                }
+
+                amountInput.value = displayValue;
+                amountInput.setAttribute('value', displayValue);
+                console.log('Amount input value set successfully');
+            }
+        }
+
+        const modalHTML = modalClone.innerHTML;
+        console.log('Cloned modal HTML length:', modalHTML.length);
+
+        {# Kirim ke local API #}
+        fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ show_modal: true, modal_html: modalHTML })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Modal sent to customer display:', data);
+        })
+        .catch(error => {
+            console.error('Failed to send modal to customer display:', error);
+        });
+    }
+
+    {% comment %}
+    updateCustomerDisplay - Kirim bill panel ke customer display
+    Clone bill panel, hapus semua button dan interactivity, kirim HTML ke local API.
+
+    @param {Array} items         - (Legacy, tidak digunakan)
+    @param {Number} total        - (Legacy, tidak digunakan)
+    @param {Number} paymentAmount - (Legacy, tidak digunakan)
+    @param {String} paymentMethod - (Legacy, tidak digunakan)
+    @param {Boolean} clearDisplay - Jika true, kirim sinyal clear ke customer display
+    {% endcomment %}
+    function updateCustomerDisplay(items, total, paymentAmount = 0, paymentMethod = 'cash', clearDisplay = false) {
+        console.log('updateCustomerDisplay() called', clearDisplay ? '(CLEAR MODE)' : '');
+
+        if (!isKioskMode()) {
+            return;
+        }
+
+        console.log('Kiosk mode active');
+
+        {# Jika clearDisplay=true, kirim sinyal clear #}
+        if (clearDisplay) {
+            console.log('Sending CLEAR signal to customer display...');
+            fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bill_panel_html: null, has_bill: false })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Customer display cleared successfully:', data);
+            })
+            .catch(error => {
+                console.error('Failed to clear customer display:', error);
+            });
+            return;
+        }
+
+        console.log('Capturing bill panel...');
+
+        const billPanel = document.getElementById('bill-panel');
+        if (!billPanel) {
+            console.warn('Bill panel not found in DOM');
+            return;
+        }
+
+        console.log('Bill panel found, cloning HTML...');
+
+        {# Clone bill panel dan bersihkan interactivity #}
+        const billPanelClone = billPanel.cloneNode(true);
+
+        {# HAPUS semua button dari clone (customer display tidak butuh tombol) #}
+        const cloneButtons = billPanelClone.querySelectorAll('button');
+        console.log(`Removing ${cloneButtons.length} buttons from customer display...`);
+        cloneButtons.forEach(btn => btn.remove());
+
+        {# Hapus atribut interaktif #}
+        const cloneInteractive = billPanelClone.querySelectorAll('[hx-get], [hx-post], [onclick]');
+        console.log(`Cleaning ${cloneInteractive.length} interactive elements...`);
+
+        cloneInteractive.forEach(el => {
+            el.removeAttribute('hx-get');
+            el.removeAttribute('hx-post');
+            el.removeAttribute('hx-target');
+            el.removeAttribute('hx-swap');
+            el.removeAttribute('hx-vals');
+            el.removeAttribute('onclick');
+            el.style.cursor = 'default';
+        });
+
+        const billPanelHTML = billPanelClone.outerHTML;
+        console.log(`Bill panel HTML captured (${billPanelHTML.length} chars)`);
+
+        {# Kirim ke local API #}
+        console.log('Sending to local API...', LOCAL_API_URL);
+
+        fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bill_panel_html: billPanelHTML, has_bill: true })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Customer display updated successfully:', data);
+        })
+        .catch(error => {
+            console.error('Customer display update failed:', error.message);
+            console.error('   Make sure POS Launcher is running!');
+        });
+    }
+
+    {% comment %}
+    sendReceiptToLocalPrinter - Kirim receipt ke printer lokal
+    Hanya aktif jika: kiosk mode ON + auto_print_receipt enabled di terminal config.
+
+    @param {Object} bill - Object dengan property: id (bill ID)
+
+    Alur:
+    1. Cek config auto_print_receipt
+    2. Fetch data bill lengkap dari server (/pos/bill/{id}/data/)
+    3. Kirim data receipt ke local API (/api/print)
+    {% endcomment %}
+    function sendReceiptToLocalPrinter(bill) {
+        if (!terminalConfig?.device_config?.auto_print_receipt) {
+            console.log('Auto print receipt disabled in terminal config');
+            return;
+        }
+
+        if (!isKioskMode()) {
+            console.log('Not in kiosk mode, skipping auto print');
+            return;
+        }
+
+        console.log('Auto print receipt enabled, sending to printer...');
+
+        setTimeout(() => {
+            fetch(`/pos/bill/${bill.id}/data/`, {
+                method: 'GET',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(response => response.json())
+            .then(billData => {
+                const receiptData = {
+                    outlet_name: billData.outlet_name || '{{ request.user.outlet.name }}',
+                    outlet_address: billData.outlet_address || '',
+                    outlet_phone: billData.outlet_phone || '',
+                    bill_number: billData.bill_number,
+                    date: billData.date || new Date().toISOString(),
+                    cashier: billData.cashier || '{{ request.user.get_full_name }}',
+                    customer_name: billData.customer_name || null,
+                    table: billData.table || null,
+                    items: billData.items || [],
+                    payments: billData.payments || [],
+                    subtotal: billData.subtotal,
+                    discount: billData.discount || 0,
+                    tax: billData.tax || 0,
+                    service: billData.service || 0,
+                    total: billData.total,
+                    footer: billData.footer || 'Terima Kasih!'
+                };
+
+                return fetch(`${LOCAL_API_URL}/api/print`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(receiptData)
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Receipt sent to local printer:', data);
+            })
+            .catch(error => {
+                console.warn('Local print failed (local API not available):', error.message);
+            });
+        }, 500);
+    }
+
+    {% comment %}
+    Event Listener: paymentComplete
+    Dipanggil saat pembayaran selesai (dari bill_panel.html atau payment modal).
+    1. Clear customer display (tampilkan state menunggu)
+    2. Kirim receipt ke printer lokal (jika auto_print aktif)
+    {% endcomment %}
+    document.body.addEventListener('paymentComplete', function(e) {
+        console.log('Payment complete, sending to local printer...');
+
+        {# Clear customer display setelah bayar #}
+        console.log('Clearing customer display after payment (from listener)');
+        updateCustomerDisplay([], 0, 0, 'cash', true);
+
+        {# Kirim receipt ke printer lokal #}
+        const modalContainer = document.getElementById('modal-container');
+        if (modalContainer) {
+            const billIdMatch = modalContainer.innerHTML.match(/billId\s*=\s*(\d+)/);
+            if (billIdMatch) {
+                const billId = parseInt(billIdMatch[1]);
+                sendReceiptToLocalPrinter({ id: billId });
+            }
+        }
+    });
+</script>

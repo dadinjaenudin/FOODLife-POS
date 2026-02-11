@@ -110,15 +110,14 @@ function holdBill() {
         // Show success notification
         showNotification('✅ Bill held successfully!');
         
-        // Reload page after short delay to refresh product grid
+        // Redirect to clean POS page (not reload, to clear any ?bill_id= param)
         setTimeout(() => {
-            console.log('Reloading page to refresh product grid...');
-            window.location.reload(true);
+            window.location.href = '/pos/';
         }, 500);
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Failed to hold bill: ' + error.message);
+        showToast('Failed to hold bill: ' + error.message, 'error');
     });
 }
 

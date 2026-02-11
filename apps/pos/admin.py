@@ -1,5 +1,5 @@
 ﻿from django.contrib import admin
-from .models import Bill, BillItem, Payment, BillLog
+from .models import Bill, BillItem, Payment, BillLog, StoreProductStock
 from .models_refund import BillRefund, BillRefundItem, RefundPaymentReversal
 
 
@@ -64,3 +64,15 @@ class BillRefundAdmin(admin.ModelAdmin):
             'fields': ('completed_by', 'completed_at', 'original_payments', 'refund_payments')
         }),
     )
+
+
+@admin.register(StoreProductStock)
+class StoreProductStockAdmin(admin.ModelAdmin):
+    list_display = ['product_name', 'product_sku', 'brand', 'daily_stock', 'sold_qty', 'get_remaining', 'is_active', 'last_reset_date']
+    list_filter = ['brand', 'is_active', 'last_reset_date']
+    search_fields = ['product_name', 'product_sku']
+    readonly_fields = ['product_id', 'created_at', 'updated_at']
+
+    def get_remaining(self, obj):
+        return obj.remaining_stock
+    get_remaining.short_description = 'Remaining'

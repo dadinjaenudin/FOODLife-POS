@@ -166,7 +166,7 @@ function submitTransfer() {
     const data = this;
     
     if (!data.selectedCashier) {
-        alert('Please select a cashier');
+        showToast('Please select a cashier', 'warning');
         return;
     }
     
@@ -186,17 +186,17 @@ function submitTransfer() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            showToast(data.message, 'success');
             document.querySelector('.fixed').remove();
             // Refresh bill panel
             htmx.trigger('#bill-panel', 'refresh');
         } else {
-            alert(data.error || 'Failed to transfer bill');
+            showToast(data.error || 'Failed to transfer bill', 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while transferring bill');
+        showToast('An error occurred while transferring bill', 'error');
     });
 }
 </script>

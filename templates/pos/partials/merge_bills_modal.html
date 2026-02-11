@@ -120,7 +120,7 @@ function submitMerge() {
     const checkboxes = document.querySelectorAll('.bill-checkbox:checked');
     
     if (checkboxes.length < 1) {
-        alert('Please select at least 1 bill to merge');
+        showToast('Please select at least 1 bill to merge', 'warning');
         return;
     }
     
@@ -176,14 +176,14 @@ function submitMerge() {
                 window.location.reload(true);
             }, 500);
         } else {
-            alert(data.error || 'Failed to merge bills');
+            showToast(data.error || 'Failed to merge bills', 'error');
             submitBtn.disabled = false;
             submitBtn.innerHTML = 'Merge Bills';
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while merging bills');
+        showToast('An error occurred while merging bills', 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = 'Merge Bills';
     });

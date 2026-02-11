@@ -22,6 +22,6 @@ def rupiah(value):
 @register.filter(name='get_item')
 def get_item(dictionary, key):
     """Get item from dictionary by key"""
-    if dictionary is None:
+    if not isinstance(dictionary, dict):
         return None
     return dictionary.get(key)

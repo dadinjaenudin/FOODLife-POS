@@ -1,0 +1,96 @@
+{% comment %}
+============================================================================
+CATEGORY FILTER (category_filter.html)
+============================================================================
+Filter kategori produk yang ditampilkan di atas grid produk.
+Ada 2 level kategori:
+  Level 1 (Parent): Kategori utama (contoh: Food, Drinks, Snacks)
+  Level 2 (Sub): Sub-kategori (contoh: Rice, Noodle, Soup di bawah Food)
+
+DIPANGGIL DARI: main.html via include tag
+
+CONTEXT VARIABLES (dari views.py):
+- parent_categories  : QuerySet semua kategori parent (level 1)
+- selected_parent    : Kategori parent yang sedang dipilih (None = All)
+- subcategories      : QuerySet sub-kategori dari parent yang dipilih
+- products           : QuerySet produk (digunakan untuk hitung total "All")
+
+CARA KERJA (HTMX):
+1. User klik kategori parent → HTMX GET ke pos:products?parent=ID
+2. Server return HTML product grid baru + sub-kategori
+3. HTMX replace isi #product-grid dengan hasil baru
+4. Jika parent dipilih, tampilkan baris sub-kategori di bawahnya
+============================================================================
+{% endcomment %}
+
+<nav class="bg-gray-50 px-4 py-2">
+    {% comment %} LEVEL 1: Kategori Parent - "All" sticky kiri + scroll horizontal {% endcomment %}
+    <div class="flex gap-2">
+        {% comment %} Tombol "All" - Selalu visible di kiri (tidak ikut scroll) {% endcomment %}
+        <button
+           hx-get="{% url 'pos:products' %}"
+           hx-target="#product-grid"
+           hx-swap="innerHTML swap:200ms settle:300ms"
+           class="flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl border-2 transition-all duration-200 min-w-[60px] {% if not selected_parent %}border-green-500 bg-green-50 shadow-sm{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
+            <div class="w-6 h-6 flex items-center justify-center">
+                <svg class="w-5 h-5 {% if not selected_parent %}text-green-600{% else %}text-gray-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+            </div>
+            <span class="text-[10px] font-bold {% if not selected_parent %}text-green-700{% else %}text-gray-700{% endif %}">All</span>
+            <span class="text-[9px] {% if not selected_parent %}text-green-500{% else %}text-gray-400{% endif %}">{{ products|length }}</span>
+        </button>
+
+        {% comment %} Kategori parent - scroll horizontal dengan fade indicator {% endcomment %}
+        <div class="relative flex-1 overflow-hidden">
+            <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                {% for category in parent_categories %}
+                <button
+                   hx-get="{% url 'pos:products' %}?parent={{ category.id }}"
+                   hx-target="#product-grid"
+                   hx-swap="innerHTML swap:200ms settle:300ms"
+                   class="flex-shrink-0 flex flex-col items-center gap-1.5 px-4 py-2 rounded-2xl border-2 transition-all duration-200 min-w-[80px] {% if selected_parent and selected_parent.id == category.id %}border-green-500 bg-green-50 shadow-sm{% else %}border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50{% endif %}">
+                    <div class="w-8 h-8 flex items-center justify-center">
+                        {% if category.icon %}
+                        <span class="text-xl">{{ category.icon }}</span>
+                        {% else %}
+                        <svg class="w-6 h-6 {% if selected_parent and selected_parent.id == category.id %}text-green-600{% else %}text-gray-500{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.87c1.355 0 2.697.055 4.024.165C17.155 8.51 18 9.473 18 10.608v2.513m-3-4.87v-1.5m-6 1.5v-1.5m12 9.75l-1.5.75a3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0L3 16.5m15-3.38a48.474 48.474 0 00-6-.37c-2.032 0-4.034.125-6 .37"/>
+                        </svg>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs font-bold {% if selected_parent and selected_parent.id == category.id %}text-green-700{% else %}text-gray-700{% endif %}">{{ category.name }}</span>
+                </button>
+                {% endfor %}
+            </div>
+            {# Fade indicator kanan saat ada overflow #}
+            <div class="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-gray-50 to-transparent pointer-events-none"></div>
+        </div>
+    </div>
+
+    {% comment %}
+    LEVEL 2: Sub-Kategori
+    Hanya muncul jika user sudah memilih kategori parent.
+    Tombol pertama "All [ParentName]" untuk tampilkan semua di parent tersebut.
+    {% endcomment %}
+    {% if selected_parent %}
+    <div class="flex items-center gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
+        <button
+            class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold bg-green-500 text-white"
+            hx-get="{% url 'pos:products' %}?parent={{ selected_parent.id }}" hx-target="#product-grid"
+            hx-swap="innerHTML swap:200ms settle:300ms">
+            All {{ selected_parent.name }}
+        </button>
+
+        {% for category in subcategories %}
+        <button
+            class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+            hx-get="{% url 'pos:products' %}?category={{ category.id }}" hx-target="#product-grid"
+            hx-swap="innerHTML swap:200ms settle:300ms">
+            {% if category.icon %}<span class="mr-1">{{ category.icon }}</span>{% endif %}
+            {{ category.name }}
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+</nav>

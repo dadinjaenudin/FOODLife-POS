@@ -1,0 +1,297 @@
+{% comment %}
+============================================================================
+SHIFT MANAGEMENT (shift_management.html)
+============================================================================
+File ini berisi semua JavaScript yang berhubungan dengan MANAJEMEN SHIFT.
+Shift = sesi kerja kasir. Kasir WAJIB buka shift sebelum bisa transaksi.
+
+DIPANGGIL DARI: main.html via include tag
+
+FUNGSI-FUNGSI:
+- checkShiftActive()       : Cek apakah shift aktif sebelum transaksi
+- checkShiftOnLoad()       : Cek status shift saat halaman pertama kali load
+- openShiftFromOverlay()   : Buka modal shift dari overlay "Shift Not Active"
+- updateShiftOverlay()     : Show/hide overlay berdasarkan status shift
+- openShiftModal()         : Buka modal untuk MULAI shift (HTMX)
+- closeShiftModal()        : Buka modal untuk TUTUP shift (HTMX)
+- openCashDropModal()      : Buka modal cash drop (HTMX)
+- checkAndOpenCloseShift() : Cek apakah ada bill aktif sebelum tutup shift
+
+EVENT LISTENERS:
+- shiftStatusChanged : Listener untuk update overlay + header saat shift berubah
+- DOMContentLoaded   : Inisialisasi saat halaman load (modal container, terminal config, shift check)
+
+CATATAN:
+- Menggunakan {% url %} tags → HARUS tetap di template
+- checkShiftActive() dipanggil dari product_card.html saat user klik "Add to Dish"
+============================================================================
+{% endcomment %}
+
+<script>
+    {% comment %}
+    checkShiftActive - Cek apakah shift sudah aktif
+    Dipanggil sebelum user melakukan transaksi (add item, dll).
+    Jika shift belum aktif, tampilkan modal warning via Alpine.js posModal().
+    Return: true jika shift aktif, false jika belum
+    {% endcomment %}
+    function checkShiftActive() {
+        const shiftHeader = document.getElementById('header-shift-status');
+
+        {# Cek apakah header menampilkan "Shift Active" #}
+        const hasActiveShift = shiftHeader && shiftHeader.textContent.includes('Shift Active');
+
+        if (!hasActiveShift) {
+            {# Shift belum aktif → tampilkan modal warning via Alpine.js #}
+            const posContainer = document.querySelector('[x-data*="posModal"]');
+            if (posContainer && window.Alpine) {
+                const component = window.Alpine.$data(posContainer);
+                component.showModal({
+                    title: 'Shift Belum Dibuka',
+                    message: 'Silakan buka shift terlebih dahulu sebelum melakukan transaksi',
+                    confirmText: 'Buka Shift',
+                    cancelText: 'Batal',
+                    onConfirm: () => {
+                        component.modal.show = false;
+                        openShiftModal();
+                    }
+                });
+            } else {
+                {# Fallback jika Alpine.js belum ready #}
+                showToast('Silakan buka shift terlebih dahulu sebelum melakukan transaksi', 'warning');
+                setTimeout(() => openShiftModal(), 1000);
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    {% comment %}
+    checkShiftOnLoad - Cek status shift saat halaman pertama kali load
+    Jika shift belum aktif:
+    1. Tampilkan overlay "Shift Not Active"
+    2. Otomatis buka modal shift setelah 500ms
+    {% endcomment %}
+    function checkShiftOnLoad() {
+        console.log('Checking shift status on load...');
+        fetch('/pos/shift/status-check/', {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Shift status response:', data);
+            if (!data.has_active_shift) {
+                console.log('No active shift detected');
+                updateShiftOverlay(false);
+
+                {# Auto-buka modal shift setelah delay singkat #}
+                setTimeout(() => {
+                    console.log('Opening shift modal after delay...');
+                    openShiftModal();
+                }, 500);
+            } else {
+                console.log('Active shift detected');
+                updateShiftOverlay(true);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking shift status:', error);
+        });
+    }
+
+    {% comment %}
+    openShiftFromOverlay - Dipanggil dari tombol di shift_overlay.html
+    {% endcomment %}
+    function openShiftFromOverlay() {
+        openShiftModal();
+    }
+
+    {% comment %}
+    updateShiftOverlay - Show/hide overlay "Shift Not Active"
+    @param {boolean} hasShift - true = shift aktif (hide overlay), false = belum aktif (show overlay)
+    {% endcomment %}
+    function updateShiftOverlay(hasShift) {
+        const overlay = document.getElementById('shift-required-overlay');
+        if (overlay) {
+            if (hasShift) {
+                overlay.classList.add('hidden');
+            } else {
+                overlay.classList.remove('hidden');
+            }
+        }
+    }
+
+    {% comment %}
+    Event Listener: shiftStatusChanged
+    Dipanggil saat shift dibuka/ditutup.
+    Update overlay + trigger HTMX refresh pada header shift status.
+    {% endcomment %}
+    document.addEventListener('shiftStatusChanged', function(event) {
+        const hasShift = event.detail && event.detail.hasActiveShift;
+        updateShiftOverlay(hasShift);
+
+        {# Trigger HTMX untuk refresh shift status di header #}
+        const shiftHeader = document.getElementById('header-shift-status');
+        if (shiftHeader) {
+            htmx.trigger(shiftHeader, 'refresh');
+        }
+    });
+
+    {% comment %}
+    DOMContentLoaded - Inisialisasi saat halaman selesai load
+    1. Pastikan modal-container ada (buat jika belum ada)
+    2. Load konfigurasi terminal (untuk auto-print settings)
+    3. Cek status shift
+    4. Update customer display jika ada bill aktif
+    {% endcomment %}
+    document.addEventListener('DOMContentLoaded', function () {
+        {# 1. Pastikan modal-container ada #}
+        let modalContainer = document.getElementById('modal-container');
+        if (!modalContainer) {
+            modalContainer = document.createElement('div');
+            modalContainer.id = 'modal-container';
+            modalContainer.style.cssText = 'position: relative; z-index: 9999;';
+            document.body.appendChild(modalContainer);
+            console.log('Modal container created and appended to body');
+        }
+
+        {# 2. Load terminal configuration (fungsi di launcher_integration.html) #}
+        loadTerminalConfig();
+
+        {# 3. Cek status shift #}
+        console.log('Starting shift status check...');
+        checkShiftOnLoad();
+
+        {# 4. Update customer display jika ada bill aktif #}
+        setTimeout(() => {
+            const billPanel = document.getElementById('bill-panel');
+            if (billPanel && typeof updateCustomerDisplay === 'function') {
+                console.log('Page loaded with active bill, updating customer display...');
+                updateCustomerDisplay([], 0);
+            }
+        }, 500);
+    });
+
+    {% comment %}
+    checkAndOpenCloseShift - Cek apakah ada bill aktif sebelum tutup shift
+    Jika ada bill aktif (Order Summary terlihat), tampilkan peringatan.
+    Jika tidak ada bill aktif, langsung buka modal close shift.
+    {% endcomment %}
+    function checkAndOpenCloseShift() {
+        const billPanel = document.getElementById('bill-panel');
+        if (!billPanel) {
+            closeShiftModal();
+            return;
+        }
+
+        {# Deteksi bill aktif dari judul "Order Summary" #}
+        const orderSummaryTitle = billPanel.querySelector('h2');
+        const hasActiveBill = orderSummaryTitle && orderSummaryTitle.textContent.includes('Order Summary');
+
+        if (hasActiveBill) {
+            {# Ada bill aktif → tampilkan alert modal #}
+            const alertModal = document.createElement('div');
+            alertModal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn';
+            alertModal.innerHTML = `
+                <div class="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl transform animate-slideUp">
+                    <div class="bg-gradient-to-r from-orange-500 to-red-600 p-6 text-center">
+                        <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-bold text-white">Cannot Close Shift</h2>
+                    </div>
+                    <div class="p-6">
+                        <p class="text-gray-700 text-lg mb-4 text-center">
+                            You have an active bill open!
+                        </p>
+                        <div class="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                            <p class="text-orange-800 text-sm">
+                                <strong>Please complete or close the active bill first:</strong>
+                            </p>
+                            <ul class="text-orange-700 text-sm mt-2 space-y-1 ml-4">
+                                <li>Complete payment, or</li>
+                                <li>Hold the bill, or</li>
+                                <li>Void/cancel the bill</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 p-6 pt-0">
+                        <button
+                            onclick="this.closest('div[class*=fixed]').remove()"
+                            class="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-xl">
+                            OK, Got it!
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(alertModal);
+            return;
+        }
+
+        {# Tidak ada bill aktif → buka modal close shift #}
+        closeShiftModal();
+    }
+
+    {% comment %}
+    openShiftModal - Buka modal untuk MULAI shift baru
+    Menggunakan HTMX ajax untuk load form dari server.
+    Endpoint: pos:shift_open_form
+    {% endcomment %}
+    function openShiftModal() {
+        console.log('Opening shift modal...');
+        const modalContainer = document.getElementById('modal-container');
+        console.log('Modal container exists:', !!modalContainer);
+
+        {# One-time listener untuk debug setelah modal di-render #}
+        modalContainer.addEventListener('htmx:afterSwap', function checkModal() {
+            console.log('Shift modal HTML swapped');
+            const shiftModal = document.getElementById('shift-open-modal');
+            const sessionModal = document.getElementById('session-required-modal');
+
+            console.log('shift-open-modal exists:', !!shiftModal);
+            console.log('session-required-modal exists:', !!sessionModal);
+
+            if (shiftModal) {
+                console.log('Shift modal rendered successfully');
+            } else if (sessionModal) {
+                console.log('Session required modal shown (no active store session)');
+            } else {
+                console.log('No modal element found!');
+                console.log('Container HTML:', modalContainer.innerHTML.substring(0, 300));
+            }
+
+            modalContainer.removeEventListener('htmx:afterSwap', checkModal);
+        }, { once: true });
+
+        htmx.ajax('GET', '{% url "pos:shift_open_form" %}', {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+
+    {% comment %}
+    closeShiftModal - Buka modal untuk TUTUP shift
+    Endpoint: pos:shift_close_form
+    {% endcomment %}
+    function closeShiftModal() {
+        htmx.ajax('GET', '{% url "pos:shift_close_form" %}', {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+
+    {% comment %}
+    openCashDropModal - Buka modal untuk setor uang (cash drop)
+    Endpoint: pos:cash_drop_form
+    {% endcomment %}
+    function openCashDropModal() {
+        htmx.ajax('GET', '{% url "pos:cash_drop_form" %}', {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+</script>

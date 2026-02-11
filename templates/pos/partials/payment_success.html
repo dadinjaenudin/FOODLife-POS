@@ -65,9 +65,9 @@
     const printWindow = window.open(printUrl, 'PrintReceipt', 'width=400,height=600,menubar=no,toolbar=no,location=no');
     
     if (!printWindow) {
-        alert('Print preview blocked by popup blocker. Please allow popups for this site.');
+        showToast('Print preview blocked by popup blocker. Please allow popups for this site.', 'warning');
     }
-    
+
     // Dispatch payment complete event for listeners (printer, customer display)
     document.body.dispatchEvent(new CustomEvent('paymentComplete', { 
         detail: { billId: billId } 
@@ -101,7 +101,7 @@ function printReceipt(billId) {
     const printWindow = window.open(printUrl, 'PrintReceipt', 'width=400,height=600,menubar=no,toolbar=no,location=no');
     
     if (!printWindow) {
-        alert('Print preview blocked by popup blocker. Please allow popups for this site.');
+        showToast('Print preview blocked by popup blocker. Please allow popups for this site.', 'warning');
     }
 }
 

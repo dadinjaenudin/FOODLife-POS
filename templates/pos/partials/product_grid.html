@@ -1,10 +1,46 @@
+{% comment %}
+============================================================================
+PRODUCT GRID (product_grid.html)
+============================================================================
+File ini menampilkan GRID produk di halaman POS (area tengah).
+Berisi 2 bagian:
+  1. HTML Grid: Layout 3 kolom yang me-render product_card.html untuk setiap produk
+  2. JavaScript: Fungsi quickAddProduct() dan quickRemoveProduct() untuk
+     tambah/kurang quantity tanpa reload halaman (via fetch API)
+
+DIPANGGIL DARI:
+- main.html (halaman utama POS) via include tag
+- views.py product_list() via HTMX (saat user klik category filter)
+
+CONTEXT VARIABLES (dari views.py):
+- products          : QuerySet daftar produk yang akan ditampilkan
+- bill              : Object bill aktif (None jika belum ada)
+- bill_items_dict   : Dictionary {product_id: quantity}
+- minio_endpoint    : URL server MinIO (dinamis berdasarkan request host)
+- minio_bucket      : Nama bucket MinIO ("product-images")
+
+LAYOUT (untuk resolusi 1024x768):
+┌──────────┬──────────┬──────────┐
+│ Product  │ Product  │ Product  │  <- 3 kolom sama rata
+│  Card 1  │  Card 2  │  Card 3  │
+├──────────┼──────────┼──────────┤
+│ Product  │ Product  │ Product  │
+│  Card 4  │  Card 5  │  Card 6  │
+└──────────┴──────────┴──────────┘
+============================================================================
+{% endcomment %}
+
 {% load humanize %}
-<!-- Product Grid - Fixed 3 columns for 1024x768 resolution -->
+
+{% comment %} GRID CONTAINER - CSS Grid 3 kolom, gap 0.75rem, overflow hidden {% endcomment %}
 <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0.75rem; width:100%; overflow:hidden;">
+
+    {% comment %} LOOP SETIAP PRODUK - Render product_card.html via "with" {% endcomment %}
     {% for product in products %}
     {% include 'pos/partials/product_card.html' with product=product bill=bill bill_items_dict=bill_items_dict minio_endpoint=minio_endpoint minio_bucket=minio_bucket %}
+
+    {% comment %} EMPTY STATE - Tampilkan jika tidak ada produk sama sekali {% endcomment %}
     {% empty %}
-    <!-- Empty State -->
     <div class="col-span-full text-center py-16">
         <div class="inline-flex flex-col items-center p-8 bg-white rounded-2xl shadow-sm">
             <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
@@ -19,18 +55,41 @@
     {% endfor %}
 </div>
 
+{% comment %}
+JAVASCRIPT: Quick Add/Remove Product
+Fungsi-fungsi ini dipanggil dari tombol [+] dan [-] di product_card.html.
+Menggunakan fetch API (bukan HTMX) karena perlu update 2 elemen sekaligus:
+1. Product card (update tampilan quantity stepper)
+2. Bill panel (update daftar item dan total harga)
+
+ALUR KERJA:
+1. User klik tombol [+] atau [-] di product card
+2. JavaScript kirim POST request ke server
+3. Server return JSON berisi HTML baru untuk product card + bill panel
+4. JavaScript replace HTML lama dengan yang baru (tanpa reload halaman)
+5. Trigger update customer display (layar pelanggan) jika tersedia
+{% endcomment %}
 <script>
-// Quick add/remove product functions
+
+/**
+ * quickAddProduct - Tambah 1 quantity produk ke bill
+ *
+ * @param {string} billId    - ID bill yang sedang aktif
+ * @param {string} productId - ID produk yang mau ditambah
+ *
+ * Endpoint: POST /pos/bill/{billId}/product/{productId}/quick-add/
+ * Response: { product_card_html, bill_panel_html } atau { error }
+ */
 function quickAddProduct(billId, productId) {
-    // Check if shift is active before allowing product operations
+    // Cek dulu apakah shift sudah dibuka (wajib buka shift sebelum transaksi)
     if (!checkShiftActive()) {
         return;
     }
-    
+
     fetch(`/pos/bill/${billId}/product/${productId}/quick-add/`, {
         method: 'POST',
         headers: {
-            'X-CSRFToken': getCsrfToken(),
+            'X-CSRFToken': getCsrfToken(),  // Django CSRF protection
             'Content-Type': 'application/json',
         },
     })
@@ -40,21 +99,33 @@ function quickAddProduct(billId, productId) {
             console.error('Error adding product:', data.error);
             return;
         }
-        // Update product card
+
+        // Update product card: ganti HTML kartu produk dengan yang baru
+        // (misal: dari tombol "Add to Dish" jadi quantity stepper)
         const productCard = document.getElementById(`product-card-${productId}`);
         if (productCard) {
             productCard.outerHTML = data.product_card_html;
+            // Flash hijau singkat pada card baru
+            const newCard = document.getElementById(`product-card-${productId}`);
+            if (newCard) {
+                newCard.style.transition = 'box-shadow 0.3s ease';
+                newCard.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.6)';
+                setTimeout(() => { newCard.style.boxShadow = ''; }, 500);
+            }
         }
-        // Update bill panel
+
+        // Update bill panel: ganti HTML panel bill dengan yang baru
+        // (item baru muncul di daftar, total harga berubah)
         const billPanel = document.getElementById('bill-panel');
         if (billPanel) {
             billPanel.outerHTML = data.bill_panel_html;
-            
-            // Trigger customer display update
+
+            // Update customer display (layar yang menghadap pelanggan)
+            // setTimeout 100ms agar DOM selesai di-render dulu
             if (typeof updateCustomerDisplay === 'function') {
                 setTimeout(() => {
                     updateCustomerDisplay([], 0);
-                    console.log('📺 Customer display update triggered after quickAddProduct');
+                    console.log('Customer display update triggered after quickAddProduct');
                 }, 100);
             }
         }
@@ -64,12 +135,23 @@ function quickAddProduct(billId, productId) {
     });
 }
 
+/**
+ * quickRemoveProduct - Kurangi 1 quantity produk dari bill
+ *
+ * @param {string} billId    - ID bill yang sedang aktif
+ * @param {string} productId - ID produk yang mau dikurangi
+ *
+ * Endpoint: POST /pos/bill/{billId}/product/{productId}/quick-remove/
+ * Response: { product_card_html, bill_panel_html } atau { error }
+ *
+ * Catatan: Jika quantity menjadi 0, item akan dihapus dari bill
+ */
 function quickRemoveProduct(billId, productId) {
-    // Check if shift is active before allowing product operations
+    // Cek dulu apakah shift sudah dibuka
     if (!checkShiftActive()) {
         return;
     }
-    
+
     fetch(`/pos/bill/${billId}/product/${productId}/quick-remove/`, {
         method: 'POST',
         headers: {
@@ -83,21 +165,30 @@ function quickRemoveProduct(billId, productId) {
             console.error('Error removing product:', data.error);
             return;
         }
+
         // Update product card
         const productCard = document.getElementById(`product-card-${productId}`);
         if (productCard) {
             productCard.outerHTML = data.product_card_html;
+            // Flash merah singkat pada card
+            const newCard = document.getElementById(`product-card-${productId}`);
+            if (newCard) {
+                newCard.style.transition = 'box-shadow 0.3s ease';
+                newCard.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.6)';
+                setTimeout(() => { newCard.style.boxShadow = ''; }, 500);
+            }
         }
+
         // Update bill panel
         const billPanel = document.getElementById('bill-panel');
         if (billPanel) {
             billPanel.outerHTML = data.bill_panel_html;
-            
-            // Trigger customer display update
+
+            // Update customer display
             if (typeof updateCustomerDisplay === 'function') {
                 setTimeout(() => {
                     updateCustomerDisplay([], 0);
-                    console.log('📺 Customer display update triggered after quickRemoveProduct');
+                    console.log('Customer display update triggered after quickRemoveProduct');
                 }, 100);
             }
         }
@@ -107,6 +198,14 @@ function quickRemoveProduct(billId, productId) {
     });
 }
 
+/**
+ * getCsrfToken - Ambil CSRF token dari hidden input di halaman
+ *
+ * Django memerlukan CSRF token untuk setiap POST request (keamanan).
+ * Token ini di-render oleh csrf_token tag di main.html.
+ *
+ * @returns {string} CSRF token value
+ */
 function getCsrfToken() {
     return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
 }

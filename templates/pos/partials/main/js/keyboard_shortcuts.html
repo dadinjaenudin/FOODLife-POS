@@ -1,0 +1,104 @@
+{% comment %}
+============================================================================
+KEYBOARD SHORTCUTS (keyboard_shortcuts.html)
+============================================================================
+Shortcut keyboard untuk mempercepat operasi kasir saat rush hour.
+Shortcut HANYA aktif jika tidak ada modal yang terbuka.
+
+SHORTCUT LIST:
+- F1  : Send to Kitchen (kirim order ke dapur)
+- F2  : Payment (buka modal pembayaran)
+- F3  : Hold Bill (tahan bill sementara)
+- F4  : New Bill - Choose Table (buka floor plan)
+- F8  : Cancel Bill (batalkan bill kosong)
+- Esc : Tutup modal yang sedang terbuka
+
+DIPANGGIL DARI: main.html via include tag
+============================================================================
+{% endcomment %}
+
+<script>
+document.addEventListener('keydown', function(e) {
+    const modalContainer = document.getElementById('modal-container');
+    const hasOpenModal = modalContainer && modalContainer.innerHTML.trim() !== '';
+    const hasFloorPlan = document.getElementById('floor-plan-overlay');
+
+    {# ESC: Tutup modal atau floor plan #}
+    if (e.key === 'Escape') {
+        if (hasOpenModal) {
+            e.preventDefault();
+            if (typeof closeModal === 'function') {
+                closeModal();
+            } else {
+                modalContainer.innerHTML = '';
+            }
+            return;
+        }
+        if (hasFloorPlan) {
+            e.preventDefault();
+            if (typeof closeFloorPlanModal === 'function') {
+                closeFloorPlanModal();
+            }
+            return;
+        }
+    }
+
+    {# Jangan proses shortcut jika ada modal terbuka atau focus di input #}
+    if (hasOpenModal || hasFloorPlan) return;
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) return;
+
+    {# Cek apakah ada bill aktif #}
+    const billPanel = document.getElementById('bill-panel');
+    const hasBill = billPanel && billPanel.querySelector('h2') &&
+                    billPanel.querySelector('h2').textContent.includes('Order Summary');
+
+    switch(e.key) {
+        case 'F1':
+            e.preventDefault();
+            if (hasBill) {
+                {# Klik tombol Send to Kitchen #}
+                const sendBtn = billPanel.querySelector('button[hx-post*="send-kitchen"]');
+                if (sendBtn && !sendBtn.disabled) sendBtn.click();
+            }
+            break;
+
+        case 'F2':
+            e.preventDefault();
+            if (hasBill) {
+                {# Klik tombol Payment #}
+                const payBtn = billPanel.querySelector('button[hx-get*="payment"]');
+                if (payBtn) payBtn.click();
+            }
+            break;
+
+        case 'F3':
+            e.preventDefault();
+            if (hasBill) {
+                {# Klik tombol Hold #}
+                const holdBtn = billPanel.querySelector('button[hx-get*="hold"]');
+                if (holdBtn) holdBtn.click();
+            }
+            break;
+
+        case 'F4':
+            e.preventDefault();
+            if (!hasBill) {
+                {# Buka floor plan untuk choose table #}
+                if (typeof openFloorPlanModal === 'function') {
+                    openFloorPlanModal();
+                }
+            }
+            break;
+
+        case 'F8':
+            e.preventDefault();
+            if (hasBill) {
+                {# Klik tombol Cancel Bill jika ada #}
+                const cancelBtn = billPanel.querySelector('button[onclick*="showCancelBillModal"]');
+                if (cancelBtn) cancelBtn.click();
+            }
+            break;
+    }
+});
+</script>

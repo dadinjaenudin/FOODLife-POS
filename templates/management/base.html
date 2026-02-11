@@ -48,7 +48,7 @@
             const path = window.location.pathname;
             if (path.includes('terminals') || path.includes('display-configs') || path.includes('customer-display') || path.includes('receipt-templates')) {
                 this.terminalManagementOpen = true;
-            } else if (path.includes('master-data') || path.includes('users') || path.includes('settings') || path.includes('reports')) {
+            } else if (path.includes('master-data') || path.includes('users') || path.includes('settings') || path.includes('reports') || path.includes('stock')) {
                 this.dataManagementOpen = true;
             } else if (path.includes('kitchen')) {
                 this.kitchenSystemOpen = true;
@@ -179,9 +179,13 @@
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'users' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             User Management
                         </a>
-                        <a href="{% url 'management:reports' %}" 
+                        <a href="{% url 'management:reports' %}"
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'reports' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Reports & Analytics
+                        </a>
+                        <a href="{% url 'management:stock_management' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'stock' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            Stock Management
                         </a>
                     </div>
                 </div>
