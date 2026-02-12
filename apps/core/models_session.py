@@ -128,6 +128,12 @@ class CashierShift(models.Model):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Multi-tenant fields (complete hierarchy)
+    company = models.ForeignKey('Company', on_delete=models.PROTECT, related_name='cashier_shifts', null=True, blank=True)
+    brand = models.ForeignKey('Brand', on_delete=models.PROTECT, related_name='cashier_shifts', null=True, blank=True)
+    store = models.ForeignKey('Store', on_delete=models.PROTECT, related_name='cashier_shifts', null=True, blank=True)
+
     store_session = models.ForeignKey(StoreSession, on_delete=models.PROTECT, related_name='shifts')
     cashier = models.ForeignKey('User', on_delete=models.PROTECT, related_name='cashier_shifts')
     terminal = models.ForeignKey('POSTerminal', on_delete=models.PROTECT, related_name='shifts')
@@ -146,6 +152,7 @@ class CashierShift(models.Model):
     
     class Meta:
         indexes = [
+            models.Index(fields=['company', 'brand', 'store']),
             models.Index(fields=['store_session', 'cashier']),
             models.Index(fields=['cashier', 'shift_start']),
             models.Index(fields=['terminal', 'status']),

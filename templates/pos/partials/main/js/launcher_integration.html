@@ -196,9 +196,17 @@ CATATAN:
             return;
         }
 
+        {# SKIP: Payment success modal handles its own customer display update #}
+        const isPaymentSuccess = modalContent.includes('Payment Successful') ||
+                                modalContent.includes('Pembayaran Berhasil');
+        if (isPaymentSuccess) {
+            console.log('Payment success modal detected - skipping (handles its own customer display)');
+            return;
+        }
+
         {# WHITELIST: Hanya payment modal yang dikirim ke customer display #}
-        const isPaymentModal = modalContent.includes('Payment - ') &&
-                              (modalContent.includes('Payment Method') || modalContent.includes('Quick Amount'));
+        const isPaymentModal = modalContent.includes('data-payment-modal') ||
+                              (modalContent.includes('payment-form') && modalContent.includes('Metode Pembayaran'));
 
         if (!isPaymentModal) {
             console.log('Not a payment modal - Skipping customer display sync');
@@ -222,7 +230,7 @@ CATATAN:
                 amount: alpineData.amount,
                 amountDisplay: alpineData.amountDisplay,
                 remaining: alpineData.remaining,
-                change: alpineData.change,
+                changeAmount: alpineData.changeAmount,
                 method: alpineData.method,
                 payments: alpineData.payments
             });
@@ -245,11 +253,22 @@ CATATAN:
                 }
             };
 
+            {# Modal v11 uses fmt() not formatNumber(), changeAmount not change #}
+            const fmtFn = alpineData.fmt ? alpineData.fmt.bind(alpineData) : function(n) {
+                if (!n && n !== 0) return '0';
+                return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            };
             const context = {
-                formatNumber: alpineData.formatNumber.bind(alpineData),
+                fmt: fmtFn,
+                formatNumber: fmtFn,
                 remaining: alpineData.remaining,
-                change: alpineData.change,
+                changeAmount: alpineData.changeAmount,
+                change: alpineData.changeAmount,
                 amount: alpineData.amount,
+                total: alpineData.total,
+                displayPaying: alpineData.displayPaying,
+                paidTotal: alpineData.paidTotal,
+                canPay: alpineData.canPay,
                 method: alpineData.method,
                 payments: alpineData.payments
             };
@@ -336,30 +355,61 @@ CATATAN:
 
         {# Set input values SETELAH remove Alpine attributes #}
         if (alpineData) {
+            const formatNumber = (num) => {
+                if (!num && num !== 0) return '0';
+                const str = Math.floor(num).toString();
+                return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            };
+
+            {# 1. Set amount display #}
             const amountInput = modalClone.querySelector('input[name="amount_display"]') ||
-                               modalClone.querySelector('input[type="text"][placeholder="0"]:not([type="hidden"])') ||
                                modalClone.querySelector('input[placeholder="0"]');
             if (amountInput) {
-                const formatNumber = (num) => {
-                    if (!num && num !== 0) return '0';
-                    const str = Math.floor(num).toString();
-                    return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                };
-
                 let displayValue = '';
                 if (alpineData.amountDisplay) {
                     displayValue = alpineData.amountDisplay;
                 } else if (alpineData.amount) {
-                    try {
-                        displayValue = alpineData.formatNumber ? alpineData.formatNumber(alpineData.amount) : formatNumber(alpineData.amount);
-                    } catch (e) {
-                        displayValue = formatNumber(alpineData.amount);
-                    }
+                    displayValue = formatNumber(alpineData.amount);
                 }
-
                 amountInput.value = displayValue;
                 amountInput.setAttribute('value', displayValue);
-                console.log('Amount input value set successfully');
+                console.log('Amount input value set:', displayValue);
+            }
+
+            {# 2. Set prompt field values (EFT no, approval code, account no, etc.) #}
+            {# Use querySelectorAll: multiple methods may share the same field name #}
+            if (alpineData.promptValues) {
+                for (const fieldName in alpineData.promptValues) {
+                    const val = alpineData.promptValues[fieldName];
+                    if (!val) continue;
+                    const fieldEls = modalClone.querySelectorAll('[data-prompt-field="' + fieldName + '"]');
+                    fieldEls.forEach(fieldEl => {
+                        if (fieldEl.tagName === 'SELECT') {
+                            fieldEl.querySelectorAll('option').forEach(opt => {
+                                if (opt.value === val) {
+                                    opt.selected = true;
+                                    opt.setAttribute('selected', 'selected');
+                                } else {
+                                    opt.selected = false;
+                                    opt.removeAttribute('selected');
+                                }
+                            });
+                        } else {
+                            fieldEl.value = val;
+                            fieldEl.setAttribute('value', val);
+                        }
+                    });
+                    if (fieldEls.length > 0) console.log('Prompt field set:', fieldName, '=', val, '(' + fieldEls.length + ' elements)');
+                }
+            }
+
+            {# 3. Set selected payment method visual highlight on clone #}
+            if (alpineData.method) {
+                const methodBtns = modalClone.querySelectorAll('button[class*="rounded-xl"]');
+                methodBtns.forEach(btn => {
+                    {# Simple check: remove active styling, rely on server-rendered :class #}
+                    btn.classList.remove('border-green-500', 'shadow-md');
+                });
             }
         }
 

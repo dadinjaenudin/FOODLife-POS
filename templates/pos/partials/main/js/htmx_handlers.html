@@ -88,8 +88,16 @@ CATATAN:
             console.log('   Element classes:', event.detail.elt.className);
         }
 
-        {# Pastikan modal-container ada jika request menarget ke sana #}
+        {# Block request ke modal-container jika payment modal sedang aktif (kecuali dari dalam payment modal sendiri) #}
         const targetSelector = event.detail.elt.getAttribute('hx-target');
+        if (targetSelector === '#modal-container' && window._paymentModalActive) {
+            if (!event.detail.elt.closest('[data-payment-modal]')) {
+                event.preventDefault();
+                return;
+            }
+        }
+
+        {# Pastikan modal-container ada jika request menarget ke sana #}
         if (targetSelector === '#modal-container') {
             let modalContainer = document.getElementById('modal-container');
             if (!modalContainer) {
@@ -106,6 +114,13 @@ CATATAN:
     {% endcomment %}
     document.addEventListener('htmx:targetError', function (event) {
         const targetSelector = event.detail.elt.getAttribute('hx-target');
+
+        {# Block retry ke modal-container jika payment modal aktif #}
+        if (targetSelector === '#modal-container' && window._paymentModalActive) {
+            if (!event.detail.elt.closest('[data-payment-modal]')) {
+                return;
+            }
+        }
 
         if (targetSelector === '#modal-container') {
             let modalContainer = document.getElementById('modal-container');
@@ -128,6 +143,14 @@ CATATAN:
     {% endcomment %}
     document.addEventListener('htmx:beforeSwap', function (event) {
         if (event.detail.target.id === 'modal-container') {
+            {# Block swap ke modal-container jika payment modal aktif (kecuali dari payment modal sendiri) #}
+            if (window._paymentModalActive) {
+                const elt = event.detail.requestConfig?.elt;
+                if (!elt || !elt.closest('[data-payment-modal]')) {
+                    event.detail.shouldSwap = false;
+                    return;
+                }
+            }
             event.detail.shouldSwap = true;
         }
     });
@@ -152,9 +175,10 @@ CATATAN:
             }
 
             {# Kirim modal ke customer display (jika payment modal) #}
+            {# Delay 500ms: wait for Alpine init after clone+replace (rAF+setTimeout+MO) #}
             setTimeout(() => {
                 sendModalToCustomerDisplay();
-            }, 200);
+            }, 500);
         }
 
         {# TARGET: Bill Panel - Re-process HTMX dan update customer display #}

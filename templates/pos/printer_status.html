@@ -91,7 +91,7 @@ ENDPOINT API (POS Launcher - localhost:5000):
          x-transition:leave-end="opacity-0 scale-95"
          class="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-y-auto"
          :style="flyoutPosition"
-         style="width: 240px; max-height: calc(100vh - 16px);">
+         style="width: 210px; max-height: calc(100vh - 16px);">
 
         {# Flyout Header - compact, color-coded #}
         <div class="flex items-center justify-between px-2.5 py-1.5 border-b"
@@ -168,15 +168,6 @@ ENDPOINT API (POS Launcher - localhost:5000):
              class="mx-2.5 mb-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[9px] text-amber-700"
              x-text="printerMessage"></div>
 
-        {# Offline Warning - when service not running #}
-        <div x-show="!serviceOnline" x-cloak class="mx-2.5 mb-1.5 px-2 py-1 bg-red-50 border border-red-200 rounded text-[9px] text-red-700">
-            POS Launcher tidak berjalan di komputer ini.
-        </div>
-
-        {# Printer offline - when service running but printer has error #}
-        <div x-show="serviceOnline && printerStatus === 'offline'" x-cloak
-             class="mx-2.5 mb-1.5 px-2 py-1 bg-red-50 border border-red-200 rounded text-[9px] text-red-700"
-             x-text="printerMessage || 'Printer tidak tersedia'"></div>
 
         {# Action Buttons - compact #}
         <div class="px-2.5 py-1.5 border-t border-gray-100">
@@ -324,7 +315,7 @@ function printerStatusWidget() {
             if (!btn || !panel) return;
             const rect = btn.getBoundingClientRect();
             const panelRect = panel.getBoundingClientRect();
-            const flyoutWidth = 240;
+            const flyoutWidth = 210;
             let top = rect.top;
             let left = rect.right + 6;
             // Jaga agar tidak keluar layar bawah (pakai tinggi asli)

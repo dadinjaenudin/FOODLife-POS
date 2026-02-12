@@ -1,477 +1,557 @@
 {% load humanize %}
-<!-- Payment Modal v2.1 - Refactored for Flexibility -->
-<div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto animate-fadeIn"
-     x-data="{
-         // ==========================================
-         // 🔧 CONFIGURATION - Easy to modify!
-         // ==========================================
-         allPaymentMethods: [
-             { id: 'cash', label: 'Cash', icon: '💵', requiresReference: false },
-             { id: 'card', label: 'Card', icon: '💳', requiresReference: true, referencePlaceholder: 'Last 4 digits / Approval code' },
-             { id: 'qris', label: 'QRIS', icon: '📱', requiresReference: true, referencePlaceholder: 'Transaction ID' },
-             { id: 'ewallet', label: 'E-Wallet', icon: '🏦', requiresReference: true, referencePlaceholder: 'Reference number' },
-             { id: 'transfer', label: 'Transfer', icon: '🔄', requiresReference: true, referencePlaceholder: 'Transfer reference' },
-             { id: 'voucher', label: 'Voucher', icon: '🎟️', requiresReference: true, referencePlaceholder: 'Voucher code' },
-             { id: 'debit', label: 'Debit', icon: '💳', requiresReference: true, referencePlaceholder: 'Card number / Approval code' }
-         ],
-         
-         // Filter payment methods based on terminal configuration
-         get paymentMethods() {
-             const allowedMethods = {{ terminal_payment_methods|safe }};
-             if (!allowedMethods || allowedMethods.length === 0) {
-                 return this.allPaymentMethods;
-             }
-             return this.allPaymentMethods.filter(method => allowedMethods.includes(method.id));
-         },
-         
-         quickAmounts: [
-             { label: 'Exact', getValue: (remaining) => remaining, color: 'green' },
-             { label: '50K', getValue: () => 50000, color: 'gray' },
-             { label: '100K', getValue: () => 100000, color: 'gray' },
-             { label: 'Round', getValue: (remaining) => Math.ceil(remaining/50000)*50000, color: 'gray' }
-         ],
-         
-         // ==========================================
-         // 💾 STATE
-         // ==========================================
-         method: 'cash',
-         amount: 0,
-         amountDisplay: '',
-         reference: '',
-         updateAmountDebounceTimer: null,
-         total: parseInt('{{ total_int|escapejs }}'),
-         paid: parseInt('{{ paid_int|escapejs }}'),
-         payments: [],
-         
-         // ==========================================
-         // 🧮 COMPUTED PROPERTIES
-         // ==========================================
-         get remaining() { 
-             return this.total - this.paid - this.payments.reduce((sum, p) => sum + p.amount, 0); 
-         },
-         
-         get change() { 
-             if (this.method !== 'cash') return 0;
-             return Math.max(0, this.amount - this.remaining); 
-         },
-         
-         get selectedMethod() {
-             return this.paymentMethods.find(m => m.id === this.method);
-         },
-         
-         get canAddSplitPayment() {
-             return this.remaining > this.amount && this.amount > 0;
-         },
-         
-         get canSubmit() {
-             return this.amount >= 1 || this.payments.length > 0;
-         },
-         
-         // ==========================================
-         // 🔧 UTILITY FUNCTIONS
-         // ==========================================
-         formatNumber(num) {
-             if (!num && num !== 0) return '0';
-             const str = Math.floor(num).toString();
-             return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-         },
-         
-         getMethodLabel(methodId) {
-             const method = this.paymentMethods.find(m => m.id === methodId);
-             return method ? `${method.icon} ${method.label}` : methodId;
-         },
-         
-         // ==========================================
-         // 📝 AMOUNT MANAGEMENT
-         // ==========================================
-         updateAmount(value) {
-             // Remove non-digits
-             const cleanValue = value.replace(/\D/g, '');
-             this.amount = cleanValue ? parseInt(cleanValue) : 0;
-             this.amountDisplay = this.amount ? this.formatNumber(this.amount) : '';
-             
-             // Debounce customer display update
-             clearTimeout(this.updateAmountDebounceTimer);
-             this.updateAmountDebounceTimer = setTimeout(() => {
-                 this.$nextTick(() => {
-                     if (typeof sendModalToCustomerDisplay === 'function') {
-                         sendModalToCustomerDisplay();
-                         console.log('🔄 Customer display refreshed after typing:', this.amount);
-                     }
-                 });
-             }, 500);
-         },
-         
-         numpadPress(key) {
-             let raw = this.amount.toString();
-             if (key === 'C') {
-                 raw = '';
-             } else if (key === 'DEL') {
-                 raw = raw.slice(0, -1);
-             } else {
-                 raw = raw + key;
-             }
-             this.amount = raw ? parseInt(raw) : 0;
-             this.amountDisplay = this.amount ? this.formatNumber(this.amount) : '';
-         },
+<!-- Payment Modal v11 - Server-side rendered methods (no x-for for non-empty arrays) -->
 
-         setQuickAmount(newAmount) {
-             this.amount = newAmount;
-             this.amountDisplay = this.formatNumber(newAmount);
-             this.$nextTick(() => {
-                 setTimeout(() => {
-                     if (typeof sendModalToCustomerDisplay === 'function') {
-                         sendModalToCustomerDisplay();
-                         console.log('🔄 Customer display refreshed - Quick amount:', newAmount);
-                     }
-                 }, 200);
-             });
-         },
-         
-         // ==========================================
-         // 💳 METHOD MANAGEMENT
-         // ==========================================
-         setMethod(newMethod) {
-             this.method = newMethod;
-             this.reference = ''; // Clear reference when switching methods
-             this.$nextTick(() => {
-                 setTimeout(() => {
-                     if (typeof sendModalToCustomerDisplay === 'function') {
-                         sendModalToCustomerDisplay();
-                         console.log('🔄 Customer display refreshed - Method:', newMethod);
-                     }
-                 }, 200);
-             });
-         },
-         
-         // ==========================================
-         // 💰 PAYMENT MANAGEMENT
-         // ==========================================
-         validatePayment() {
-             if (this.amount <= 0) {
-                 showToast('Please enter an amount', 'warning');
-                 return false;
-             }
+<!-- Define paymentModal() BEFORE the HTML (HTMX executes scripts after DOM insert) -->
+<script>
+function paymentModal() {
+    var _paymentMethods = [];
+    try { _paymentMethods = {{ payment_methods_json|safe }}; } catch(e) {}
+    var _useProfiles = {{ use_profiles|yesno:"true,false" }};
+    var _defaultMethod = '{{ default_method|escapejs }}' || 'cash';
 
-             // Non-cash cannot exceed remaining
-             if (this.method !== 'cash' && this.amount > this.remaining) {
-                 showToast(`Non-cash payment cannot exceed remaining balance of Rp ${this.formatNumber(this.remaining)}`, 'warning');
-                 return false;
-             }
+    return {
+        useProfiles: _useProfiles,
+        paymentMethods: _paymentMethods,
+        method: _defaultMethod,
+        amount: 0,
+        amountDisplay: '',
+        reference: '',
+        promptValues: {},
+        total: parseInt('{{ total_int|escapejs }}') || 0,
+        payments: [],
+        activeField: 'amount',
+        _syncTimer: null,
 
-             // Cash overpayment only for single payment
-             if (this.method === 'cash' && this.payments.length > 0 && this.amount > this.remaining) {
-                 showToast('Cash overpayment only allowed for single payment', 'warning');
-                 return false;
-             }
-             
-             return true;
-         },
-         
-         addPayment() {
-             if (!this.validatePayment()) return;
-             
-             this.payments.push({
-                 method: this.method,
-                 amount: this.amount,
-                 reference: this.reference,
-                 methodLabel: this.getMethodLabel(this.method)
-             });
-             
-             // Reset for next payment
-             this.amount = 0;
-             this.amountDisplay = '';
-             this.reference = '';
-             
-             this.notifyCustomerDisplay('payment added');
-             
-             if (this.remaining > 0) {
-                 console.log('Payment added. Remaining: Rp ' + this.formatNumber(this.remaining));
-             }
-         },
-         
-         removePayment(index) {
-             console.log('🔔 Removing payment at index:', index);
-             this.payments.splice(index, 1);
-             this.notifyCustomerDisplay('payment removed');
-         },
-         
-         submitPayment() {
-             // If user entered amount but didn't add it yet, add it now
-             if (this.amount > 0) {
-                 if (!this.validatePayment()) return false;
-                 
-                 this.payments.push({
-                     method: this.method,
-                     amount: this.amount,
-                     reference: this.reference,
-                     methodLabel: this.getMethodLabel(this.method)
-                 });
-             }
-             
-             if (this.payments.length === 0) {
-                 showToast('Please add at least one payment or enter an amount', 'warning');
-                 return false;
-             }
-             
-             console.log('Submitting payments:', this.payments);
-             this.notifyCustomerDisplay('payment submitting');
-             
-             return true;
-         },
-         
-         // ==========================================
-         // 🖥️ CUSTOMER DISPLAY INTEGRATION
-         // ==========================================
-         notifyCustomerDisplay(action) {
-             if (typeof updateCustomerDisplay === 'function') {
-                 const totalPaid = this.payments.reduce((sum, p) => sum + p.amount, 0);
-                 console.log(`🔔 Customer display notify [${action}]:`, {
-                     totalPaid,
-                     remaining: this.remaining,
-                     paymentsCount: this.payments.length
-                 });
-                 setTimeout(() => {
-                     updateCustomerDisplay([], this.total, totalPaid, this.payments[0]?.method || 'cash');
-                 }, 100);
-             }
-         },
-         
-         // ==========================================
-         // 🚀 INITIALIZATION
-         // ==========================================
-         init() {
-             console.log('💳 Payment Modal v2.1 initialized');
-             console.log('   Total:', this.total, 'Remaining:', this.remaining);
-             console.log('   Payment methods:', this.paymentMethods.length);
-             
-             this.amountDisplay = this.formatNumber(this.amount);
-             this.notifyCustomerDisplay('modal opened');
-         }
-     }"
-     @click.self="closeModal()">
-    
-    <div class="bg-white/95 backdrop-blur-lg rounded-2xl w-full max-w-xl m-4 shadow-2xl border border-white/20 animate-slideUp overflow-hidden" @click.stop>
+        get selectedMethod() {
+            return this.paymentMethods.find(m => m.id === this.method) || null;
+        },
+
+        get currentProfileId() {
+            var sm = this.selectedMethod;
+            return (sm && sm.profile_id) ? sm.profile_id : '';
+        },
+
+        get currentMethodId() {
+            var sm = this.selectedMethod;
+            return (sm && sm.method_id) ? sm.method_id : this.method;
+        },
+
+        get currentAllowChange() {
+            var sm = this.selectedMethod;
+            return sm ? (sm.allow_change !== false) : true;
+        },
+
+        get promptDataJson() {
+            if (!this.useProfiles) return '';
+            var vals = this.promptValues;
+            var hasAny = false;
+            for (var k in vals) { if (vals[k]) { hasAny = true; break; } }
+            return hasAny ? JSON.stringify(vals) : '';
+        },
+
+        get paidTotal() {
+            var sum = 0;
+            for (var i = 0; i < this.payments.length; i++) sum += this.payments[i].amount;
+            return sum;
+        },
+
+        get remaining() {
+            var r = this.total - this.paidTotal;
+            return r > 0 ? r : 0;
+        },
+
+        get displayPaying() {
+            return this.payments.length > 0 ? this.paidTotal : this.amount;
+        },
+
+        get changeAmount() {
+            if (this.payments.length === 0 && this.currentAllowChange && this.amount > this.total) {
+                return this.amount - this.total;
+            }
+            if (this.payments.length > 0 && this.paidTotal > this.total) {
+                var lastPmt = this.payments[this.payments.length - 1];
+                var lastMethod = this.paymentMethods.find(function(m) { return m.id === lastPmt.method; });
+                if (lastMethod && lastMethod.allow_change !== false) return this.paidTotal - this.total;
+            }
+            return 0;
+        },
+
+        get paymentsListHtml() {
+            var h = '';
+            for (var i = 0; i < this.payments.length; i++) {
+                var p = this.payments[i];
+                h += '<div class="flex items-center gap-1.5 bg-white border rounded-lg px-2 py-1">';
+                h += '<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:' + this.getMethodColor(p.method) + '"></div>';
+                h += '<span class="text-[11px] font-bold text-gray-700">' + this.getMethodLabel(p.method) + '</span>';
+                h += '<span class="text-[11px] font-bold text-green-600">Rp ' + this.fmt(p.amount) + '</span>';
+                h += '<button type="button" data-rm="' + i + '" class="w-4 h-4 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded">';
+                h += '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+                h += '</button></div>';
+            }
+            return h;
+        },
+
+        get paymentsHiddenHtml() {
+            var h = '';
+            for (var i = 0; i < this.payments.length; i++) {
+                var p = this.payments[i];
+                var mid = (p.method_id || p.method || '').replace(/"/g, '&quot;');
+                var ref = (p.reference || '').replace(/"/g, '&quot;');
+                var pid = (p.profile_id || '').replace(/"/g, '&quot;');
+                var pd = (p.prompt_data || '').replace(/"/g, '&quot;');
+                h += '<input type="hidden" name="payments[' + i + '][method]" value="' + mid + '">';
+                h += '<input type="hidden" name="payments[' + i + '][amount]" value="' + p.amount + '">';
+                h += '<input type="hidden" name="payments[' + i + '][reference]" value="' + ref + '">';
+                h += '<input type="hidden" name="payments[' + i + '][profile_id]" value="' + pid + '">';
+                h += '<input type="hidden" name="payments[' + i + '][prompt_data]" value="' + pd + '">';
+            }
+            return h;
+        },
+
+        get canPay() {
+            if (this.payments.length === 0) return this.amount >= this.total && this.amount > 0;
+            return this.paidTotal >= this.total;
+        },
+
+        fmt(n) {
+            if (!n && n !== 0) return '0';
+            return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        },
+
+        getMethodLabel(id) {
+            var m = this.paymentMethods.find(function(pm) { return pm.id === id; });
+            return m ? m.label : id;
+        },
+
+        getMethodColor(id) {
+            var m = this.paymentMethods.find(function(pm) { return pm.id === id; });
+            return m ? m.color : '#6b7280';
+        },
+
+        onInput(val) {
+            var clean = val.replace(/\D/g, '');
+            this.amount = clean ? parseInt(clean) : 0;
+            this.amountDisplay = this.amount ? this.fmt(this.amount) : '';
+            this.syncDisplay();
+        },
+
+        numpad(key) {
+            // Route numpad to prompt field if active
+            if (this.activeField && this.activeField.startsWith('prompt:')) {
+                var fieldName = this.activeField.substring(7);
+                var val = this.promptValues[fieldName] || '';
+                if (key === 'C') val = '';
+                else if (key === 'DEL') val = val.slice(0, -1);
+                else val = val + key;
+                this.promptValues[fieldName] = val;
+                this.syncDisplay();
+                return;
+            }
+            // Default: amount field
+            var raw = this.amount.toString();
+            if (key === 'C') raw = '';
+            else if (key === 'DEL') raw = raw.slice(0, -1);
+            else raw = raw + key;
+            this.amount = raw ? parseInt(raw) : 0;
+            this.amountDisplay = this.amount ? this.fmt(this.amount) : '';
+            this.syncDisplay();
+        },
+
+        setAmount(val) {
+            this.activeField = 'amount';
+            this.amount = val;
+            this.amountDisplay = this.fmt(val);
+            this.syncDisplay();
+        },
+
+        setMethod(id) {
+            this.method = id;
+            this.reference = '';
+            this.promptValues = {};
+            this.activeField = 'amount';
+            this.syncDisplay();
+        },
+
+        focusField(fieldName) {
+            this.activeField = fieldName;
+        },
+
+        syncDisplay() {
+            if (this._syncTimer) clearTimeout(this._syncTimer);
+            this._syncTimer = setTimeout(function() {
+                if (typeof sendModalToCustomerDisplay === 'function') sendModalToCustomerDisplay();
+            }, 400);
+        },
+
+        activateScanner(fieldName) {
+            var self = this;
+            this.$nextTick(function() {
+                var input = self.$el.querySelector('[data-prompt-field="' + fieldName + '"]');
+                if (input) input.focus();
+            });
+        },
+
+        addPayment() {
+            if (this.amount <= 0) return;
+            if (!this.currentAllowChange && this.amount > this.remaining) return;
+            this.payments.push({
+                method: this.method,
+                method_id: this.currentMethodId,
+                amount: this.amount,
+                reference: this.reference,
+                profile_id: this.currentProfileId,
+                prompt_data: this.promptDataJson
+            });
+            this.amount = 0;
+            this.amountDisplay = '';
+            this.reference = '';
+            this.promptValues = {};
+            this.activeField = 'amount';
+            this.syncDisplay();
+        },
+
+        removePayment(idx) {
+            this.payments.splice(idx, 1);
+            this.syncDisplay();
+        },
+
+        submitPayment() {
+            console.log('[Payment] submitPayment called, canPay:', this.canPay, 'amount:', this.amount, 'total:', this.total, 'payments:', this.payments.length);
+            if (!this.canPay) return;
+            if (this.payments.length > 0 && this.paidTotal >= this.total) this.amount = 0;
+            var form = document.getElementById('payment-form');
+            console.log('[Payment] form found:', !!form, 'htmx:', typeof htmx);
+            if (form && typeof htmx !== 'undefined') {
+                htmx.trigger(form, 'submit');
+            } else if (form) {
+                form.submit();
+            }
+        },
+
+        init() {
+            window._paymentModalActive = true;
+            this.$nextTick(() => {
+                var input = this.$el.querySelector('input[name=amount_display]');
+                if (input) input.focus();
+            });
+        }
+    };
+}
+
+function closeModal() {
+    window._paymentModalActive = false;
+    document.getElementById('modal-container').innerHTML = '';
+    if (typeof sendModalToCustomerDisplay === 'function') sendModalToCustomerDisplay();
+}
+</script>
+
+<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2"
+     data-payment-modal
+     x-data="paymentModal()"
+     x-init="init()"
+     x-ignore>
+
+    <div class="bg-white rounded-xl w-full shadow-2xl overflow-hidden"
+         style="max-width: 720px; max-height: calc(100vh - 16px); display:flex; flex-direction:column;"
+         @click.stop>
+
         <!-- Header -->
-        <div class="px-5 py-3.5 flex justify-between items-center bg-gradient-to-br from-slate-50/90 via-blue-50/90 to-indigo-50/90 backdrop-blur-sm">
-            <div>
-                <h2 class="text-lg font-bold text-gray-900">Payment - {{ bill.bill_number }}</h2>
-                {% if bill.table %}
-                <p class="text-blue-700 text-xs font-medium">Table: {{ bill.table.number }}</p>
-                {% endif %}
+        <div class="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2.5" style="flex-shrink:0;">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold">Payment</h3>
+                        <p class="text-green-100 text-[10px]">{{ bill.bill_number }}{% if bill.table %} &middot; Table {{ bill.table.number }}{% endif %}</p>
+                    </div>
+                </div>
+                <button onclick="closeModal()" type="button"
+                        class="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
             </div>
-            <button onclick="closeModal()" class="p-2 hover:bg-white/50 rounded-lg text-gray-700 transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
         </div>
-        
-        <form hx-post="{% url 'pos:process_payment' bill.id %}"
-              hx-target="#modal-container"
-              hx-swap="innerHTML"
-              @submit.prevent="if(submitPayment()) $el.requestSubmit()">
-            {% csrf_token %}
-            
-            <div class="p-4">
-                <!-- Bill Summary -->
-                <div class="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-3 mb-4 border border-gray-200">
-                    <div class="flex justify-between mb-1.5">
-                        <span class="text-sm text-gray-600">Total Bill</span>
-                        <span class="font-bold text-gray-900">Rp {{ bill.total|floatformat:0|intcomma }}</span>
-                    </div>
-                    {% if bill.get_paid_amount > 0 %}
-                    <div class="flex justify-between mb-2 text-green-600">
-                        <span>Already Paid</span>
-                        <span class="font-semibold">- Rp {{ bill.get_paid_amount|floatformat:0|intcomma }}</span>
-                    </div>
-                    {% endif %}
-                    <div class="flex justify-between pt-2 border-t border-gray-300">
-                        <span class="text-base font-bold text-gray-900">Remaining</span>
-                        <span class="text-xl font-bold text-red-600" x-text="'Rp ' + formatNumber(remaining)"></span>
-                    </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-3 gap-2 p-2.5 bg-gray-50 border-b" style="flex-shrink:0;">
+            <div class="bg-white rounded-lg p-2 border text-center">
+                <div class="text-[10px] font-semibold text-gray-500 uppercase">Total</div>
+                <div class="text-lg font-bold text-gray-900">Rp <span x-text="fmt(total)"></span></div>
+            </div>
+            <div class="bg-white rounded-lg p-2 border text-center">
+                <div class="text-[10px] font-semibold text-gray-500 uppercase">Bayar</div>
+                <div class="text-lg font-bold" :class="displayPaying >= total ? 'text-green-600' : 'text-amber-600'">
+                    Rp <span x-text="fmt(displayPaying)"></span>
                 </div>
-                
-                <!-- Split Payment List -->
-                <div x-show="payments.length > 0" class="mb-4">
-                    <h3 class="font-semibold text-sm text-gray-800 mb-2">Split Payments</h3>
-                    <div class="space-y-2">
-                        <template x-for="(payment, index) in payments" :key="index">
-                            <div class="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                <div>
-                                    <span class="font-semibold" x-text="payment.methodLabel"></span>
-                                    <span class="text-gray-600 text-sm ml-2" x-text="'Rp ' + formatNumber(payment.amount)"></span>
-                                    <span x-show="payment.reference" class="text-gray-500 text-xs ml-2" x-text="'(' + payment.reference + ')'"></span>
-                                </div>
-                                <button type="button" @click="removePayment(index)" class="text-red-600 hover:text-red-800">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </div>
+            <div class="rounded-lg p-2 border text-center" :class="changeAmount > 0 ? 'bg-green-50 border-green-200' : (payments.length > 0 && paidTotal < total ? 'bg-amber-50 border-amber-200' : 'bg-white')">
+                <div class="text-[10px] font-semibold uppercase" :class="changeAmount > 0 ? 'text-green-700' : (payments.length > 0 && paidTotal < total ? 'text-amber-700' : 'text-gray-500')"
+                     x-text="changeAmount > 0 ? 'Kembalian' : (payments.length > 0 && paidTotal < total ? 'Sisa' : 'Kembalian')"></div>
+                <div class="text-lg font-bold" :class="changeAmount > 0 ? 'text-green-600' : (payments.length > 0 && paidTotal < total ? 'text-amber-600' : 'text-gray-400')">
+                    Rp <span x-text="changeAmount > 0 ? fmt(changeAmount) : (payments.length > 0 && paidTotal < total ? fmt(remaining) : fmt(0))"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Applied Payments List (split payments) - x-html avoids x-for/initTree bug -->
+        <div x-show="payments.length > 0" x-cloak class="px-2.5 pt-2 pb-1 bg-gray-50 border-b" style="flex-shrink:0;">
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Pembayaran Tercatat</div>
+            <div style="display:flex; flex-wrap:wrap; gap:4px;"
+                 x-html="paymentsListHtml"
+                 @click="var btn=$event.target.closest('[data-rm]'); if(btn) removePayment(parseInt(btn.dataset.rm))"></div>
+        </div>
+
+        <!-- Content: 30/70 Split Layout -->
+        <div style="flex:1 1 0%; min-height:0; display:flex;">
+            <form id="payment-form"
+                  hx-post="{% url 'pos:process_payment' bill.id %}"
+                  hx-target="#modal-container"
+                  hx-swap="innerHTML"
+                  style="display:flex; flex:1; min-height:0;">
+                {% csrf_token %}
+                <!-- Current payment hidden inputs -->
+                <input type="hidden" name="method" :value="currentMethodId">
+                <input type="hidden" name="amount" :value="amount">
+                <input type="hidden" name="reference" :value="reference">
+                <input type="hidden" name="profile_id" :value="currentProfileId">
+                <input type="hidden" name="prompt_data" :value="promptDataJson">
+                <!-- Applied payments hidden inputs (x-html, no x-for needed) -->
+                <div x-html="paymentsHiddenHtml"></div>
+
+                <!-- LEFT PANEL: Payment Methods (30%) -->
+                <div style="width:30%; flex-shrink:0; border-right:1px solid #e5e7eb; overflow-y:auto;"
+                     class="bg-gray-50">
+                    <div class="p-2.5">
+                        <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 px-1">Metode Pembayaran</div>
+                        <div class="flex flex-col gap-1.5">
+                            {% for pm in payment_methods_list %}
+                            <button type="button"
+                                    @click="setMethod('{{ pm.id }}')"
+                                    class="flex items-center gap-2.5 rounded-xl border-2 transition-all px-3 py-2.5 w-full text-left"
+                                    :class="method === '{{ pm.id }}'
+                                        ? 'border-green-500 bg-white text-green-800 shadow-md shadow-green-500/10'
+                                        : 'border-transparent bg-white/60 text-gray-600 hover:bg-white hover:border-gray-200 hover:shadow-sm'">
+                                <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center shadow-sm"
+                                     style="background: {{ pm.color }}">
+                                    <svg class="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <circle cx="10" cy="10" r="4"/>
                                     </svg>
-                                </button>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-                
-                <!-- Payment Method Selection - DYNAMIC -->
-                <div class="mb-3">
-                    <label class="block text-xs font-semibold text-gray-700 mb-2">Payment Method</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <template x-for="pm in paymentMethods" :key="pm.id">
-                            <button type="button" 
-                                    @click="setMethod(pm.id)" 
-                                    :class="method === pm.id ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300' : 'bg-white border-gray-300'"
-                                    class="p-3 rounded-lg border-2 text-center hover:bg-gray-50 transition">
-                                <div class="text-xl mb-0.5" x-text="pm.icon"></div>
-                                <div class="font-semibold text-sm" x-text="pm.label"></div>
+                                </div>
+                                <span class="font-bold text-xs leading-tight">{{ pm.label }}</span>
                             </button>
-                        </template>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
-                
-                <!-- Amount Input -->
-                <div class="mb-3">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">Amount</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 text-lg font-semibold">Rp</span>
+
+                <!-- RIGHT PANEL: Amount + Prompts + Numpad (70%) -->
+                <div style="width:70%; overflow-y:auto;" class="p-3">
+                    <!-- Amount Input -->
+                    <div class="flex items-center border-2 rounded-xl mb-2.5 bg-white transition-all"
+                         :class="!currentAllowChange && amount > remaining ? 'border-red-300' : (activeField === 'amount' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-gray-200')"
+                         @click="activeField = 'amount'; $el.querySelector('input').focus()">
+                        <span class="pl-3 font-bold text-base" :class="activeField === 'amount' ? 'text-green-600' : 'text-gray-400'">Rp</span>
                         <input type="text"
                                name="amount_display"
                                x-model="amountDisplay"
-                               @input="updateAmount($event.target.value)"
-                               :class="(method !== 'cash' && amount > remaining) ? 'border-red-400 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'"
-                               class="w-full pl-12 pr-3 py-3 border-2 rounded-lg text-right text-2xl font-bold bg-gray-50"
+                               @input="onInput($event.target.value)"
+                               @focus="activeField = 'amount'"
+                               class="w-full pr-3 py-2.5 pl-1 text-right text-xl font-bold bg-transparent outline-none"
                                placeholder="0"
-                               inputmode="numeric">
+                               inputmode="numeric"
+                               autocomplete="off">
                     </div>
 
-                    <!-- Inline validation warnings -->
-                    <p x-show="method !== 'cash' && amount > remaining && remaining > 0"
-                       x-cloak
-                       class="mt-1 text-xs text-red-600 font-medium">
-                        Non-cash payment cannot exceed remaining Rp <span x-text="formatNumber(remaining)"></span>
-                    </p>
-                    <p x-show="method === 'cash' && payments.length > 0 && amount > remaining && remaining > 0"
-                       x-cloak
-                       class="mt-1 text-xs text-red-600 font-medium">
-                        Cash overpayment only allowed for single payment
-                    </p>
+                    <!-- Dynamic Data Entry Prompts (server-side rendered per method, toggled with x-show) -->
+                    {% if use_profiles %}
+                    {% for pm in payment_methods_list %}
+                    {% if pm.prompts %}
+                    <div x-show="method === '{{ pm.id }}'" x-cloak class="space-y-1.5 mb-2.5">
+                        {% for prompt in pm.prompts %}
+                        <div>
+                            <label class="text-[10px] font-semibold uppercase transition-colors"
+                                   :class="activeField === 'prompt:{{ prompt.field_name }}' ? 'text-green-600' : 'text-gray-500'">
+                                {{ prompt.label|default:prompt.field_name }}
+                                <span x-show="activeField === 'prompt:{{ prompt.field_name }}'" class="text-[9px] text-green-500 ml-1">NUMPAD</span>
+                            </label>
+                            <div class="flex gap-1">
+                                {% if prompt.field_name == 'eft_no' and eft_terminals %}
+                                <!-- EFT Terminal dropdown from master data -->
+                                <select data-prompt-field="{{ prompt.field_name }}"
+                                        x-model="promptValues['{{ prompt.field_name }}']"
+                                        @change="syncDisplay()"
+                                        class="w-full px-2.5 py-1.5 border-2 border-gray-200 rounded-lg text-xs focus:border-green-500 outline-none font-mono bg-white">
+                                    <option value="">-- Pilih EFT Terminal --</option>
+                                    {% for eft in eft_terminals %}
+                                    <option value="{{ eft.code }}">{{ eft.code }}: {{ eft.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% else %}
+                                <input type="text"
+                                       data-prompt-field="{{ prompt.field_name }}"
+                                       placeholder="{{ prompt.placeholder|default:'' }}"
+                                       maxlength="{{ prompt.max_length|default:99 }}"
+                                       x-model="promptValues['{{ prompt.field_name }}']"
+                                       @focus="activeField = 'prompt:{{ prompt.field_name }}'"
+                                       @input="syncDisplay()"
+                                       class="w-full px-2.5 py-1.5 border-2 rounded-lg text-xs outline-none transition-all {% if prompt.field_type == 'numeric' %}font-mono{% endif %}"
+                                       :class="activeField === 'prompt:{{ prompt.field_name }}' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-gray-200'">
+                                {% endif %}
+                                {% if prompt.use_scanner %}
+                                <button type="button" @click="activateScanner('{{ prompt.field_name }}'); activeField = 'prompt:{{ prompt.field_name }}'"
+                                        class="px-2 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition flex-shrink-0">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                                    </svg>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                    {% endif %}
 
-                    <!-- Quick Amount Buttons - DYNAMIC (Cash only) -->
-                    <div x-show="method === 'cash'" class="grid grid-cols-4 gap-2 mt-2">
-                        <template x-for="qa in quickAmounts" :key="qa.label">
-                            <button type="button"
-                                    @click="setQuickAmount(qa.getValue(remaining))"
-                                    :class="`py-2 bg-${qa.color}-100 hover:bg-${qa.color}-200 text-${qa.color}-800 rounded-lg font-semibold transition`">
-                                <span x-text="qa.label"></span>
-                            </button>
-                        </template>
+                    <!-- Legacy Reference Input (Non-profile mode) -->
+                    {% if not use_profiles %}
+                    {% for pm in payment_methods_list %}
+                    {% if pm.ref %}
+                    <div x-show="method === '{{ pm.id }}'" x-cloak class="mb-2">
+                        <input type="text"
+                               x-model="reference"
+                               placeholder="{{ pm.refPlaceholder|default:'Reference' }}"
+                               class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-xs focus:border-green-500 outline-none">
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                    {% endif %}
+
+                    <!-- Numpad target indicator -->
+                    <div x-show="activeField && activeField.startsWith('prompt:')" x-cloak
+                         class="flex items-center gap-1.5 mb-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded-lg">
+                        <svg class="w-3 h-3 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
+                        </svg>
+                        <span class="text-[10px] font-bold text-green-700">Numpad → <span x-text="activeField.substring(7).toUpperCase()"></span></span>
+                        <button type="button" @click="activeField = 'amount'" class="ml-auto text-[9px] font-bold text-green-600 hover:text-green-800 bg-green-100 px-1.5 py-0.5 rounded">
+                            ← Amount
+                        </button>
                     </div>
 
-                    <!-- Numpad Visual -->
-                    <div class="grid grid-cols-4 gap-1.5 mt-2">
-                        <template x-for="key in ['7','8','9','DEL','4','5','6','C','1','2','3','00','0','000','']" :key="key">
-                            <button type="button"
-                                    x-show="key !== ''"
-                                    @click="numpadPress(key)"
-                                    :class="key === 'DEL' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : key === 'C' ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'"
-                                    class="py-2.5 rounded-lg font-bold text-lg transition-colors active:scale-95">
-                                <span x-text="key === 'DEL' ? '\u232B' : key"></span>
-                            </button>
-                        </template>
+                    <!-- Numpad -->
+                    <div class="grid grid-cols-4 gap-1.5 mb-2">
+                        <button type="button" @click="numpad('7')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">7</button>
+                        <button type="button" @click="numpad('8')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">8</button>
+                        <button type="button" @click="numpad('9')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">9</button>
+                        <button type="button" @click="numpad('DEL')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-amber-100 text-amber-800 hover:bg-amber-200" style="height:44px;">&#9003;</button>
+                        <button type="button" @click="numpad('4')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">4</button>
+                        <button type="button" @click="numpad('5')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">5</button>
+                        <button type="button" @click="numpad('6')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">6</button>
+                        <button type="button" @click="numpad('C')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-red-100 text-red-800 hover:bg-red-200" style="height:44px;">C</button>
+                        <button type="button" @click="numpad('1')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">1</button>
+                        <button type="button" @click="numpad('2')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">2</button>
+                        <button type="button" @click="numpad('3')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">3</button>
+                        <button type="button" @click="numpad('00')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">00</button>
+                        <button type="button" @click="numpad('0')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">0</button>
+                        <button type="button" @click="numpad('000')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">000</button>
+                    </div>
+
+                    <!-- Quick Amounts -->
+                    <div class="grid grid-cols-4 gap-1.5">
+                        <button type="button" @click="setAmount(remaining)"
+                                class="py-2 rounded-lg bg-green-600 text-white font-bold text-xs hover:bg-green-700 active:scale-95 transition-all">
+                            Exact
+                        </button>
+                        <button type="button" @click="setAmount(50000)"
+                                class="py-2 rounded-lg bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 active:scale-95">
+                            50K
+                        </button>
+                        <button type="button" @click="setAmount(100000)"
+                                class="py-2 rounded-lg bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 active:scale-95">
+                            100K
+                        </button>
+                        <button type="button" @click="setAmount(Math.ceil(remaining/50000)*50000)"
+                                class="py-2 rounded-lg bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 active:scale-95">
+                            Round
+                        </button>
                     </div>
                 </div>
-                
-                <!-- Reference Input - DYNAMIC (Non-cash only) -->
-                <div x-show="selectedMethod?.requiresReference" class="mb-3">
-                    <label class="block text-xs font-semibold text-gray-700 mb-1.5" x-text="selectedMethod?.referencePlaceholder || 'Reference'"></label>
-                    <input type="text" 
-                           x-model="reference"
-                           :placeholder="selectedMethod?.referencePlaceholder || 'Enter reference...'"
-                           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                
-                <!-- Change Display (Cash only) -->
-                <div x-show="method === 'cash' && change > 0" 
-                     class="mb-3 p-3 bg-green-100 border-2 border-green-400 rounded-lg text-center">
-                    <span class="text-xs text-green-700 font-semibold">Change</span>
-                    <div class="text-2xl font-bold text-green-800" x-text="'Rp ' + formatNumber(change)"></div>
-                </div>
-                
-                <!-- Hidden inputs for split payments -->
-                <template x-for="(payment, index) in payments" :key="index">
-                    <div>
-                        <input type="hidden" :name="'payments[' + index + '][method]'" :value="payment.method">
-                        <input type="hidden" :name="'payments[' + index + '][amount]'" :value="payment.amount">
-                        <input type="hidden" :name="'payments[' + index + '][reference]'" :value="payment.reference">
-                    </div>
-                </template>
-                
-                <!-- Current payment -->
-                <input type="hidden" name="method" x-model="method">
-                <input type="hidden" name="amount" x-model="amount">
-                <input type="hidden" name="reference" x-model="reference">
-                
-                <!-- Actions -->
-                <div class="flex gap-2">
-                    <button type="button" onclick="closeModal()" 
-                            class="flex-1 py-3 rounded-lg bg-white border-2 border-gray-300 text-gray-800 font-bold hover:bg-gray-50 hover:border-gray-400 transition shadow-sm">
-                        Cancel
-                    </button>
-                    
-                    <!-- Add Payment Button (for split payment) -->
-                    <button type="button"
-                            @click="addPayment()"
-                            x-show="canAddSplitPayment"
-                            :disabled="amount <= 0 || (method !== 'cash' && amount > remaining)"
-                            class="flex-1 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
-                        + Add Payment
-                    </button>
-                    
-                    <!-- Submit Button -->
-                    <button type="submit"
-                            :disabled="!canSubmit"
-                            class="flex-1 py-3 rounded-lg bg-gradient-to-r from-green-600 to-green-700 text-white font-bold hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
-                        <span x-show="payments.length > 0">Complete Payment</span>
-                        <span x-show="payments.length === 0">Pay Now</span>
-                    </button>
-                </div>
-            </div>
-        </form>
+            </form>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-2.5 border-t bg-gray-50 flex gap-2" style="flex-shrink:0;">
+            <button type="button" onclick="closeModal()"
+                    class="px-5 py-2.5 rounded-lg font-bold text-xs bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-all">
+                Cancel
+            </button>
+            <button type="button"
+                    x-show="amount > 0 && (payments.length > 0 || amount < total)"
+                    x-cloak
+                    @click="addPayment()"
+                    class="px-4 py-2.5 rounded-lg font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white transition-all">
+                <span class="flex items-center justify-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    + Split
+                </span>
+            </button>
+            <button type="button"
+                    @click="submitPayment()"
+                    :disabled="!canPay"
+                    class="flex-1 py-2.5 rounded-lg font-bold text-sm transition-all"
+                    :class="canPay ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg' : 'bg-gray-300 text-gray-500 cursor-not-allowed'">
+                <span class="flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span x-text="canPay ? 'Bayar Rp ' + fmt(payments.length > 0 ? paidTotal : amount) : 'Masukkan Nominal'"></span>
+                </span>
+            </button>
+        </div>
     </div>
 </div>
 
 <style>
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-@keyframes slideUp {
-    from { 
-        opacity: 0; 
-        transform: translateY(20px) scale(0.95); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateY(0) scale(1); 
-    }
-}
-.animate-fadeIn {
-    animation: fadeIn 0.2s ease-out;
-}
-.animate-slideUp {
-    animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+[x-cloak] { display: none !important; }
+/* Touch screen fixes: eliminate 300ms tap delay + improve responsiveness */
+[data-payment-modal] { touch-action: manipulation; }
+[data-payment-modal] button,
+[data-payment-modal] select,
+[data-payment-modal] input {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
 }
 </style>
 
+<!-- Init Alpine: clone element without x-ignore so Alpine's MO handles it naturally.
+     No x-for with non-empty arrays remains, so the initTree marker bug is avoided.
+     Touch fix: use rAF to ensure DOM is settled before clone+replace. -->
 <script>
-function closeModal() {
-    document.getElementById('modal-container').innerHTML = '';
-    
-    // Clear modal on customer display
-    if (typeof sendModalToCustomerDisplay === 'function') {
-        console.log('🔔 Modal closed, clearing from customer display...');
-        sendModalToCustomerDisplay();
-    }
-}
-</script>
+(function() {
+    var el = document.querySelector('[data-payment-modal]');
+    if (!el || typeof Alpine === 'undefined') return;
 
+    // Use requestAnimationFrame for more reliable timing on touch devices
+    requestAnimationFrame(function() {
+        setTimeout(function() {
+            if (el._x_dataStack) return;
+            var clone = el.cloneNode(true);
+            clone.removeAttribute('x-ignore');
+            el.parentNode.replaceChild(clone, el);
+            // Tell HTMX to process hx-* attributes on the cloned elements
+            if (typeof htmx !== 'undefined') htmx.process(clone);
+            console.log('[Payment Modal] Alpine clone+replace done, touch ready');
+        }, 0);
+    });
+})();
+</script>

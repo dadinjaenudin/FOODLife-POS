@@ -35,6 +35,13 @@ urlpatterns = [
     # Payment
     path('bill/<int:bill_id>/payment/', views.payment_modal, name='payment_modal'),
     path('bill/<int:bill_id>/pay/', views.process_payment, name='process_payment'),
+
+    # QRIS Payment
+    path('bill/<int:bill_id>/qris/create/', views.qris_create, name='qris_create'),
+    path('bill/<int:bill_id>/qris/<str:transaction_id>/status/', views.qris_status, name='qris_status'),
+    path('bill/<int:bill_id>/qris/<str:transaction_id>/simulate/', views.qris_simulate, name='qris_simulate'),
+    path('bill/<int:bill_id>/qris/<str:transaction_id>/cancel/', views.qris_cancel, name='qris_cancel'),
+    path('bill/<int:bill_id>/qris/success/', views.qris_payment_success, name='qris_payment_success'),
     
     # Bill Management - Split, Merge, Move, Transfer
     path('bill/<int:bill_id>/split/', views.split_bill_modal, name='split_bill_modal'),

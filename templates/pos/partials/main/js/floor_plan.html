@@ -49,54 +49,50 @@ CATATAN:
         overlay.id = 'floor-plan-modal';
         overlay.className = 'absolute inset-0 bg-white z-50 animate-slideInLeft';
         overlay.innerHTML = `
-            <div class="w-full h-full flex flex-col bg-gradient-to-br from-gray-50 to-white">
-                <!-- Header with Gradient -->
-                <div class="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 overflow-hidden shadow-lg">
-                    <div class="absolute inset-0 opacity-20">
-                        <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.3),transparent)]"></div>
-                    </div>
-
-                    <div class="relative flex items-center justify-between">
+            <div class="w-full h-full flex flex-col bg-gray-100">
+                <!-- Header -->
+                <div class="bg-white border-b border-gray-200 px-3 py-1.5 shadow-sm">
+                    <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
-                            <div class="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center shadow-lg">
-                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div class="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"></path>
                                 </svg>
                             </div>
                             <div>
-                                <h2 class="text-xl font-bold text-white tracking-tight">Floor Plan</h2>
-                                <p class="text-xs text-white/80 font-medium">Select your table</p>
+                                <h2 class="text-sm font-bold text-gray-900">Floor Plan</h2>
+                                <p class="text-[10px] text-gray-500">Tap table to order</p>
                             </div>
                         </div>
 
                         <!-- Legend -->
-                        <div class="flex items-center gap-1.5">
-                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
-                                <div class="w-2.5 h-2.5 bg-green-400 rounded-full"></div>
-                                <span class="font-bold text-white text-xs">Available</span>
+                        <div class="flex items-center gap-1 text-[10px]">
+                            <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span class="font-medium text-gray-600">Available</span>
                             </div>
-                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
-                                <div class="w-2.5 h-2.5 bg-red-400 rounded-full animate-pulse"></div>
-                                <span class="font-bold text-white text-xs">Occupied</span>
+                            <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                                <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                                <span class="font-medium text-gray-600">Occupied</span>
                             </div>
-                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
-                                <div class="w-2.5 h-2.5 bg-amber-400 rounded-full"></div>
-                                <span class="font-bold text-white text-xs">Hold</span>
+                            <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                                <div class="w-2 h-2 bg-amber-500 rounded-full"></div>
+                                <span class="font-medium text-gray-600">Hold</span>
                             </div>
-                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
-                                <div class="w-2.5 h-2.5 bg-purple-400 rounded-full"></div>
-                                <span class="font-bold text-white text-xs">Joined</span>
+                            <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                                <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                <span class="font-medium text-gray-600">Joined</span>
                             </div>
-                            <div class="flex items-center gap-1 px-2 py-1 bg-white/20 backdrop-blur-md rounded-lg">
-                                <div class="w-2.5 h-2.5 bg-gray-400 rounded-full"></div>
-                                <span class="font-bold text-white text-xs">Cleaning</span>
+                            <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                                <div class="w-2 h-2 bg-gray-400 rounded-full"></div>
+                                <span class="font-medium text-gray-600">Cleaning</span>
                             </div>
                         </div>
 
                         <!-- Close Button -->
                         <button onclick="closeFloorPlanModal()"
-                            class="w-9 h-9 bg-red-500/90 hover:bg-red-600 rounded-lg flex items-center justify-center transition-all group shadow-lg hover:shadow-xl">
-                            <svg class="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            class="w-7 h-7 bg-gray-100 hover:bg-red-500 hover:text-white text-gray-500 rounded-lg flex items-center justify-center transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                             </svg>
                         </button>

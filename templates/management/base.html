@@ -46,7 +46,7 @@
             
             // Auto-expand based on current path
             const path = window.location.pathname;
-            if (path.includes('terminals') || path.includes('display-configs') || path.includes('customer-display') || path.includes('receipt-templates')) {
+            if (path.includes('terminals') || path.includes('display-configs') || path.includes('customer-display') || path.includes('receipt-templates') || path.includes('payment-profiles') || path.includes('media-groups') || path.includes('eft-terminals')) {
                 this.terminalManagementOpen = true;
             } else if (path.includes('master-data') || path.includes('users') || path.includes('settings') || path.includes('reports') || path.includes('stock')) {
                 this.dataManagementOpen = true;
@@ -135,8 +135,20 @@
                     <div x-show="terminalManagementOpen" 
                          x-collapse
                          class="ml-8 mt-1 space-y-1">
-                        <a href="{% url 'management:terminals' %}" 
-                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'terminals' in request.path and 'display' not in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                        <a href="{% url 'management:eft_terminal_list' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'eft-terminals' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            EFT Terminals
+                        </a>
+                        <a href="{% url 'management:media_group_list' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'media-groups' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            Media Groups
+                        </a>
+                        <a href="{% url 'management:payment_profile_list' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'payment-profiles' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            Payment Profiles
+                        </a>
+                        <a href="{% url 'management:terminals' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'terminals' in request.path and 'display' not in request.path and 'eft' not in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             All Terminals
                         </a>
                         <a href="{% url 'management:display_config_list' %}" 
@@ -147,7 +159,7 @@
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'customer-display/slides' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Display Slides
                         </a>
-                        <a href="{% url 'management:receipt_template_list' %}" 
+                        <a href="{% url 'management:receipt_template_list' %}"
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'receipt-templates' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Receipt Templates
                         </a>

@@ -35,10 +35,12 @@ def create_receipt_job(bill, terminal_id='POS-001'):
         ],
         'payments': [
             {
-                'method': payment.method,
-                'amount': float(payment.amount)
+                'method': payment.payment_profile.name if payment.payment_profile else payment.get_method_display(),
+                'method_code': payment.method,
+                'amount': float(payment.amount),
+                'metadata': payment.payment_metadata or {},
             }
-            for payment in bill.payments.all()
+            for payment in bill.payments.select_related('payment_profile')
         ],
         'subtotal': float(bill.subtotal),
         'discount': float(bill.discount_amount),

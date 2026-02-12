@@ -117,7 +117,7 @@
             </tr>
             <tr>
                 <td>Cashier</td>
-                <td>: {{ bill.closed_by.get_full_name|default:bill.closed_by.username }}</td>
+                <td>: {% if bill.closed_by %}{{ bill.closed_by.get_full_name|default:bill.closed_by.username }}{% elif bill.created_by %}{{ bill.created_by.get_full_name|default:bill.created_by.username }}{% else %}-{% endif %}</td>
             </tr>
             {% if bill.table %}
             <tr>

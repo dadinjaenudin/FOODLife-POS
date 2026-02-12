@@ -224,17 +224,32 @@ class Payment(models.Model):
     METHOD_CHOICES = [
         ('cash', 'Cash'),
         ('card', 'Credit/Debit Card'),
+        ('debit', 'Debit Card'),
         ('qris', 'QRIS'),
         ('transfer', 'Bank Transfer'),
         ('ewallet', 'E-Wallet'),
         ('voucher', 'Voucher'),
     ]
-    
+
     bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='payments')
-    method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    method = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     reference = models.CharField(max_length=100, blank=True)
-    
+
+    payment_profile = models.ForeignKey(
+        'core.PaymentMethodProfile', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='payments',
+        help_text='Payment method profile used (null for legacy payments)'
+    )
+    payment_metadata = models.JSONField(
+        default=dict, blank=True,
+        help_text='Extra data fields from prompts: {"account_no": "1234", "eft_no": "AB"}'
+    )
+    eft_desc = models.CharField(
+        max_length=120, blank=True,
+        help_text='Denormalized EFT terminal description, e.g. "01: BCA"'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey('core.User', on_delete=models.PROTECT, related_name='payments_processed')
     
@@ -332,6 +347,44 @@ class PrintJob(models.Model):
     
     def __str__(self):
         return f"PrintJob #{self.id} - {self.job_type} for {self.terminal_id}"
+
+
+class QRISTransaction(models.Model):
+    """Tracks QRIS payment lifecycle (pending → paid/expired/cancelled)."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('expired', 'Expired'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='qris_transactions')
+    transaction_id = models.CharField(max_length=100, unique=True, db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    qr_string = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    gateway_name = models.CharField(max_length=50, default='mock')
+    gateway_response = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='qris_transactions'
+    )
+
+    class Meta:
+        db_table = 'pos_qris_transaction'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['bill', 'status']),
+            models.Index(fields=['transaction_id']),
+        ]
+
+    def __str__(self):
+        return f"QRIS {self.transaction_id} - {self.status} - Rp{self.amount}"
 
 
 class StoreProductStock(models.Model):

@@ -1,5 +1,5 @@
 ﻿from django.contrib import admin
-from .models import Bill, BillItem, Payment, BillLog, StoreProductStock
+from .models import Bill, BillItem, Payment, BillLog, StoreProductStock, QRISTransaction
 from .models_refund import BillRefund, BillRefundItem, RefundPaymentReversal
 
 
@@ -64,6 +64,14 @@ class BillRefundAdmin(admin.ModelAdmin):
             'fields': ('completed_by', 'completed_at', 'original_payments', 'refund_payments')
         }),
     )
+
+
+@admin.register(QRISTransaction)
+class QRISTransactionAdmin(admin.ModelAdmin):
+    list_display = ['transaction_id', 'bill', 'amount', 'status', 'gateway_name', 'created_at', 'paid_at']
+    list_filter = ['status', 'gateway_name', 'created_at']
+    search_fields = ['transaction_id', 'bill__bill_number']
+    readonly_fields = ['id', 'created_at']
 
 
 @admin.register(StoreProductStock)

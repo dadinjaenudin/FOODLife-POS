@@ -314,49 +314,39 @@
                 
                 <div class="border-t border-gray-200 pt-3">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        💳 Available Payment Methods
+                        Payment Method Profiles
                         <span class="text-xs font-normal text-gray-500 ml-1">(Select which payment buttons to show in POS)</span>
                     </label>
+                    {% if payment_profiles %}
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {% for pp in payment_profiles %}
                         <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                            <input type="checkbox" name="default_payment_methods" value="cash"
+                            <input type="checkbox" name="payment_profile_ids" value="{{ pp.id }}"
                                    class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
-                                   {% if 'cash' in terminal.default_payment_methods %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-700">💵 Cash</span>
+                                   {% if pp.id in assigned_profile_ids %}checked{% endif %}>
+                            <div class="flex items-center gap-1.5 min-w-0">
+                                <div class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: {{ pp.color }};"></div>
+                                <span class="text-sm font-medium text-gray-700 truncate">{{ pp.name }}</span>
+                            </div>
                         </label>
-                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                            <input type="checkbox" name="default_payment_methods" value="card"
-                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
-                                   {% if 'card' in terminal.default_payment_methods %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-700">💳 Card</span>
-                        </label>
-                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                            <input type="checkbox" name="default_payment_methods" value="qris"
-                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
-                                   {% if 'qris' in terminal.default_payment_methods %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-700">📱 QRIS</span>
-                        </label>
-                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                            <input type="checkbox" name="default_payment_methods" value="transfer"
-                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
-                                   {% if 'transfer' in terminal.default_payment_methods %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-700">🏦 Bank Transfer</span>
-                        </label>
-                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                            <input type="checkbox" name="default_payment_methods" value="ewallet"
-                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
-                                   {% if 'ewallet' in terminal.default_payment_methods %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-700">💰 E-Wallet</span>
-                        </label>
-                        <label class="flex items-center p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                            <input type="checkbox" name="default_payment_methods" value="debit"
-                                   class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 mr-2"
-                                   {% if 'debit' in terminal.default_payment_methods %}checked{% endif %}>
-                            <span class="text-sm font-medium text-gray-700">💳 Debit</span>
-                        </label>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                        No payment profiles configured for this brand.
+                        <a href="{% url 'management:payment_profile_list' %}" class="underline font-semibold">Create profiles</a> first.
+                    </div>
+                    {% endif %}
+
+                    <!-- Legacy fallback checkboxes (hidden, populated from profiles) -->
+                    <div id="legacy-payment-methods" class="hidden">
+                        {% for method_id in terminal.default_payment_methods %}
+                        <input type="hidden" name="default_payment_methods" value="{{ method_id }}">
+                        {% endfor %}
                     </div>
                     <p class="text-xs text-gray-500 mt-2">
-                        ℹ️ Only selected payment methods will appear as buttons in the POS payment screen
+                        Only selected payment methods will appear as buttons in the POS payment screen.
+                        <a href="{% url 'management:payment_profile_list' %}" class="text-indigo-600 hover:underline">Manage profiles</a>
                     </p>
                 </div>
             </div>

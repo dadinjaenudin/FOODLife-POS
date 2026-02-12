@@ -1,0 +1,107 @@
+{% extends "management/base.html" %}
+
+{% block title %}{% if is_edit %}Edit{% else %}New{% endif %} EFT Terminal{% endblock %}
+{% block page_title %}{% if is_edit %}Edit{% else %}New{% endif %} EFT Terminal{% endblock %}
+
+{% block content %}
+<!-- Messages -->
+{% if messages %}
+<div class="mb-3 space-y-1">
+    {% for message in messages %}
+    <div class="flex items-center p-2.5 rounded-lg text-sm {% if message.tags == 'error' %}bg-red-50 text-red-700 border border-red-200{% elif message.tags == 'success' %}bg-emerald-50 text-emerald-700 border border-emerald-200{% else %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}">
+        {% if message.tags == 'error' %}
+        <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+        {% elif message.tags == 'success' %}
+        <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+        {% endif %}
+        {{ message }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Header -->
+<div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+            </svg>
+        </div>
+        <div>
+            <h2 class="text-lg font-bold text-gray-900">
+                {% if is_edit %}Edit EFT Terminal{% else %}New EFT Terminal{% endif %}
+            </h2>
+            <p class="text-xs text-gray-500">
+                {% if is_edit %}{{ eft.code }}: {{ eft.name }}{% else %}Add a new bank/EFT terminal code{% endif %}
+            </p>
+        </div>
+    </div>
+    <a href="{% url 'management:eft_terminal_list' %}"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+        </svg>
+        Back
+    </a>
+</div>
+
+<!-- Form -->
+<div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+    <div class="p-4 bg-gray-50 border-b border-gray-200">
+        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Terminal Details</span>
+    </div>
+    <form method="post" class="p-5">
+        {% csrf_token %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Code -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+                    EFT Code <span class="text-red-500">*</span>
+                </label>
+                <input type="text" name="code" value="{% if is_edit %}{{ eft.code }}{% endif %}" required
+                       placeholder="e.g. 01"
+                       maxlength="10"
+                       class="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg text-sm font-mono font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+                <p class="text-[10px] text-gray-400 mt-1">Numeric code matching backoffice EFT ID</p>
+            </div>
+
+            <!-- Name -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+                    Bank / Terminal Name <span class="text-red-500">*</span>
+                </label>
+                <input type="text" name="name" value="{% if is_edit %}{{ eft.name }}{% endif %}" required
+                       placeholder="e.g. BCA"
+                       maxlength="100"
+                       class="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg text-sm font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+                <p class="text-[10px] text-gray-400 mt-1">Display name shown in POS dropdown</p>
+            </div>
+
+            <!-- Sort Order -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+                    Sort Order
+                </label>
+                <input type="number" name="sort_order" value="{% if is_edit %}{{ eft.sort_order }}{% else %}0{% endif %}"
+                       min="0"
+                       class="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg text-sm font-mono focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+                <p class="text-[10px] text-gray-400 mt-1">Display order in dropdown list</p>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+            <a href="{% url 'management:eft_terminal_list' %}"
+               class="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                Cancel
+            </a>
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                {% if is_edit %}Update Terminal{% else %}Create Terminal{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

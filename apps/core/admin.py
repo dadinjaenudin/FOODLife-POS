@@ -1,6 +1,11 @@
 ﻿from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Company, User, Brand, Store, StoreBrand, POSTerminal, Category, Product, Modifier, ModifierOption, ProductPhoto, Member, MemberTransaction
+from .models import (
+    Company, User, Brand, Store, StoreBrand, POSTerminal,
+    Category, Product, Modifier, ModifierOption, ProductPhoto,
+    Member, MemberTransaction,
+    MediaGroup, PaymentMethodProfile, DataEntryPrompt,
+)
 from .models_session import CashierShift, CashDrop
 
 
@@ -221,3 +226,26 @@ class MemberTransactionAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # Prevent deletion of transaction history
         return request.user.is_superuser
+
+
+@admin.register(MediaGroup)
+class MediaGroupAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'company', 'orafin_group', 'sort_order', 'is_active']
+    list_filter = ['company', 'is_active']
+    search_fields = ['name', 'code']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+
+
+class DataEntryPromptInline(admin.TabularInline):
+    model = DataEntryPrompt
+    extra = 1
+    fields = ['field_name', 'label', 'field_type', 'min_length', 'max_length', 'placeholder', 'use_scanner', 'is_required', 'sort_order']
+
+
+@admin.register(PaymentMethodProfile)
+class PaymentMethodProfileAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'brand', 'media_group', 'media_id', 'legacy_method_id', 'sort_order', 'is_active']
+    list_filter = ['brand', 'media_group', 'is_active']
+    search_fields = ['name', 'code']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    inlines = [DataEntryPromptInline]

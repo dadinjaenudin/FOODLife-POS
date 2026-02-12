@@ -4,50 +4,50 @@
 {% block title %}Floor Plan - Table Management{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+<div class="min-h-screen bg-gray-100">
     <!-- Header -->
-    <div class="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-gray-200 shadow-sm">
-        <div class="max-w-full mx-auto px-3 py-2">
+    <div class="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-full mx-auto px-3 py-1.5">
             <div class="flex justify-between items-center">
-                <div class="flex items-center gap-6">
+                <div class="flex items-center gap-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"></path>
                             </svg>
                         </div>
                         <div>
-                            <h1 class="text-lg font-bold text-gray-900">Floor Plan</h1>
-                            <p id="floor-plan-subtitle" class="text-xs text-gray-500">Tap table to create order • Long press for multi-select</p>
+                            <h1 class="text-sm font-bold text-gray-900">Floor Plan</h1>
+                            <p id="floor-plan-subtitle" class="text-[10px] text-gray-500">Tap table to order • Long press to multi-select</p>
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-2 text-xs">
-                        <div class="flex items-center gap-1.5 px-2 py-1 bg-green-50 rounded-md border border-green-200">
+                    <div class="flex items-center gap-1 text-[10px]">
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
                             <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span class="font-medium text-green-700">Available</span>
+                            <span class="font-medium text-gray-600">Available</span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-2 py-1 bg-red-50 rounded-md border border-red-200">
-                            <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                            <span class="font-medium text-red-700">Occupied</span>
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                            <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                            <span class="font-medium text-gray-600">Occupied</span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-2 py-1 bg-amber-50 rounded-md border border-amber-200">
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
                             <div class="w-2 h-2 bg-amber-500 rounded-full"></div>
-                            <span class="font-medium text-amber-700">Hold</span>
+                            <span class="font-medium text-gray-600">Hold</span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-2 py-1 bg-purple-50 rounded-md border border-purple-200">
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
                             <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
-                            <span class="font-medium text-purple-700">Joined</span>
+                            <span class="font-medium text-gray-600">Joined</span>
                         </div>
-                        <div class="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-md border border-gray-200">
-                            <div class="w-2 h-2 bg-gray-500 rounded-full"></div>
-                            <span class="font-medium text-gray-700">Cleaning</span>
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200">
+                            <div class="w-2 h-2 bg-gray-400 rounded-full"></div>
+                            <span class="font-medium text-gray-600">Cleaning</span>
                         </div>
                     </div>
                 </div>
 
-                <a href="{% url 'pos:main' %}" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold rounded-lg transition-all shadow hover:shadow-md flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <a href="{% url 'pos:main' %}" class="px-2.5 py-1 bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                     </svg>
                     Back
@@ -57,7 +57,7 @@
     </div>
 
     <!-- Content -->
-    <div class="max-w-full px-3 py-3">
+    <div class="max-w-full px-2 py-2">
         {% if areas %}
             <!-- Hidden template for tables JSON (for easier JS access) -->
             {% localize off %}
@@ -104,67 +104,34 @@
                 window.CSRF_TOKEN = '{{ csrf_token }}';
             </script>
 
-            <div x-data="floorPlanTabs()" class="w-full h-full flex gap-1.5">
-                <!-- Left Sidebar: Area Buttons (12%) -->
-                <div class="w-[12%] flex flex-col gap-2 overflow-y-auto bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 p-2">
+            <div x-data="floorPlanTabs()" class="w-full h-full flex flex-col gap-1">
+                <!-- Top Area Tabs -->
+                <div class="flex items-center gap-1 bg-white rounded-lg shadow border border-gray-200 px-1.5 py-1">
                     <template x-for="(area, index) in areas" :key="index">
                         <button @click="activeTab = index"
-                                :class="activeTab === index ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/50 scale-105' : 'bg-white text-gray-700 border border-gray-200 hover:border-blue-400 hover:shadow-md'"
-                                class="w-full px-2 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 transform hover:scale-105">
-                            <div class="flex flex-col items-center gap-2">
-                                <svg class="w-6 h-6" :class="activeTab === index ? 'text-white' : 'text-gray-500'" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path>
-                                </svg>
-                                <span class="text-center" x-text="area.name"></span>
-                                <span class="text-xs px-2 py-1 rounded-full" :class="activeTab === index ? 'bg-white/30' : 'bg-gray-100'">
-                                    <span x-text="area.table_count"></span> tables
-                                </span>
-                            </div>
+                                :class="activeTab === index ? 'bg-blue-600 text-white shadow' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'"
+                                class="px-3 py-1.5 rounded-md font-semibold text-xs transition-all duration-150 whitespace-nowrap">
+                            <span x-text="area.name"></span>
+                            <span class="ml-1 opacity-70" x-text="'(' + area.table_count + ')'"></span>
                         </button>
                     </template>
                 </div>
 
-                <!-- Right Content: Floor Plan Canvas (82%) -->
-                <div class="w-[82%] flex flex-col">
-                    <!-- Floor Plans (One per area) -->
+                <!-- Floor Plan Canvas -->
+                <div class="flex-1 min-h-0">
                     <template x-for="(area, index) in areas" :key="index">
                         <div x-show="activeTab === index"
-                             x-transition:enter="transition ease-out duration-200"
-                             x-transition:enter-start="opacity-0 transform translate-x-4"
-                             x-transition:enter-end="opacity-100 transform translate-x-0"
-                             x-transition:leave="transition ease-in duration-150"
+                             x-transition:enter="transition ease-out duration-150"
+                             x-transition:enter-start="opacity-0"
+                             x-transition:enter-end="opacity-100"
+                             x-transition:leave="transition ease-in duration-100"
                              x-transition:leave-start="opacity-100"
                              x-transition:leave-end="opacity-0"
                              class="w-full h-full">
-                            
-                            <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 overflow-hidden h-full flex flex-col">
-                                <div class="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 px-3 py-2 border-b border-gray-200/50">
-                                    <div class="flex justify-between items-center">
-                                        <div class="flex items-center gap-2">
-                                            <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                                                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path>
-                                                </svg>
-                                            </div>
-                                            <div>
-                                                <h2 class="text-sm font-bold text-gray-900" x-text="area.name"></h2>
-                                                <div class="flex items-center gap-2 text-xs text-gray-600 mt-0.5">
-                                                    <span class="flex items-center gap-1">
-                                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path></svg>
-                                                        <span x-text="area.table_count"></span> tables
-                                                    </span>
-                                                    <span class="flex items-center gap-1">
-                                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
-                                                        <span x-text="(area.floor_width || 1200) + '×' + (area.floor_height || 800)"></span>
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
 
-                                <div class="overflow-auto flex-1">
-                                    <div class="floor-plan-canvas relative bg-gray-50 rounded-lg border border-dashed border-gray-200"
+                            <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden h-full">
+                                <div class="overflow-auto h-full">
+                                    <div class="floor-plan-canvas relative bg-gray-50"
                                          :style="'width: ' + (area.floor_width || 1200) + 'px; height: ' + (area.floor_height || 800) + 'px;'"
                                          :data-area-id="area.id">
                                          <!-- Tables will be rendered here by JavaScript -->
@@ -176,16 +143,16 @@
                 </div>
             </div>
         {% else %}
-            <div class="backdrop-blur-md bg-white/60 rounded-2xl shadow-xl p-12 text-center">
-                <div class="w-24 h-24 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mb-6">
-                    <svg class="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-white rounded-lg shadow p-8 text-center">
+                <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                     </svg>
                 </div>
-                <h3 class="text-2xl font-bold text-gray-900 mb-2">No Tables Configured</h3>
-                <p class="text-gray-600 mb-6">Create table areas and tables to get started with your floor plan</p>
-                <a href="{% url 'admin:tables_tablearea_changelist' %}" class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <h3 class="text-lg font-bold text-gray-900 mb-1">No Tables Configured</h3>
+                <p class="text-sm text-gray-500 mb-4">Create table areas and tables to get started</p>
+                <a href="{% url 'admin:tables_tablearea_changelist' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                     </svg>
                     Setup Tables
@@ -241,173 +208,157 @@
 </div>
 
 <style>
+/* ============================================================================
+   FLOOR PLAN - Table Card Styles
+   States: default (grab), dragging, selected (join mode), selection-mode
+   ============================================================================ */
 .table-card {
     cursor: grab;
     user-select: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-.table-card:active {
-    cursor: grabbing;
-}
-
+.table-card:active { cursor: grabbing; }
+.table-card:hover { z-index: 10; }
 .table-card.dragging {
     opacity: 0.4;
     transform: scale(0.9) rotate(3deg);
     z-index: 100;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
-
 .table-card.selected {
     transform: scale(1.05);
     border: 3px solid #8b5cf6 !important;
     box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3), 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
     z-index: 10;
 }
-
-.table-card.selection-mode {
-    cursor: pointer !important;
-}
-
-.table-card.selection-mode .table-button {
-    pointer-events: none;
-}
-
-.table-card {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.table-card:hover {
-    z-index: 10;
-}
+.table-card.selection-mode { cursor: pointer !important; }
+.table-card.selection-mode .table-button { pointer-events: none; }
 </style>
 
 <script>
 /**
- * Alpine.js - Floor Plan Tabs
+ * ============================================================================
+ * FLOOR PLAN - Interactive Table Management
+ * ============================================================================
+ *
+ * FILE: templates/tables/floor_plan.html (script section)
+ *
+ * OVERVIEW:
+ *   Renders draggable table cards on a canvas per area.
+ *   Tables are clickable (opens/creates bill) and support multi-select
+ *   via long-press for joining tables.
+ *
+ * SECTIONS:
+ *   1. CONFIG         - Status color map, shape map, constants
+ *   2. ALPINE COMPONENT - floorPlanTabs() for area tabs + rendering
+ *   3. TABLE RENDERING - createTableElement() + helpers
+ *   4. CLEAN TABLE    - Modal confirm + POST to clean endpoint
+ *   5. LIVE RELOAD    - Fetch fresh data & re-render without page reload
+ *   6. DRAG & DROP    - Reposition tables on canvas (saved to server)
+ *   7. MULTI-SELECT   - Long-press to enter selection mode, join tables
+ *   8. NOTIFICATIONS  - Toast notification utility
+ *
+ * DATA SOURCE:
+ *   #tables-data (JSON script tag rendered by Django, wrapped in localize-off)
+ *
+ * DEPENDENCIES:
+ *   - Alpine.js (tab switching, x-data)
+ *   - Tailwind CSS (utility classes)
+ *   - Django url tags (endpoints)
+ * ============================================================================
+ */
+
+/* --------------------------------------------------------------------------
+   1. CONFIG
+   -------------------------------------------------------------------------- */
+
+/** Inline styles per table status (using rgb for Tailwind color consistency) */
+var TABLE_STATUS_STYLES = {
+    available:     { bg: 'rgb(134 239 172)', border: 'rgb(22 163 74)',  text: 'rgb(20 83 45)'   },
+    occupied:      { bg: 'rgb(252 165 165)', border: 'rgb(220 38 38)', text: 'rgb(127 29 29)'  },
+    occupied_hold: { bg: 'rgb(252 211 77)',  border: 'rgb(217 119 6)', text: 'rgb(120 53 15)'  },
+    billing:       { bg: 'rgb(251 191 36)',  border: 'rgb(217 119 6)', text: 'rgb(120 53 15)'  },
+    reserved:      { bg: 'rgb(253 224 71)',  border: 'rgb(202 138 4)', text: 'rgb(113 63 18)'  },
+    default:       { bg: 'rgb(229 231 235)', border: 'rgb(107 114 128)', text: 'rgb(17 24 39)' }
+};
+
+/** CSS classes per table shape */
+var TABLE_SHAPE_CLASSES = {
+    round:     'w-24 h-24 rounded-full',
+    rectangle: 'w-36 h-24 rounded-lg',
+    rect:      'w-24 h-24 rounded-lg'
+};
+
+/** Auto-position defaults when table has no stored pos_x/pos_y */
+var AUTO_POS_COLS = 8;
+var AUTO_POS_OFFSET_X = 50;
+var AUTO_POS_OFFSET_Y = 100;
+var AUTO_POS_GAP = 80;
+
+/* --------------------------------------------------------------------------
+   2. ALPINE COMPONENT - Area Tabs + Table Rendering
+   -------------------------------------------------------------------------- */
+
+/**
+ * Alpine.js data component for floor plan area tabs.
+ * Loads table data from #tables-data JSON, renders table elements on canvases.
  */
 function floorPlanTabs() {
     return {
         activeTab: 0,
         areas: [],
-        
-        calculateScale(floorWidth, floorHeight) {
-            // Calculate scale to fit canvas in modal (70vw with padding)
-            const maxWidth = window.innerWidth * 0.70 - 60; // 70vw minus padding
-            const maxHeight = 450; // Fixed height from container
-            
-            const scaleX = maxWidth / floorWidth;
-            const scaleY = maxHeight / floorHeight;
-            
-            // Use the smaller scale to ensure it fits both dimensions
-            const scale = Math.min(scaleX, scaleY, 1); // Never scale up, only down
-            
-            // Double the scale to make it bigger
-            return (scale * 2).toFixed(3);
-        },
-        
+
         init() {
-            // Use global flag to prevent double initialization across multiple modal opens
-            if (window.floorPlanInitialized) {
-                console.log('⚠️ Floor plan already initialized globally, skipping init...');
-                return;
-            }
-            
+            // Prevent double-init when modal is re-opened (scripts re-executed)
+            if (window.floorPlanInitialized) return;
             window.floorPlanInitialized = true;
-            console.log('🎬 Initializing Alpine floorPlanTabs component (FIRST TIME)...');
-            
-            // Delay initialization to ensure DOM is ready and JSON is parsed
+
+            // Small delay ensures DOM + JSON are ready
             setTimeout(() => {
                 this.loadAreas();
-                console.log('Areas loaded in Alpine:', this.areas);
-                
                 this.$nextTick(() => {
-                    console.log('DOM ready, rendering floor plans...');
-                    this.renderFloorPlans();
-                    
-                    // Reinitialize drag handlers after render
-                    this.$nextTick(() => {
-                        setTimeout(() => {
-                            initializeDragHandlers();
-                        }, 100);
-                    });
+                    this.renderAllAreas();
+                    this.$nextTick(() => setTimeout(initializeDragHandlers, 100));
                 });
             }, 50);
         },
-        
+
+        /** Parse #tables-data JSON, deduplicate areas by ID */
         loadAreas() {
-            const jsonData = document.getElementById('tables-data');
-            if (jsonData) {
-                try {
-                    const data = JSON.parse(jsonData.textContent);
-                    console.log('📊 Raw data from JSON:', data.areas.length, 'areas');
-                    console.log('📊 Area names:', data.areas.map(a => a.name + ' (ID: ' + a.id + ')'));
-                    
-                    // Deduplicate areas by ID to prevent double rendering
-                    const uniqueAreas = [];
-                    const seenIds = new Set();
-                    
-                    data.areas.forEach(area => {
-                        if (!seenIds.has(area.id)) {
-                            seenIds.add(area.id);
-                            uniqueAreas.push(area);
-                        } else {
-                            console.warn('⚠️ Duplicate area detected and skipped:', area.name, 'ID:', area.id);
-                        }
-                    });
-                    
-                    this.areas = uniqueAreas;
-                    console.log('✓ Loaded areas:', this.areas.length, '(deduplicated)');
-                    console.log('✓ Final areas:', this.areas.map(a => a.name));
-                } catch (e) {
-                    console.error('Error parsing JSON data:', e);
-                    console.error('Raw JSON (first 500 chars):', jsonData.textContent.substring(0, 500));
-                }
-            } else {
-                console.warn('tables-data script not found');
+            const el = document.getElementById('tables-data');
+            if (!el) { console.warn('[FloorPlan] #tables-data not found'); return; }
+
+            try {
+                const data = JSON.parse(el.textContent);
+                const seen = new Set();
+                this.areas = data.areas.filter(a => {
+                    if (seen.has(a.id)) return false;
+                    seen.add(a.id);
+                    return true;
+                });
+            } catch (e) {
+                console.error('[FloorPlan] JSON parse error:', e);
             }
         },
-        
-        renderFloorPlans() {
-            if (!this.areas || this.areas.length === 0) {
-                console.warn('No areas to render');
-                return;
-            }
-            
-            this.areas.forEach((area, areaIndex) => {
+
+        /** Render table elements on each area's canvas */
+        renderAllAreas() {
+            if (!this.areas.length) return;
+
+            this.areas.forEach(area => {
                 const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
-                if (!canvas) {
-                    console.warn(`Canvas not found for area ${area.id}`);
-                    return;
-                }
-                
+                if (!canvas) return;
+
                 canvas.innerHTML = '';
-                console.log(`Rendering ${area.tables.length} tables for area: ${area.name}`);
-                
-                // Set background if floor image exists
-                if (area.floor_image) {
-                    canvas.style.backgroundImage = `url('${area.floor_image}')`;
-                    canvas.style.backgroundSize = 'cover';
-                    canvas.style.backgroundPosition = 'center';
-                }
-                
-                // Render tables
-                area.tables.forEach((table, tableIndex) => {
+                applyFloorImage(canvas, area);
+
+                area.tables.forEach((table, idx) => {
                     try {
-                        const tableEl = createTableElement(table);
-
-                        // Use stored position from HO, or default
-                        if (table.pos_x !== null && table.pos_y !== null) {
-                            tableEl.style.left = table.pos_x + 'px';
-                            tableEl.style.top = table.pos_y + 'px';
-                        } else {
-                            // Auto-position if no position stored
-                            tableEl.style.left = (50 + (tableIndex % 8) * 80) + 'px';
-                            tableEl.style.top = (100 + Math.floor(tableIndex / 8) * 80) + 'px';
-                        }
-
-                        canvas.appendChild(tableEl);
+                        const el = createTableElement(table);
+                        positionTableElement(el, table, idx);
+                        canvas.appendChild(el);
                     } catch (err) {
-                        console.error(`Error rendering table ${table.number}:`, err);
+                        console.error(`[FloorPlan] Error rendering table ${table.number}:`, err);
                     }
                 });
             });
@@ -415,27 +366,22 @@ function floorPlanTabs() {
     };
 }
 
-/**
- * Helper: Calculate elapsed time from ISO date string
- */
+/* --------------------------------------------------------------------------
+   3. TABLE RENDERING - Create DOM elements for each table
+   -------------------------------------------------------------------------- */
+
+/** Format elapsed time from ISO string: "2m", "1h30m" */
 function getElapsedTime(isoString) {
     if (!isoString) return '';
-    const created = new Date(isoString);
-    const now = new Date();
-    const diffMs = now - created;
-    const diffMin = Math.floor(diffMs / 60000);
-
+    const diffMin = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000);
     if (diffMin < 1) return '<1m';
     if (diffMin < 60) return diffMin + 'm';
-    const hours = Math.floor(diffMin / 60);
-    const mins = diffMin % 60;
-    if (mins === 0) return hours + 'h';
-    return hours + 'h' + mins + 'm';
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return m === 0 ? h + 'h' : h + 'h' + m + 'm';
 }
 
-/**
- * Helper: Format number as Rupiah short form
- */
+/** Format Rupiah in short form: 150K, 1.5jt */
 function formatRupiahShort(amount) {
     if (!amount) return '0';
     const num = Math.round(amount);
@@ -444,8 +390,35 @@ function formatRupiahShort(amount) {
     return num.toLocaleString('id-ID');
 }
 
+/** Set background image on canvas if area has a floor_image */
+function applyFloorImage(canvas, area) {
+    if (!area.floor_image) return;
+    canvas.style.backgroundImage = `url('${area.floor_image}')`;
+    canvas.style.backgroundSize = 'cover';
+    canvas.style.backgroundPosition = 'center';
+}
+
+/** Position table element using stored coords or auto-grid fallback */
+function positionTableElement(el, table, index) {
+    if (table.pos_x !== null && table.pos_y !== null) {
+        el.style.left = table.pos_x + 'px';
+        el.style.top = table.pos_y + 'px';
+    } else {
+        el.style.left = (AUTO_POS_OFFSET_X + (index % AUTO_POS_COLS) * AUTO_POS_GAP) + 'px';
+        el.style.top = (AUTO_POS_OFFSET_Y + Math.floor(index / AUTO_POS_COLS) * AUTO_POS_GAP) + 'px';
+    }
+}
+
+/** Resolve status key for TABLE_STATUS_STYLES lookup */
+function getStatusKey(table) {
+    if (table.status === 'occupied' && table.bill_status === 'hold') return 'occupied_hold';
+    if (TABLE_STATUS_STYLES[table.status]) return table.status;
+    return 'default';
+}
+
 /**
- * Create table DOM element
+ * Create a complete table card DOM element.
+ * Includes: joined badge, selection checkbox, drag handle, status button, items badge.
  */
 function createTableElement(table) {
     const div = document.createElement('div');
@@ -458,179 +431,110 @@ function createTableElement(table) {
     const isOccupied = table.status === 'occupied' || table.status === 'billing';
     const hasBill = isOccupied && table.bill_number;
     const isBillHold = table.bill_status === 'hold';
+    const shapeClasses = TABLE_SHAPE_CLASSES[table.shape] || TABLE_SHAPE_CLASSES.rect;
 
     let html = '';
 
-    // Joined indicator
+    // -- Joined indicator (top-left purple badge) --
     if (table.is_joined) {
-        html += `
-            <div class="absolute -top-1 -left-1 z-20">
-                <div class="flex h-5 w-5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full items-center justify-center shadow border border-white">
-                    <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
-                    </svg>
-                </div>
-            </div>
-        `;
-    }
-
-    // Selection checkbox
-    html += `
-        <div class="absolute top-1 right-1 z-20 selection-checkbox hidden">
-            <input type="checkbox"
-                   class="table-select-checkbox w-4 h-4 text-blue-600 rounded border border-white shadow cursor-pointer"
-                   data-table-id="${table.id}"
-                   onclick="event.stopPropagation(); handleTableSelection()">
-        </div>
-    `;
-
-    // Drag handle
-    html += `
-        <div class="drag-handle absolute top-1 left-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
-            <div class="w-4 h-4 bg-white/80 backdrop-blur-sm rounded shadow-sm flex items-center justify-center">
-                <svg class="w-2.5 h-2.5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+        html += `<div class="absolute -top-1 -left-1 z-20">
+            <div class="flex h-5 w-5 bg-purple-600 rounded-full items-center justify-center shadow border border-white">
+                <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
                 </svg>
             </div>
-        </div>
-    `;
-
-    // Determine shape classes
-    const shape = table.shape || 'rect';
-    let shapeClasses = '';
-    if (shape === 'round') {
-        shapeClasses = 'w-24 h-24 rounded-full';
-    } else if (shape === 'rectangle') {
-        shapeClasses = 'w-36 h-24 rounded-lg';
-    } else {
-        shapeClasses = 'w-24 h-24 rounded-lg';
+        </div>`;
     }
 
-    // Build tooltip for occupied tables
-    let tooltipText = `Table ${table.number} (${table.capacity} seats)`;
+    // -- Selection checkbox (hidden until selection mode) --
+    html += `<div class="absolute top-1 right-1 z-20 selection-checkbox hidden">
+        <input type="checkbox" class="table-select-checkbox w-4 h-4 text-blue-600 rounded border border-white shadow cursor-pointer"
+               data-table-id="${table.id}" onclick="event.stopPropagation(); handleTableSelection()">
+    </div>`;
+
+    // -- Drag handle (visible on hover) --
+    html += `<div class="drag-handle absolute top-1 left-1 cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
+        <div class="w-4 h-4 bg-white/80 rounded shadow-sm flex items-center justify-center">
+            <svg class="w-2.5 h-2.5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+            </svg>
+        </div>
+    </div>`;
+
+    // -- Tooltip --
+    let tooltip = `Table ${table.number} (${table.capacity} seats)`;
     if (hasBill) {
         const elapsed = getElapsedTime(table.bill_created_at);
         const total = Math.round(table.bill_total).toLocaleString('id-ID');
-        tooltipText = `Table ${table.number}\nBill: ${table.bill_number}\nTotal: Rp ${total}\nItems: ${table.items_count}\nTime: ${elapsed}`;
-        if (table.guest_count) tooltipText += `\nGuests: ${table.guest_count}`;
-        if (table.bill_status === 'hold') tooltipText += `\nStatus: ON HOLD`;
+        tooltip = `Table ${table.number}\nBill: ${table.bill_number}\nTotal: Rp ${total}\nItems: ${table.items_count}\nTime: ${elapsed}`;
+        if (table.guest_count) tooltip += `\nGuests: ${table.guest_count}`;
+        if (isBillHold) tooltip += `\nStatus: ON HOLD`;
     }
 
-    // Main button (form or open)
+    // -- Main button --
     if (table.status === 'dirty') {
-        html += `
-            <button type="button"
-                    onclick="confirmCleanTable('${table.id}', '${table.number}')"
-                    title="${tooltipText}"
-                    class="table-button ${shapeClasses} border-3 transition-all transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl cursor-pointer flex items-center justify-center
-                    border-gray-500 bg-gray-200 hover:bg-gray-300 text-gray-900">
-                <div class="text-center">
-                    <div class="text-sm font-bold">${table.number}</div>
-                    <div class="text-[10px] opacity-70">Clean me</div>
-                </div>
-            </button>
-        `;
+        // Dirty table: click to clean
+        html += `<button type="button" onclick="confirmCleanTable('${table.id}', '${table.number}')"
+                    title="${tooltip}"
+                    class="table-button ${shapeClasses} border-3 transition-all hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl cursor-pointer flex items-center justify-center border-gray-500 bg-gray-200 hover:bg-gray-300 text-gray-900">
+            <div class="text-center">
+                <div class="text-sm font-bold">${table.number}</div>
+                <div class="text-[10px] opacity-70">Clean me</div>
+            </div>
+        </button>`;
     } else {
+        // Normal table: form POST to open/resume bill
+        const style = TABLE_STATUS_STYLES[getStatusKey(table)];
         const disabled = table.status === 'reserved' ? 'disabled' : '';
 
-        // Status-based styling with inline styles for reliability
-        let bgColor = '';
-        let borderColor = '';
-        let textColor = '';
-
-        if (table.status === 'available') {
-            bgColor = 'background-color: rgb(134 239 172);'; // bg-green-300
-            borderColor = 'border-color: rgb(22 163 74);'; // border-green-600
-            textColor = 'color: rgb(20 83 45);'; // text-green-900
-        } else if (table.status === 'occupied' && isBillHold) {
-            bgColor = 'background-color: rgb(252 211 77);'; // bg-amber-300
-            borderColor = 'border-color: rgb(217 119 6);'; // border-amber-600
-            textColor = 'color: rgb(120 53 15);'; // text-amber-900
-        } else if (table.status === 'occupied') {
-            bgColor = 'background-color: rgb(252 165 165);'; // bg-red-300
-            borderColor = 'border-color: rgb(220 38 38);'; // border-red-600
-            textColor = 'color: rgb(127 29 29);'; // text-red-900
-        } else if (table.status === 'billing') {
-            bgColor = 'background-color: rgb(251 191 36);'; // bg-amber-400
-            borderColor = 'border-color: rgb(217 119 6);'; // border-amber-600
-            textColor = 'color: rgb(120 53 15);'; // text-amber-900
-        } else if (table.status === 'reserved') {
-            bgColor = 'background-color: rgb(253 224 71);'; // bg-yellow-300
-            borderColor = 'border-color: rgb(202 138 4);'; // border-yellow-600
-            textColor = 'color: rgb(113 63 18);'; // text-yellow-900
-        } else {
-            bgColor = 'background-color: rgb(229 231 235);'; // bg-gray-200
-            borderColor = 'border-color: rgb(107 114 128);'; // border-gray-500
-            textColor = 'color: rgb(17 24 39);'; // text-gray-900
-        }
-
-        // Build inner content based on status
         let innerContent = '';
         if (hasBill) {
-            // Occupied/billing with bill: show table number + elapsed time + total
             const elapsed = getElapsedTime(table.bill_created_at);
             const totalShort = formatRupiahShort(table.bill_total);
-            const holdBadge = table.bill_status === 'hold' ? '<div style="font-size:8px; font-weight:800; background:rgba(245,158,11,0.3); border-radius:3px; padding:0 3px; margin-top:1px;">HOLD</div>' : '';
-            innerContent = `
-                <div class="text-center" style="line-height:1.2;">
-                    <div style="font-size:13px; font-weight:800;">${table.number}</div>
-                    <div style="font-size:9px; opacity:0.85; font-family:monospace;">${elapsed}</div>
-                    <div style="font-size:9px; font-weight:700;">${totalShort}</div>
-                    ${holdBadge}
-                </div>
-            `;
+            const holdBadge = isBillHold ? '<div style="font-size:8px; font-weight:800; background:rgba(245,158,11,0.3); border-radius:3px; padding:0 3px; margin-top:1px;">HOLD</div>' : '';
+            innerContent = `<div class="text-center" style="line-height:1.2;">
+                <div style="font-size:13px; font-weight:800;">${table.number}</div>
+                <div style="font-size:9px; opacity:0.85; font-family:monospace;">${elapsed}</div>
+                <div style="font-size:9px; font-weight:700;">${totalShort}</div>
+                ${holdBadge}
+            </div>`;
         } else {
-            // Available/reserved/other: show table number + capacity
-            innerContent = `
-                <div class="text-center">
-                    <div class="text-sm font-bold">${table.number}</div>
-                    <div class="text-xs">${table.capacity}p</div>
-                </div>
-            `;
+            innerContent = `<div class="text-center">
+                <div class="text-sm font-bold">${table.number}</div>
+                <div class="text-xs">${table.capacity}p</div>
+            </div>`;
         }
 
-        html += `
-            <form method="POST" action="/tables/${table.id}/open/" class="table-form">
-                <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
-                <button type="submit"
-                        ${disabled}
-                        title="${tooltipText.replace(/"/g, '&quot;')}"
-                        style="${bgColor} ${borderColor} ${textColor}"
-                        class="table-button ${shapeClasses} border-3 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center">
-                    ${innerContent}
-                </button>
-            </form>
-        `;
+        html += `<form method="POST" action="/tables/${table.id}/open/" class="table-form">
+            <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
+            <button type="submit" ${disabled}
+                    title="${tooltip.replace(/"/g, '&quot;')}"
+                    style="background-color:${style.bg}; border-color:${style.border}; color:${style.text};"
+                    class="table-button ${shapeClasses} border-3 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center">
+                ${innerContent}
+            </button>
+        </form>`;
     }
 
-    // Occupied indicator badge (top-right) - shows items count if has bill, otherwise pulsing dot
+    // -- Occupied badge (top-right): item count or pulsing dot --
     if (isOccupied) {
-        const badgeFromColor = isBillHold ? 'from-amber-500' : 'from-red-500';
-        const badgeToColor = isBillHold ? 'to-amber-600' : 'to-red-600';
-        const badgePingColor = isBillHold ? 'bg-amber-400' : 'bg-red-400';
-
+        const color = isBillHold ? 'amber' : 'red';
         if (hasBill && table.items_count > 0) {
-            html += `
-                <div class="absolute -top-1.5 -right-1.5 z-10">
-                    <span class="inline-flex items-center justify-center h-5 min-w-[20px] px-1 bg-gradient-to-br ${badgeFromColor} ${badgeToColor} rounded-full shadow border border-white"
-                          style="font-size:10px; font-weight:800; color:white;">
-                        ${table.items_count}
-                    </span>
-                </div>
-            `;
+            html += `<div class="absolute -top-1.5 -right-1.5 z-10">
+                <span class="inline-flex items-center justify-center h-5 min-w-[20px] px-1 bg-${color}-500 rounded-full shadow border border-white"
+                      style="font-size:10px; font-weight:800; color:white;">${table.items_count}</span>
+            </div>`;
         } else {
-            html += `
-                <div class="absolute -top-1 -right-1 z-10">
-                    <span class="flex h-5 w-5">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${badgePingColor} opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-5 w-5 bg-gradient-to-br ${badgeFromColor} ${badgeToColor} items-center justify-center shadow">
-                            <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"></path>
-                            </svg>
-                        </span>
+            html += `<div class="absolute -top-1 -right-1 z-10">
+                <span class="flex h-5 w-5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-${color}-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-5 w-5 bg-${color}-500 items-center justify-center shadow">
+                        <svg class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"></path>
+                        </svg>
                     </span>
-                </div>
-            `;
+                </span>
+            </div>`;
         }
     }
 
@@ -638,11 +542,13 @@ function createTableElement(table) {
     return div;
 }
 
-// Confirm and clean table
-let cleanTableId = null;
+/* --------------------------------------------------------------------------
+   4. CLEAN TABLE - Confirm modal + POST /tables/<id>/clean/
+   -------------------------------------------------------------------------- */
+
+var cleanTableId = null;
 
 function confirmCleanTable(tableId, tableNumber) {
-    console.log('Open clean modal for table:', tableId, tableNumber);
     cleanTableId = tableId;
     document.getElementById('modal-table-number').textContent = `Meja ${tableNumber}`;
     document.getElementById('clean-table-modal').classList.remove('hidden');
@@ -654,325 +560,229 @@ function closeCleanModal() {
 }
 
 function confirmClean() {
+    if (!cleanTableId) return;
     const tableId = cleanTableId;
-    console.log('Confirming clean for table:', tableId);
-    
-    if (!tableId) {
-        console.error('No table ID to clean');
-        return;
-    }
-    
     closeCleanModal();
-    
+
     fetch(`/tables/${tableId}/clean/`, {
         method: 'POST',
-        headers: {
-            'X-CSRFToken': window.CSRF_TOKEN
-        }
+        headers: { 'X-CSRFToken': window.CSRF_TOKEN }
     })
-    .then(response => {
-        console.log('Response status:', response.status);
-        if (response.ok) {
-            // Reload table data without full page reload
-            reloadFloorPlanData();
-        } else {
-            console.error('Clean failed with status:', response.status);
-        }
+    .then(resp => {
+        if (resp.ok) reloadFloorPlanData();
+        else console.error('[FloorPlan] Clean failed:', resp.status);
     })
-    .catch(err => console.error('Error cleaning table:', err));
+    .catch(err => console.error('[FloorPlan] Clean error:', err));
 }
 
-// Reload floor plan data without page refresh
+/* --------------------------------------------------------------------------
+   5. LIVE RELOAD - Fetch fresh data & re-render canvases (no page reload)
+   -------------------------------------------------------------------------- */
+
+/**
+ * Fetches the floor plan page, parses the #tables-data JSON from it,
+ * and re-renders all table canvases in-place.
+ */
 function reloadFloorPlanData() {
-    console.log('🔄 Reloading floor plan data...');
-    
-    // Fetch from floor plan URL, not current page URL
-    const floorPlanUrl = '{% url "tables:floor_plan" %}';
-    
-    fetch(floorPlanUrl)
-    .then(response => {
-        console.log('✓ Response received:', response.status);
-        return response.text();
-    })
+    fetch('{% url "tables:floor_plan" %}')
+    .then(resp => resp.text())
     .then(html => {
-        console.log('✓ HTML received, parsing...');
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const newTablesData = doc.getElementById('tables-data');
-        
-        if (!newTablesData) {
-            console.error('❌ tables-data not found in response');
-            return;
-        }
-        
-        console.log('✓ tables-data found, updating...');
-        
-        // Update tables data in current page
-        const currentTablesData = document.getElementById('tables-data');
-        if (currentTablesData) {
-            currentTablesData.textContent = newTablesData.textContent;
-            console.log('✓ tables-data updated');
-        }
-        
-        // Parse new data and re-render
-        try {
-            const newData = JSON.parse(newTablesData.textContent);
-            console.log('✓ New data parsed:', newData.areas.length, 'areas');
-            
-            // Clear all canvases first
-            const canvases = document.querySelectorAll('.floor-plan-canvas');
-            console.log('✓ Found', canvases.length, 'canvases to clear');
-            canvases.forEach(canvas => {
-                canvas.innerHTML = '';
-            });
-            
-            // Re-render each area
-            newData.areas.forEach((area, areaIndex) => {
-                console.log(`🔄 Rendering area ${areaIndex + 1}: ${area.name} with ${area.tables.length} tables`);
-                const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
-                
-                if (!canvas) {
-                    console.warn(`⚠️ Canvas not found for area ${area.id}`);
-                    return;
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const newJson = doc.getElementById('tables-data');
+        if (!newJson) { console.error('[FloorPlan] Reload: #tables-data not found'); return; }
+
+        // Update local JSON store
+        const current = document.getElementById('tables-data');
+        if (current) current.textContent = newJson.textContent;
+
+        // Re-render
+        const data = JSON.parse(newJson.textContent);
+        document.querySelectorAll('.floor-plan-canvas').forEach(c => c.innerHTML = '');
+
+        data.areas.forEach(area => {
+            const canvas = document.querySelector(`[data-area-id="${area.id}"]`);
+            if (!canvas) return;
+
+            applyFloorImage(canvas, area);
+            area.tables.forEach((table, idx) => {
+                try {
+                    const el = createTableElement(table);
+                    positionTableElement(el, table, idx);
+                    canvas.appendChild(el);
+                } catch (err) {
+                    console.error(`[FloorPlan] Reload render error (${table.number}):`, err);
                 }
-                
-                // Set background if floor image exists
-                if (area.floor_image) {
-                    canvas.style.backgroundImage = `url('${area.floor_image}')`;
-                    canvas.style.backgroundSize = 'cover';
-                    canvas.style.backgroundPosition = 'center';
-                }
-                
-                // Render tables
-                area.tables.forEach((table, tableIndex) => {
-                    try {
-                        const tableEl = createTableElement(table);
-                        
-                        if (table.pos_x !== null && table.pos_y !== null) {
-                            tableEl.style.left = table.pos_x + 'px';
-                            tableEl.style.top = table.pos_y + 'px';
-                        } else {
-                            const index = area.tables.indexOf(table);
-                            tableEl.style.left = (50 + (index % 8) * 80) + 'px';
-                            tableEl.style.top = (100 + Math.floor(index / 8) * 80) + 'px';
-                        }
-                        
-                        canvas.appendChild(tableEl);
-                        console.log(`  ✓ Table ${table.number} rendered (status: ${table.status})`);
-                    } catch (err) {
-                        console.error(`  ❌ Error rendering table ${table.number}:`, err);
-                    }
-                });
             });
-            
-            console.log('✅ Floor plan refreshed successfully!');
-        } catch (e) {
-            console.error('❌ Error re-rendering floor plan:', e);
-        }
+        });
     })
-    .catch(err => {
-        console.error('❌ Error reloading floor plan data:', err);
-    });
+    .catch(err => console.error('[FloorPlan] Reload fetch error:', err));
 }
 
-// Initialize drag handlers
-function initializeDragHandlers() {
-    const tableCards = document.querySelectorAll('.table-card');
-    
-    tableCards.forEach(card => {
-        const dragHandle = card.querySelector('.drag-handle');
-        if (dragHandle) {
-            dragHandle.addEventListener('mousedown', startDrag);
-        }
-    });
-}
+/* --------------------------------------------------------------------------
+   6. DRAG & DROP - Reposition tables on canvas
+   --------------------------------------------------------------------------
+   Drag via the small handle (top-left, visible on hover).
+   Position is saved to server via POST. Changes are local until HO sync.
+   -------------------------------------------------------------------------- */
 
-// Drag functions
 var activeDragCard = null;
 var dragOffset = { x: 0, y: 0 };
 var dragCanvas = null;
 
+function initializeDragHandlers() {
+    document.querySelectorAll('.table-card .drag-handle').forEach(handle => {
+        handle.addEventListener('mousedown', startDrag);
+    });
+}
+
 function startDrag(e) {
     if (selectionMode) return;
-    
+    e.preventDefault();
+
     activeDragCard = e.target.closest('.table-card');
     dragCanvas = activeDragCard.parentElement;
-    
-    const rect = dragCanvas.getBoundingClientRect();
+
+    const canvasRect = dragCanvas.getBoundingClientRect();
     const cardRect = activeDragCard.getBoundingClientRect();
-    
-    dragOffset.x = e.clientX - (cardRect.left - rect.left);
-    dragOffset.y = e.clientY - (cardRect.top - rect.top);
-    
+    dragOffset.x = e.clientX - (cardRect.left - canvasRect.left);
+    dragOffset.y = e.clientY - (cardRect.top - canvasRect.top);
+
     activeDragCard.style.zIndex = '1000';
     activeDragCard.style.cursor = 'grabbing';
-    
-    // Show warning that position changes are temporary
-    showNotification('⚠️ Position changes are temporary | Sync from HO regularly', 'warning');
-    
+    showNotification('Position changes are temporary', 'warning');
+
     document.addEventListener('mousemove', moveDrag);
     document.addEventListener('mouseup', endDrag);
-    e.preventDefault();
 }
 
 function moveDrag(e) {
     if (!activeDragCard || !dragCanvas) return;
-    
     const rect = dragCanvas.getBoundingClientRect();
-    let x = e.clientX - rect.left - dragOffset.x;
-    let y = e.clientY - rect.top - dragOffset.y;
-    
-    x = Math.max(0, Math.min(x, dragCanvas.offsetWidth - 70));
-    y = Math.max(0, Math.min(y, dragCanvas.offsetHeight - 70));
-    
+    const x = Math.max(0, Math.min(e.clientX - rect.left - dragOffset.x, dragCanvas.offsetWidth - 70));
+    const y = Math.max(0, Math.min(e.clientY - rect.top - dragOffset.y, dragCanvas.offsetHeight - 70));
     activeDragCard.style.left = x + 'px';
     activeDragCard.style.top = y + 'px';
 }
 
-function endDrag(e) {
+function endDrag() {
     if (!activeDragCard) return;
-    
+
     const tableId = activeDragCard.getAttribute('data-table-id');
     const x = parseInt(activeDragCard.style.left) || 0;
     const y = parseInt(activeDragCard.style.top) || 0;
-    
-    // Save position
+
+    // Persist position to server
     fetch('{% url "tables:update_table_position" %}', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-                          document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] || ''
+            'X-CSRFToken': window.CSRF_TOKEN || '{{ csrf_token }}'
         },
-        body: JSON.stringify({
-            table_id: tableId,
-            pos_x: x,
-            pos_y: y
-        })
+        body: JSON.stringify({ table_id: tableId, pos_x: x, pos_y: y })
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('✅ Position saved locally | Will sync with HO on next update', 'success');
-        }
-    })
-    .catch(err => {
-        console.error('Error saving position:', err);
-        showNotification('⚠️ Error saving position', 'warning');
-    });
-    
+    .then(r => r.json())
+    .then(d => { if (d.success) showNotification('Position saved', 'success'); })
+    .catch(() => showNotification('Error saving position', 'warning'));
+
+    // Reset drag state
     activeDragCard.style.zIndex = '';
     activeDragCard.style.cursor = '';
     activeDragCard = null;
     dragCanvas = null;
-    
     document.removeEventListener('mousemove', moveDrag);
     document.removeEventListener('mouseup', endDrag);
 }
 
-// Use var for global scope to prevent redeclaration errors
+/* --------------------------------------------------------------------------
+   7. MULTI-SELECT - Long-press to select tables for joining
+   --------------------------------------------------------------------------
+   Long-press (500ms) on an occupied table enters selection mode.
+   Tap additional occupied tables to toggle selection.
+   "Join" button appears when 2+ tables are selected.
+   -------------------------------------------------------------------------- */
+
 var selectionMode = false;
 var selectedTables = [];
 var longPressTimer = null;
 var LONG_PRESS_DURATION = 500;
 
-// Initialize floor plan with tab UI on page load
+// Attach listeners on page load and after HTMX swaps
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Alpine.js for tabs
-    if (typeof Alpine !== 'undefined') {
-        Alpine.start();
-    }
-    
-    // Attach event listeners to dynamically created table cards
+    if (typeof Alpine !== 'undefined') Alpine.start();
     attachTableEventListeners();
 });
 
-// Re-attach listeners when floor plan is dynamically updated
 document.addEventListener('htmx:afterSwap', function(event) {
     if (event.detail.target.classList.contains('floor-plan-canvas')) {
         attachTableEventListeners();
     }
 });
 
+/** Attach long-press, click, and drag listeners to all table cards */
 function attachTableEventListeners() {
-    const tableCards = document.querySelectorAll('.table-card');
-    
-    tableCards.forEach(card => {
+    document.querySelectorAll('.table-card').forEach(card => {
         const tableId = card.getAttribute('data-table-id');
         const tableStatus = card.getAttribute('data-table-status');
 
-        // Remove old listeners
+        // Clone to remove old listeners
         card.replaceWith(card.cloneNode(true));
         card = document.querySelector(`[data-table-id="${tableId}"]`);
         if (!card) return;
 
-        card.addEventListener('mousedown', function(e) {
-            if (e.button !== 0) return;
+        // Long-press → enter selection mode (mouse + touch)
+        const startLongPress = () => {
             longPressTimer = setTimeout(() => {
                 if (tableStatus === 'occupied') {
                     enterSelectionMode();
                     toggleTableSelection(tableId, card);
                 }
             }, LONG_PRESS_DURATION);
-        });
+        };
 
+        card.addEventListener('mousedown', e => { if (e.button === 0) startLongPress(); });
+        card.addEventListener('touchstart', startLongPress);
         card.addEventListener('mouseup', clearLongPress);
         card.addEventListener('mouseleave', clearLongPress);
-        card.addEventListener('touchstart', function() {
-            longPressTimer = setTimeout(() => {
-                if (tableStatus === 'occupied') {
-                    enterSelectionMode();
-                    toggleTableSelection(tableId, card);
-                }
-            }, LONG_PRESS_DURATION);
-        });
         card.addEventListener('touchend', clearLongPress);
         card.addEventListener('touchcancel', clearLongPress);
 
+        // Click in selection mode → toggle table
         card.addEventListener('click', function(e) {
-            if (selectionMode) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (tableStatus === 'occupied') {
-                    toggleTableSelection(tableId, card);
-                } else {
-                    showNotification('⚠️ Only occupied tables can be joined', 'warning');
-                }
+            if (!selectionMode) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (tableStatus === 'occupied') {
+                toggleTableSelection(tableId, card);
+            } else {
+                showNotification('Only occupied tables can be joined', 'warning');
             }
         });
 
         // Drag handle
-        const dragHandle = card.querySelector('.drag-handle');
-        if (dragHandle) {
-            dragHandle.addEventListener('mousedown', startDrag);
-        }
+        const handle = card.querySelector('.drag-handle');
+        if (handle) handle.addEventListener('mousedown', startDrag);
     });
 }
 
 function clearLongPress() {
-    if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-    }
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 }
 
 function enterSelectionMode() {
     if (selectionMode) return;
-
     selectionMode = true;
+
     document.querySelectorAll('.table-card').forEach(card => {
         card.classList.add('selection-mode');
-        const checkbox = card.querySelector('.selection-checkbox');
-        if (card.getAttribute('data-table-status') === 'occupied' && checkbox) {
-            checkbox.classList.remove('hidden');
+        if (card.getAttribute('data-table-status') === 'occupied') {
+            const cb = card.querySelector('.selection-checkbox');
+            if (cb) cb.classList.remove('hidden');
         }
     });
 
     const subtitle = document.getElementById('floor-plan-subtitle');
-    if (subtitle) {
-        subtitle.textContent = 'Selection mode: Tap tables to join';
-    }
-    showNotification('📋 Selection mode activated', 'info');
+    if (subtitle) subtitle.textContent = 'Selection mode: Tap tables to join';
+    showNotification('Selection mode activated', 'info');
 }
 
 function exitSelectionMode() {
@@ -981,10 +791,10 @@ function exitSelectionMode() {
 
     document.querySelectorAll('.table-card').forEach(card => {
         card.classList.remove('selection-mode', 'selected');
-        const checkbox = card.querySelector('.selection-checkbox');
-        if (checkbox) {
-            checkbox.classList.add('hidden');
-            const input = checkbox.querySelector('input');
+        const cb = card.querySelector('.selection-checkbox');
+        if (cb) {
+            cb.classList.add('hidden');
+            const input = cb.querySelector('input');
             if (input) input.checked = false;
         }
     });
@@ -992,17 +802,15 @@ function exitSelectionMode() {
     document.getElementById('join-tables-btn').classList.add('hidden');
     document.getElementById('cancel-selection-btn').classList.add('hidden');
     const subtitle = document.getElementById('floor-plan-subtitle');
-    if (subtitle) {
-        subtitle.textContent = 'Tap table to create order • Long press for multi-select';
-    }
+    if (subtitle) subtitle.textContent = 'Tap table to order • Long press to multi-select';
 }
 
 function toggleTableSelection(tableId, card) {
     const checkbox = card.querySelector('.table-select-checkbox');
-    const isSelected = selectedTables.includes(tableId);
+    const idx = selectedTables.indexOf(tableId);
 
-    if (isSelected) {
-        selectedTables = selectedTables.filter(id => id !== tableId);
+    if (idx >= 0) {
+        selectedTables.splice(idx, 1);
         card.classList.remove('selected');
         if (checkbox) checkbox.checked = false;
     } else {
@@ -1010,23 +818,17 @@ function toggleTableSelection(tableId, card) {
         card.classList.add('selected');
         if (checkbox) checkbox.checked = true;
     }
-
     updateSelectionUI();
 }
 
+/** Sync selectedTables from checkbox state (called from checkbox onclick) */
 function handleTableSelection() {
-    const checkboxes = document.querySelectorAll('.table-select-checkbox:checked');
-    selectedTables = Array.from(checkboxes).map(cb => cb.getAttribute('data-table-id'));
+    selectedTables = Array.from(document.querySelectorAll('.table-select-checkbox:checked'))
+        .map(cb => cb.getAttribute('data-table-id'));
 
     document.querySelectorAll('.table-card').forEach(card => {
-        const tableId = card.getAttribute('data-table-id');
-        if (selectedTables.includes(tableId)) {
-            card.classList.add('selected');
-        } else {
-            card.classList.remove('selected');
-        }
+        card.classList.toggle('selected', selectedTables.includes(card.getAttribute('data-table-id')));
     });
-
     updateSelectionUI();
 }
 
@@ -1035,122 +837,72 @@ function updateSelectionUI() {
     const cancelBtn = document.getElementById('cancel-selection-btn');
     const countText = document.getElementById('selected-count');
 
-    if (selectedTables.length >= 2) {
-        joinBtn.classList.remove('hidden');
-        cancelBtn.classList.remove('hidden');
-        countText.textContent = `${selectedTables.length} tables selected`;
-    } else if (selectedTables.length === 1) {
-        joinBtn.classList.add('hidden');
-        cancelBtn.classList.remove('hidden');
-        countText.textContent = `${selectedTables.length} table selected`;
-    } else {
-        joinBtn.classList.add('hidden');
-        cancelBtn.classList.add('hidden');
-    }
+    const n = selectedTables.length;
+    joinBtn.classList.toggle('hidden', n < 2);
+    cancelBtn.classList.toggle('hidden', n === 0);
+    if (n > 0) countText.textContent = `${n} table${n > 1 ? 's' : ''} selected`;
 }
 
 function cancelSelection() {
     exitSelectionMode();
-    showNotification('❌ Selection cancelled', 'info');
+    showNotification('Selection cancelled', 'info');
 }
 
+/** POST selected table IDs to join endpoint, then reload */
 function joinTables() {
     if (selectedTables.length < 2) {
-        showNotification('⚠️ Select at least 2 tables', 'warning');
+        showNotification('Select at least 2 tables', 'warning');
         return;
     }
 
-    let hasBill = false;
-    for (const tableId of selectedTables) {
-        const card = document.querySelector(`.table-card[data-table-id="${tableId}"]`);
-        const status = card ? card.getAttribute('data-table-status') : '';
-        if (status === 'occupied') {
-            hasBill = true;
-            break;
-        }
-    }
-
-    if (!hasBill) {
-        showNotification('⚠️ Please open at least one table and add items before joining', 'warning');
+    // Verify at least one table has a bill
+    const hasOccupied = selectedTables.some(id => {
+        const card = document.querySelector(`.table-card[data-table-id="${id}"]`);
+        return card && card.getAttribute('data-table-status') === 'occupied';
+    });
+    if (!hasOccupied) {
+        showNotification('Open at least one table before joining', 'warning');
         return;
     }
 
     fetch('{% url "tables:join_tables" %}', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
         body: JSON.stringify({ table_ids: selectedTables })
     })
-    .then(response => response.json())
+    .then(r => r.json())
     .then(data => {
         if (data.success) {
-            showNotification('✅ Tables joined successfully!', 'success');
+            showNotification('Tables joined successfully!', 'success');
             exitSelectionMode();
-            if (data.redirect_url) {
-                setTimeout(() => { window.location.href = data.redirect_url; }, 1000);
-            } else {
-                setTimeout(() => window.location.reload(), 1500);
-            }
+            setTimeout(() => {
+                window.location.href = data.redirect_url || window.location.href;
+            }, 1000);
         } else {
-            showNotification('⚠️ ' + (data.error || 'Failed to join tables'), 'warning');
+            showNotification(data.error || 'Failed to join tables', 'warning');
         }
     })
-    .catch(() => {
-        showNotification('❌ Error joining tables', 'warning');
-    });
+    .catch(() => showNotification('Error joining tables', 'warning'));
 }
 
-function saveTablePosition(card) {
-    const tableId = card.getAttribute('data-table-id');
-    if (!tableId) return;
+/* --------------------------------------------------------------------------
+   8. NOTIFICATIONS - Simple toast
+   -------------------------------------------------------------------------- */
 
-    const posX = parseInt(card.style.left, 10) || 0;
-    const posY = parseInt(card.style.top, 10) || 0;
-
-    fetch('{% url "tables:update_table_position" %}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: JSON.stringify({
-            table_id: tableId,
-            pos_x: posX,
-            pos_y: posY
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('✅ Posisi meja tersimpan', 'success');
-        } else {
-            showNotification('⚠️ Gagal menyimpan posisi', 'warning');
-        }
-    })
-    .catch(() => {
-        showNotification('⚠️ Error menyimpan posisi', 'warning');
-    });
-}
-
-function showNotification(message, type = 'info') {
+function showNotification(message, type) {
     document.querySelectorAll('.toast-notification').forEach(n => n.remove());
 
-    const notification = document.createElement('div');
-    notification.className = `toast-notification fixed top-24 right-6 backdrop-blur-md ${
-        type === 'success' ? 'bg-green-500/90' :
-        type === 'info' ? 'bg-blue-500/90' :
-        'bg-yellow-500/90'
-    } text-white px-6 py-3 rounded-lg shadow-2xl z-50 font-semibold flex items-center gap-2`;
-    notification.innerHTML = `<span>${message}</span>`;
-    document.body.appendChild(notification);
+    const colors = { success: 'bg-green-500/90', info: 'bg-blue-500/90', warning: 'bg-yellow-500/90' };
+    const el = document.createElement('div');
+    el.className = `toast-notification fixed top-24 right-6 ${colors[type] || colors.info} text-white px-5 py-2.5 rounded-lg shadow-2xl z-50 text-sm font-semibold`;
+    el.textContent = message;
+    document.body.appendChild(el);
 
     setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transform = 'translateY(-20px)';
-        notification.style.transition = 'all 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-20px)';
+        el.style.transition = 'all 0.3s ease-out';
+        setTimeout(() => el.remove(), 300);
     }, 2500);
 }
 </script>

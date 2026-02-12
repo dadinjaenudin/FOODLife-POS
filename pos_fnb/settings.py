@@ -249,6 +249,11 @@ MINIO_USE_SSL = os.environ.get('MINIO_USE_SSL', 'False') == 'True' or EDGE_MINIO
 # Edge MinIO is exposed on localhost:9002 (see docker-compose.yml: 9002:9000)
 MINIO_PUBLIC_URL = os.environ.get('MINIO_PUBLIC_URL', 'http://localhost:9002')
 
+# Payment Gateway Settings
+# Options: 'mock' (development), 'midtrans' (future), 'xendit' (future)
+PAYMENT_GATEWAY = os.environ.get('PAYMENT_GATEWAY', 'mock')
+QRIS_TIMEOUT_MINUTES = int(os.environ.get('QRIS_TIMEOUT_MINUTES', '5'))
+
 # REST Framework & JWT Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

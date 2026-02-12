@@ -34,22 +34,9 @@
                 onclick="printReceipt({{ bill.id }})">
                 Reprint
             </button>
-            <button 
+            <button
                 class="flex-1 py-3 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700"
-                onclick="console.log('✅ Done button clicked - clearing modal');
-                    document.getElementById('modal-container').innerHTML = ''; 
-                    // Clear modal on customer display
-                    if (typeof sendModalToCustomerDisplay === 'function') {
-                        sendModalToCustomerDisplay();
-                        console.log('🧹 Sent clear modal to customer display');
-                    }
-                    // Clear customer display bill panel
-                    if (typeof updateCustomerDisplay === 'function') {
-                        updateCustomerDisplay([], 0, 0, 'cash', true);
-                    }
-                    // Refresh product grid to show No Active Bill
-                    htmx.ajax('GET', '{% url 'pos:products' %}?category=all', {target: '#product-grid', swap: 'innerHTML'});
-                    setTimeout(() => { window.location.reload(true); }, 300);">
+                onclick="closeDone()">
                 Done
             </button>
         </div>
@@ -63,49 +50,103 @@
     const billId = {{ bill.id }};
     const printUrl = `/pos/bill/${billId}/print-preview/`;
     const printWindow = window.open(printUrl, 'PrintReceipt', 'width=400,height=600,menubar=no,toolbar=no,location=no');
-    
+
     if (!printWindow) {
         showToast('Print preview blocked by popup blocker. Please allow popups for this site.', 'warning');
     }
 
     // Dispatch payment complete event for listeners (printer, customer display)
-    document.body.dispatchEvent(new CustomEvent('paymentComplete', { 
-        detail: { billId: billId } 
+    document.body.dispatchEvent(new CustomEvent('paymentComplete', {
+        detail: { billId: billId }
     }));
-    console.log('🎉 Payment complete event dispatched');
-    
-    // Clear modal on customer display (success modal only shows on main display)
+    console.log('Payment complete event dispatched');
+
+    // Send payment success modal to customer display
     setTimeout(() => {
-        if (typeof sendModalToCustomerDisplay === 'function') {
-            console.log('🧹 Clearing modal from customer display after payment');
-            // Temporarily clear modal-container to trigger clear on customer display
-            const modalContent = document.getElementById('modal-container').innerHTML;
-            document.getElementById('modal-container').innerHTML = '';
-            sendModalToCustomerDisplay();
-            // Restore modal for main display
+        if (typeof isKioskMode === 'function' && isKioskMode()) {
+            const LOCAL_API = 'http://127.0.0.1:5000';
+
+            // Build a clean success HTML for customer display (no buttons)
+            const successHtml = `
+                <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:50;">
+                    <div style="background:white;border-radius:12px;max-width:420px;width:100%;padding:3rem;text-align:center;">
+                        <div style="width:80px;height:80px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;">
+                            <svg width="40" height="40" fill="none" stroke="#16a34a" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                        <h2 style="font-size:1.75rem;font-weight:bold;color:#16a34a;margin-bottom:0.5rem;">Pembayaran Berhasil!</h2>
+                        <p style="color:#6b7280;margin-bottom:1rem;">{{ bill.bill_number }}</p>
+                        <div style="font-size:2.25rem;font-weight:bold;color:#111827;margin-bottom:1.5rem;">Rp {{ bill.total|floatformat:0|intcomma }}</div>
+                        {% if bill.queue_number %}
+                        <div style="background:#dbeafe;border-radius:12px;padding:1.5rem;margin-bottom:1rem;">
+                            <div style="font-size:0.875rem;color:#2563eb;">Nomor Antrian</div>
+                            <div style="font-size:3rem;font-weight:bold;color:#1d4ed8;">{{ bill.queue_number }}</div>
+                        </div>
+                        {% endif %}
+                        <p style="color:#9ca3af;font-size:0.875rem;">Terima kasih atas kunjungan Anda!</p>
+                    </div>
+                </div>`;
+
+            console.log('Sending payment success to customer display');
+            fetch(LOCAL_API + '/api/customer-display/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ show_modal: true, modal_html: successHtml })
+            }).catch(err => console.warn('Customer display update failed:', err.message));
+
+            // Clear customer display after 8 seconds (show waiting state)
             setTimeout(() => {
-                document.getElementById('modal-container').innerHTML = modalContent;
-            }, 100);
+                console.log('Clearing customer display after payment success');
+                fetch(LOCAL_API + '/api/customer-display/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ show_modal: false, modal_html: null })
+                }).catch(() => {});
+                if (typeof updateCustomerDisplay === 'function') {
+                    updateCustomerDisplay([], 0, 0, 'cash', true);
+                }
+            }, 8000);
         }
-        
-        // Clear customer display bill panel (show waiting state)
-        if (typeof updateCustomerDisplay === 'function') {
-            console.log('🧹 Clearing customer display bill panel');
-            updateCustomerDisplay([], 0, 0, 'cash', true);
-        }
-    }, 500);
+    }, 300);
 })();
+
+// Clear payment modal active flag so other modals can work
+window._paymentModalActive = false;
 
 function printReceipt(billId) {
     const printUrl = `/pos/bill/${billId}/print-preview/`;
     const printWindow = window.open(printUrl, 'PrintReceipt', 'width=400,height=600,menubar=no,toolbar=no,location=no');
-    
+
     if (!printWindow) {
         showToast('Print preview blocked by popup blocker. Please allow popups for this site.', 'warning');
     }
 }
 
+function closeDone() {
+    console.log('Done button clicked - clearing modal');
+    document.getElementById('modal-container').innerHTML = '';
+    window._paymentModalActive = false;
+
+    // Clear modal on customer display
+    if (typeof isKioskMode === 'function' && isKioskMode()) {
+        fetch('http://127.0.0.1:5000/api/customer-display/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ show_modal: false, modal_html: null })
+        }).catch(() => {});
+        if (typeof updateCustomerDisplay === 'function') {
+            updateCustomerDisplay([], 0, 0, 'cash', true);
+        }
+    }
+
+    // Refresh page
+    htmx.ajax('GET', '{% url "pos:products" %}?category=all', {target: '#product-grid', swap: 'innerHTML'});
+    setTimeout(() => { window.location.reload(true); }, 300);
+}
+
 function closeModal() {
     document.getElementById('modal-container').innerHTML = '';
+    window._paymentModalActive = false;
 }
 </script>

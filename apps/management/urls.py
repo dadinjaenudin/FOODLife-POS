@@ -37,6 +37,27 @@ urlpatterns = [
     path('receipt-templates/<int:template_id>/delete/', views.receipt_template_delete, name='receipt_template_delete'),
     path('receipt-templates/<int:template_id>/toggle/', views.receipt_template_toggle, name='receipt_template_toggle'),
     
+    # Payment Profiles
+    path('payment-profiles/', views.payment_profile_list, name='payment_profile_list'),
+    path('payment-profiles/create/', views.payment_profile_create, name='payment_profile_create'),
+    path('payment-profiles/<uuid:profile_id>/edit/', views.payment_profile_edit, name='payment_profile_edit'),
+    path('payment-profiles/<uuid:profile_id>/delete/', views.payment_profile_delete, name='payment_profile_delete'),
+    path('payment-profiles/<uuid:profile_id>/toggle/', views.payment_profile_toggle, name='payment_profile_toggle'),
+
+    # Media Groups
+    path('media-groups/', views.media_group_list, name='media_group_list'),
+    path('media-groups/create/', views.media_group_create, name='media_group_create'),
+    path('media-groups/<uuid:group_id>/edit/', views.media_group_edit, name='media_group_edit'),
+    path('media-groups/<uuid:group_id>/delete/', views.media_group_delete, name='media_group_delete'),
+    path('media-groups/<uuid:group_id>/toggle/', views.media_group_toggle, name='media_group_toggle'),
+
+    # EFT Terminals
+    path('eft-terminals/', views.eft_terminal_list, name='eft_terminal_list'),
+    path('eft-terminals/create/', views.eft_terminal_create, name='eft_terminal_create'),
+    path('eft-terminals/<uuid:terminal_id>/edit/', views.eft_terminal_edit, name='eft_terminal_edit'),
+    path('eft-terminals/<uuid:terminal_id>/delete/', views.eft_terminal_delete, name='eft_terminal_delete'),
+    path('eft-terminals/<uuid:terminal_id>/toggle/', views.eft_terminal_toggle, name='eft_terminal_toggle'),
+
     # Settings
     path('settings/', views.settings, name='settings'),
     path('settings/update/', views.settings_update, name='settings_update'),

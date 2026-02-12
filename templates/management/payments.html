@@ -108,21 +108,26 @@
                             <div class="text-sm font-mono font-bold text-gray-900">{{ payment.bill.bill_number }}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            {% if payment.method == 'cash' %}
+                            {% if payment.payment_profile %}
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800"
+                                      {% if payment.payment_profile.color %}style="background-color: {{ payment.payment_profile.color }}15; color: {{ payment.payment_profile.color }}"{% endif %}>
+                                    {{ payment.payment_profile.name }}
+                                </span>
+                            {% elif payment.method == 'cash' %}
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                    💵 Cash
+                                    Cash
                                 </span>
                             {% elif payment.method == 'card' %}
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                                    💳 Card
+                                    Card
                                 </span>
                             {% elif payment.method == 'qris' %}
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
-                                    📱 QRIS
+                                    QRIS
                                 </span>
                             {% elif payment.method == 'ewallet' %}
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
-                                    👛 E-Wallet
+                                    E-Wallet
                                 </span>
                             {% else %}
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
@@ -134,8 +139,14 @@
                             <div class="text-sm font-semibold text-gray-900">Rp {{ payment.amount|floatformat:0 }}</div>
                         </td>
                         <td class="px-6 py-4">
-                            {% if payment.reference_number %}
-                            <div class="text-xs font-mono text-gray-500">{{ payment.reference_number }}</div>
+                            {% if payment.payment_metadata %}
+                                {% for key, val in payment.payment_metadata.items %}
+                                    {% if val %}
+                                    <div class="text-xs text-gray-500"><span class="font-semibold">{{ key }}:</span> <span class="font-mono">{{ val }}</span></div>
+                                    {% endif %}
+                                {% endfor %}
+                            {% elif payment.reference %}
+                            <div class="text-xs font-mono text-gray-500">{{ payment.reference }}</div>
                             {% else %}
                             <span class="text-sm text-gray-400">-</span>
                             {% endif %}

@@ -1,145 +1,167 @@
 {% load humanize %}
-<!-- Shift Close Modal with Cash Reconciliation -->
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4" id="shift-close-modal">
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+<!-- Shift Close Modal -->
+<div id="shift-close-modal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+     onclick="if(event.target === this) this.remove()">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-hidden">
+
         <!-- Header -->
-        <div class="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3 rounded-t-lg">
-            <h2 class="text-lg font-bold text-white">Close Cashier Shift</h2>
-            <p class="text-green-100 text-xs">Duration: {{ duration_hours|floatformat:1 }} hours</p>
+        <div class="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2.5">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold">Close Cashier Shift</h3>
+                        <p class="text-green-100 text-[10px]">Duration: {{ duration_hours|floatformat:1 }} hours</p>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('shift-close-modal').remove()"
+                        class="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
         </div>
-        
+
         <!-- Form -->
         <form id="shift-close-form" hx-post="{% url 'pos:shift_close' %}" hx-swap="none">
             {% csrf_token %}
-            
-            <div class="p-4 max-h-[70vh] overflow-y-auto">
-                <!-- Shift Summary - Compact -->
-                <div class="grid grid-cols-4 gap-2 mb-4">
-                    <div class="bg-blue-50 rounded p-2">
-                        <div class="text-[9px] text-blue-600 font-semibold">Total Bills</div>
-                        <div class="text-lg font-bold text-blue-900">{{ bills_stats.total|default:0 }}</div>
+
+            <div class="overflow-y-auto" style="max-height: calc(85vh - 100px);">
+
+                <!-- Shift Summary Stats -->
+                <div class="grid grid-cols-4 gap-1.5 px-3 pt-3">
+                    <div class="bg-blue-50 rounded-lg px-2 py-1.5 text-center">
+                        <div class="text-[9px] text-blue-600 font-semibold">Bills</div>
+                        <div class="text-sm font-bold text-blue-900">{{ bills_stats.total|default:0 }}</div>
                     </div>
-                    <div class="bg-green-50 rounded p-2">
+                    <div class="bg-green-50 rounded-lg px-2 py-1.5 text-center">
                         <div class="text-[9px] text-green-600 font-semibold">Paid</div>
-                        <div class="text-lg font-bold text-green-900">{{ bills_stats.paid|default:0 }}</div>
+                        <div class="text-sm font-bold text-green-900">{{ bills_stats.paid|default:0 }}</div>
                     </div>
-                    <div class="bg-yellow-50 rounded p-2">
+                    <div class="bg-yellow-50 rounded-lg px-2 py-1.5 text-center">
                         <div class="text-[9px] text-yellow-600 font-semibold">Sales</div>
-                        <div class="text-sm font-bold text-yellow-900">{{ total_sales|floatformat:0|intcomma }}</div>
+                        <div class="text-[11px] font-bold text-yellow-900 tabular-nums">{{ total_sales|floatformat:0|intcomma }}</div>
                     </div>
-                    <div class="bg-purple-50 rounded p-2">
+                    <div class="bg-purple-50 rounded-lg px-2 py-1.5 text-center">
                         <div class="text-[9px] text-purple-600 font-semibold">Opening</div>
-                        <div class="text-sm font-bold text-purple-900">{{ shift.opening_cash|floatformat:0|intcomma }}</div>
+                        <div class="text-[11px] font-bold text-purple-900 tabular-nums">{{ shift.opening_cash|floatformat:0|intcomma }}</div>
                     </div>
                 </div>
-                
-                <!-- Payment Method Reconciliation - Compact -->
-                <div class="mb-4">
-                    <h3 class="text-sm font-bold text-gray-800 mb-2">💰 Payment Reconciliation</h3>
-                    
-                    <div class="bg-gray-50 rounded p-3 space-y-2">
+
+                <!-- Warning if bills open -->
+                {% if bills_stats.open > 0 %}
+                <div class="mx-3 mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
+                    <p class="text-red-700 text-[10px] font-semibold">
+                        <svg class="w-3 h-3 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        {{ bills_stats.open }} open bill(s) — close or void them first.
+                    </p>
+                </div>
+                {% endif %}
+
+                <!-- Payment Reconciliation -->
+                <div class="px-3 pt-3 pb-1">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Payment Reconciliation</div>
+
+                    <div class="bg-gray-50 rounded-lg p-2 space-y-1.5">
+                        <!-- Payment rows -->
                         {% for payment in payment_breakdown %}
-                        <div class="flex items-center gap-2 text-xs">
-                            <!-- Method Name -->
-                            <div class="w-24">
-                                <div class="font-semibold text-gray-800">
-                                    {% if payment.method == 'cash' %}💵 Cash
-                                    {% elif payment.method == 'card' %}💳 Card
-                                    {% elif payment.method == 'qris' %}📱 QRIS
-                                    {% elif payment.method == 'ewallet' %}🏦 E-Wallet
-                                    {% elif payment.method == 'transfer' %}🔄 Transfer
-                                    {% elif payment.method == 'voucher' %}🎟️ Voucher
+                        <div class="flex items-center gap-2 text-[11px]">
+                            <div class="w-20 flex-shrink-0">
+                                <div class="font-bold text-gray-800">
+                                    {% if payment.method == 'cash' %}Cash
+                                    {% elif payment.method == 'card' %}Card
+                                    {% elif payment.method == 'qris' %}QRIS
+                                    {% elif payment.method == 'ewallet' %}E-Wallet
+                                    {% elif payment.method == 'transfer' %}Transfer
+                                    {% elif payment.method == 'voucher' %}Voucher
                                     {% endif %}
                                 </div>
-                                <div class="text-[9px] text-gray-500">{{ payment.count }} trx</div>
+                                <div class="text-[9px] text-gray-400">{{ payment.count }} trx</div>
                             </div>
-                            
-                            <!-- Expected Amount -->
-                            <div class="flex-1">
-                                <div class="text-[9px] text-gray-600">Expected</div>
-                                <div class="text-sm font-bold text-gray-900">{{ payment.total|floatformat:0|intcomma }}</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-[9px] text-gray-400">Expected</div>
+                                <div class="text-[11px] font-bold text-gray-900 tabular-nums">{{ payment.total|floatformat:0|intcomma }}</div>
                             </div>
-                            
-                            <!-- Actual Amount Input -->
-                            <div class="flex-1">
-                                <div class="text-[9px] text-gray-600 mb-0.5">Actual</div>
-                                <input type="text" 
+                            <div class="flex-1 min-w-0">
+                                <div class="text-[9px] text-gray-400">Actual</div>
+                                <input type="text"
                                        id="actual_{{ payment.method }}_display"
                                        data-value="{{ payment.total|default:0|floatformat:0 }}"
                                        data-method="{{ payment.method }}"
-                                       class="w-full px-2 py-1 border border-gray-300 rounded text-right text-sm font-semibold focus:ring-1 focus:ring-green-500"
+                                       class="w-full px-2 py-1 border border-gray-300 rounded text-right text-[11px] font-bold tabular-nums focus:ring-1 focus:ring-green-500 focus:border-green-500"
                                        {% if payment.method != 'cash' %}readonly{% endif %}
                                        oninput="formatPaymentInput(this)">
-                                <input type="hidden" 
-                                       name="actual_{{ payment.method }}" 
+                                <input type="hidden"
+                                       name="actual_{{ payment.method }}"
                                        id="actual_{{ payment.method }}"
                                        value="{{ payment.total|default:0|floatformat:0 }}">
                             </div>
                         </div>
                         {% endfor %}
-                        
-                        <!-- Expected Cash Highlight - Compact -->
-                        <div class="mt-3 bg-green-100 border border-green-500 rounded p-2">
-                            <div class="flex justify-between items-center">
-                                <span class="text-green-900 font-bold text-xs">💵 Expected Cash:</span>
-                                <span class="text-lg font-bold text-green-900">{{ expected_cash|floatformat:0|intcomma }}</span>
-                            </div>
-                            <div class="text-[9px] text-green-700">Opening + Cash Payments</div>
+                    </div>
+                </div>
+
+                <!-- Expected Cash + Actual Cash Input -->
+                <div class="px-3 pb-2">
+                    <div class="bg-green-50 border border-green-300 rounded-lg p-2.5 mt-1">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[11px] font-bold text-green-800">Expected Cash</span>
+                            <span class="text-sm font-bold text-green-900 tabular-nums">Rp {{ expected_cash|floatformat:0|intcomma }}</span>
                         </div>
-                        
-                        <!-- Actual Cash Input -->
-                        <div class="mt-3">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">
-                                Count Physical Cash <span class="text-red-600">*</span>
-                            </label>
-                            <input type="text" 
+                        <div class="text-[9px] text-green-600 mb-2">Opening + Cash Payments</div>
+
+                        <label class="block text-[10px] font-bold text-gray-700 mb-1">
+                            Count Physical Cash <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-semibold">Rp</span>
+                            <input type="text"
                                    id="actual_cash_display"
                                    required
                                    data-value="{{ expected_cash|default:0|floatformat:0 }}"
-                                   class="w-full px-3 py-2 border-2 border-green-500 rounded text-right text-lg font-bold focus:ring-1 focus:ring-green-500"
+                                   class="w-full pl-9 pr-3 py-1.5 border-2 border-green-500 rounded-lg text-right text-sm font-bold tabular-nums focus:ring-1 focus:ring-green-500"
                                    oninput="formatActualCash(this)"
                                    placeholder="0">
                             <input type="hidden" name="actual_cash" id="actual_cash" value="{{ expected_cash|default:0|floatformat:0 }}">
                         </div>
-                        
+
                         <!-- Cash Difference -->
-                        <div id="cash-difference-display" class="hidden mt-2 p-2 rounded">
-                            <div class="flex justify-between items-center text-sm">
+                        <div id="cash-difference-display" class="hidden mt-2 px-2.5 py-1.5 rounded-lg">
+                            <div class="flex justify-between items-center text-xs">
                                 <span class="font-bold">Difference:</span>
-                                <span id="difference-amount" class="text-lg font-bold"></span>
+                                <span id="difference-amount" class="text-sm font-bold tabular-nums"></span>
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Notes - Compact -->
-                <div class="mb-3">
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Closing Notes</label>
-                    <textarea name="notes" 
-                              rows="2" 
-                              class="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-green-500"
+
+                <!-- Notes -->
+                <div class="px-3 pb-3">
+                    <label class="block text-xs font-bold text-gray-700 mb-1">Closing Notes</label>
+                    <textarea name="notes"
+                              rows="2"
+                              class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-green-500 focus:border-green-500"
                               placeholder="Any issues or notes..."></textarea>
                 </div>
-                
-                <!-- Warning if bills open -->
-                {% if bills_stats.open > 0 %}
-                <div class="bg-yellow-50 border border-yellow-300 rounded p-2 mb-3">
-                    <p class="text-yellow-800 text-xs">
-                        <strong>⚠️ Warning:</strong> {{ bills_stats.open }} open bill(s). Close or void them first.
-                    </p>
-                </div>
-                {% endif %}
             </div>
-            
-            <!-- Footer - Compact -->
-            <div class="bg-gray-50 px-4 py-3 rounded-b-lg flex justify-end gap-2">
-                <button type="button" 
+
+            <!-- Footer -->
+            <div class="bg-white px-3 py-2 flex gap-2 border-t border-gray-100">
+                <button type="button"
                         onclick="document.getElementById('shift-close-modal').remove()"
-                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold rounded transition">
+                        class="flex-1 h-8 px-3 text-[11px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition flex items-center justify-center">
                     Cancel
                 </button>
-                <button type="submit" 
-                        class="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded transition">
+                <button type="submit"
+                        class="flex-1 h-8 px-3 text-[11px] font-bold bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-sm flex items-center justify-center gap-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
                     Close Shift
                 </button>
             </div>
@@ -158,169 +180,107 @@ function formatNumber(num) {
 function formatPaymentInput(input) {
     const rawValue = input.value.replace(/\D/g, '');
     const numericValue = parseInt(rawValue) || 0;
-    
-    // Update hidden field
     const method = input.dataset.method;
     document.getElementById('actual_' + method).value = numericValue;
-    
-    // Format display
     input.value = formatNumber(numericValue);
 }
 
 function formatActualCash(input) {
     const rawValue = input.value.replace(/\D/g, '');
     const numericValue = parseInt(rawValue) || 0;
-    
-    // Update hidden field
     document.getElementById('actual_cash').value = numericValue;
-    
-    // Format display
     input.value = formatNumber(numericValue);
-    
-    // Calculate difference
     calculateCashDifference();
 }
 
 function calculateCashDifference() {
     const actualCash = parseInt(document.getElementById('actual_cash').value) || 0;
     const difference = actualCash - expectedCash;
-    
     const diffDisplay = document.getElementById('cash-difference-display');
     const diffAmount = document.getElementById('difference-amount');
-    
+
     if (Math.abs(difference) > 0.01) {
         diffDisplay.classList.remove('hidden');
-        
         if (difference > 0) {
-            diffDisplay.className = 'mt-2 p-2 rounded bg-blue-100 border border-blue-300';
-            diffAmount.className = 'text-lg font-bold text-blue-900';
-            diffAmount.textContent = '+ ' + formatNumber(Math.abs(difference));
+            diffDisplay.className = 'mt-2 px-2.5 py-1.5 rounded-lg bg-blue-100 border border-blue-300';
+            diffAmount.className = 'text-sm font-bold tabular-nums text-blue-900';
+            diffAmount.textContent = '+Rp ' + formatNumber(Math.abs(difference));
         } else {
-            diffDisplay.className = 'mt-2 p-2 rounded bg-red-100 border border-red-300';
-            diffAmount.className = 'text-lg font-bold text-red-900';
-            diffAmount.textContent = '- ' + formatNumber(Math.abs(difference));
+            diffDisplay.className = 'mt-2 px-2.5 py-1.5 rounded-lg bg-red-100 border border-red-300';
+            diffAmount.className = 'text-sm font-bold tabular-nums text-red-900';
+            diffAmount.textContent = '-Rp ' + formatNumber(Math.abs(difference));
         }
     } else {
         diffDisplay.classList.add('hidden');
     }
 }
 
-// Setup event listener for form submission
+// Form submission handler
 const shiftCloseForm = document.getElementById('shift-close-form');
 if (shiftCloseForm) {
     shiftCloseForm.addEventListener('htmx:afterRequest', function(event) {
-        console.log('Shift close response:', event.detail.xhr.response);
-        
         if (event.detail.successful) {
             const response = JSON.parse(event.detail.xhr.response);
-            
+
             // Success toast
             const toast = document.createElement('div');
-            toast.className = 'fixed top-4 right-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-50 animate-slide-in';
-            toast.innerHTML = `
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <div>
-                    <p class="font-bold">Shift Closed!</p>
-                    <p class="text-sm text-green-100">${response.message || 'Shift closed successfully'}</p>
-                    <p class="text-xs text-green-200">Shift closed</p>
-                </div>
-            `;
+            toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-2.5 z-[9999]';
+            toast.innerHTML = '<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><div><p class="text-sm font-bold">Shift Closed!</p><p class="text-xs text-green-100">' + (response.message || 'Shift closed successfully') + '</p></div>';
             document.body.appendChild(toast);
-            
+
             // Open print window
             if (response.print_url) {
-                setTimeout(() => {
-                    window.open(response.print_url, '_blank', 'width=800,height=600');
-                }, 500);
+                setTimeout(function() { window.open(response.print_url, '_blank', 'width=800,height=600'); }, 500);
             }
-            
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    toast.style.transform = 'translateX(100%)';
-                    setTimeout(() => {
-                        toast.remove();
-                        document.getElementById('shift-close-modal')?.remove();
 
-                        // Show logout confirmation dialog
-                        const logoutModal = document.createElement('div');
-                        logoutModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-                        logoutModal.innerHTML = `
-                            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-                                <div class="text-center mb-6">
-                                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                                        </svg>
-                                    </div>
-                                    <h3 class="text-xl font-bold text-gray-900 mb-2">Shift Closed</h3>
-                                    <p class="text-gray-600">Do you want to logout? (For cashier handover)</p>
-                                </div>
-                                
-                                <div class="flex gap-3">
-                                    <button onclick="this.closest('div[class*=fixed]').remove(); window.location.reload();"
-                                            class="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition">
-                                        No, Stay Logged In
-                                    </button>
-                                    <button onclick="window.location.href='{% url 'core:login' %}';"
-                                            class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition">
-                                        Yes, Logout
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-                        document.body.appendChild(logoutModal);
-                    }, 300);
-                }, 2000);
-            
+            setTimeout(function() {
+                toast.style.transition = 'all 0.3s';
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(function() {
+                    toast.remove();
+                    document.getElementById('shift-close-modal')?.remove();
+
+                    // Logout confirmation
+                    const logoutModal = document.createElement('div');
+                    logoutModal.id = 'logout-confirm-modal';
+                    logoutModal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4';
+                    logoutModal.onclick = function(e) { if (e.target === logoutModal) { logoutModal.remove(); window.location.reload(); } };
+                    logoutModal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5 text-center">' +
+                        '<div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">' +
+                        '<svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg></div>' +
+                        '<h3 class="text-sm font-bold text-gray-900 mb-1">Shift Closed</h3>' +
+                        '<p class="text-xs text-gray-500 mb-4">Logout for cashier handover?</p>' +
+                        '<div class="flex gap-2">' +
+                        '<button onclick="this.closest(\'#logout-confirm-modal\').remove(); window.location.reload();" class="flex-1 h-8 text-[11px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition">Stay</button>' +
+                        '<button onclick="window.location.href=\'{% url "core:login" %}\';" class="flex-1 h-8 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Logout</button>' +
+                        '</div></div>';
+                    document.body.appendChild(logoutModal);
+                }, 300);
+            }, 2000);
+
         } else {
             try {
                 const response = JSON.parse(event.detail.xhr.response);
-                console.error('Shift close error:', response);
-                
-                // Error toast
                 const toast = document.createElement('div');
-                toast.className = 'fixed top-4 right-4 bg-gradient-to-r from-red-500 to-rose-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-50 animate-slide-in';
-                toast.innerHTML = `
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <div>
-                        <p class="font-bold">Failed to Close Shift</p>
-                        <p class="text-sm text-red-100">${response.error || 'Unknown error'}</p>
-                    </div>
-                `;
+                toast.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-2.5 z-[9999]';
+                toast.innerHTML = '<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><div><p class="text-sm font-bold">Failed</p><p class="text-xs text-red-100">' + (response.error || 'Unknown error') + '</p></div>';
                 document.body.appendChild(toast);
-                
-                setTimeout(() => {
+                setTimeout(function() {
+                    toast.style.transition = 'all 0.3s';
                     toast.style.opacity = '0';
-                    toast.style.transform = 'translateX(100%)';
-                    setTimeout(() => toast.remove(), 300);
+                    setTimeout(function() { toast.remove(); }, 300);
                 }, 4000);
-                
             } catch (e) {
-                console.error('Failed to parse error response:', e);
+                console.error('Parse error:', e);
             }
         }
     });
 }
 
-// Calculate initial difference
+// Initialize: format all displayed amounts and calculate difference
 calculateCashDifference();
-
-// Format all displayed amounts (replace dots with commas)
-document.querySelectorAll('.text-yellow-900, .text-purple-900, .text-gray-900, .text-green-900').forEach(function(el) {
-    if (el.textContent && el.textContent.match(/^\d{1,3}(\.\d{3})*$/)) {
-        // Replace dots with commas for thousand separators
-        el.textContent = el.textContent.replace(/\./g, ',');
-    }
-});
-
-// Format payment input values
 document.querySelectorAll('[data-value]').forEach(function(input) {
-    const value = parseFloat(input.dataset.value) || 0;
-    input.value = formatNumber(value);
+    input.value = formatNumber(parseFloat(input.dataset.value) || 0);
 });
-
 </script>

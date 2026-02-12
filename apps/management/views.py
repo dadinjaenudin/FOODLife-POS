@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
-from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto, Brand, Company, StoreBrand
+from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto, Brand, Company, StoreBrand, MediaGroup, PaymentMethodProfile, DataEntryPrompt, EFTTerminal
 from apps.core.models_session import StoreSession
 from apps.core.minio_client import get_minio_endpoint_for_request
 from apps.pos.models import Bill, Payment
@@ -624,16 +624,26 @@ def terminal_create(request):
             edc_mode = request.POST.get('edc_integration_mode', '').strip()
             terminal.edc_integration_mode = edc_mode if edc_mode else 'none'
             
-            # Handle default payment methods (multiple select)
-            default_payment_methods = request.POST.getlist('default_payment_methods')
-            if default_payment_methods:
-                terminal.default_payment_methods = default_payment_methods
-            else:
-                terminal.default_payment_methods = []
-
+            # Payment profiles (M2M) + dual-write legacy
             terminal.save()
-            messages.success(request, f'Terminal {terminal.terminal_code} created successfully ✓')
+            profile_ids = request.POST.getlist('payment_profile_ids')
+            if profile_ids:
+                profiles = PaymentMethodProfile.objects.filter(id__in=profile_ids)
+                terminal.payment_profiles.set(profiles)
+                legacy_methods = list(profiles.exclude(legacy_method_id='').values_list('legacy_method_id', flat=True))
+                terminal.default_payment_methods = legacy_methods
+            else:
+                terminal.payment_profiles.clear()
+                terminal.default_payment_methods = []
+            terminal.save(update_fields=['default_payment_methods'])
+
+            messages.success(request, f'Terminal {terminal.terminal_code} created successfully')
             return redirect('management:terminals')
+
+    # Load payment profiles for the brand
+    available_profiles = PaymentMethodProfile.objects.filter(
+        brand=store_config.brand, is_active=True
+    ).order_by('sort_order', 'name')
 
     context = {
         'store_config': store_config,
@@ -642,6 +652,8 @@ def terminal_create(request):
         'printer_types': POSTerminal.PRINTER_TYPE_CHOICES,
         'print_to_choices': POSTerminal.PRINT_TO_CHOICES,
         'edc_modes': POSTerminal.EDC_MODE_CHOICES,
+        'payment_profiles': available_profiles,
+        'assigned_profile_ids': [],
         'is_edit': False,
     }
     return render(request, 'management/terminal_form.html', context)
@@ -722,16 +734,27 @@ def terminal_edit(request, terminal_id):
             edc_mode = request.POST.get('edc_integration_mode', '').strip()
             terminal.edc_integration_mode = edc_mode if edc_mode else 'none'
             
-            # Handle default payment methods (multiple select)
-            default_payment_methods = request.POST.getlist('default_payment_methods')
-            if default_payment_methods:
-                terminal.default_payment_methods = default_payment_methods
-            else:
-                terminal.default_payment_methods = []
-
+            # Payment profiles (M2M) + dual-write legacy
             terminal.save()
-            messages.success(request, f'Terminal {terminal.terminal_code} updated successfully ✓')
+            profile_ids = request.POST.getlist('payment_profile_ids')
+            if profile_ids:
+                profiles = PaymentMethodProfile.objects.filter(id__in=profile_ids)
+                terminal.payment_profiles.set(profiles)
+                legacy_methods = list(profiles.exclude(legacy_method_id='').values_list('legacy_method_id', flat=True))
+                terminal.default_payment_methods = legacy_methods
+            else:
+                terminal.payment_profiles.clear()
+                terminal.default_payment_methods = []
+            terminal.save(update_fields=['default_payment_methods'])
+
+            messages.success(request, f'Terminal {terminal.terminal_code} updated successfully')
             return redirect('management:terminals')
+
+    # Load payment profiles for the terminal's brand
+    available_profiles = PaymentMethodProfile.objects.filter(
+        brand=terminal.brand, is_active=True
+    ).order_by('sort_order', 'name')
+    assigned_profile_ids = set(terminal.payment_profiles.values_list('id', flat=True))
 
     context = {
         'store_config': store_config,
@@ -740,6 +763,8 @@ def terminal_edit(request, terminal_id):
         'printer_types': POSTerminal.PRINTER_TYPE_CHOICES,
         'print_to_choices': POSTerminal.PRINT_TO_CHOICES,
         'edc_modes': POSTerminal.EDC_MODE_CHOICES,
+        'payment_profiles': available_profiles,
+        'assigned_profile_ids': assigned_profile_ids,
         'terminal': terminal,
         'is_edit': True,
     }
@@ -828,21 +853,26 @@ def terminal_duplicate(request, terminal_id):
             edc_mode = request.POST.get('edc_integration_mode', '').strip()
             terminal.edc_integration_mode = edc_mode if edc_mode else 'none'
             
-            # Handle default payment methods (multiple select)
-            default_payment_methods = request.POST.getlist('default_payment_methods')
-            if default_payment_methods:
-                terminal.default_payment_methods = default_payment_methods
-            else:
-                terminal.default_payment_methods = []
-
+            # Payment profiles (M2M) + dual-write legacy
             terminal.save()
-            messages.success(request, f'Terminal {terminal.terminal_code} created successfully from duplicate ✓')
+            profile_ids = request.POST.getlist('payment_profile_ids')
+            if profile_ids:
+                profiles = PaymentMethodProfile.objects.filter(id__in=profile_ids)
+                terminal.payment_profiles.set(profiles)
+                legacy_methods = list(profiles.exclude(legacy_method_id='').values_list('legacy_method_id', flat=True))
+                terminal.default_payment_methods = legacy_methods
+            else:
+                terminal.payment_profiles.clear()
+                terminal.default_payment_methods = []
+            terminal.save(update_fields=['default_payment_methods'])
+
+            messages.success(request, f'Terminal {terminal.terminal_code} created successfully from duplicate')
             return redirect('management:terminals')
 
     # Generate suggested terminal code (add -copy or increment number)
     import re
     base_code = source_terminal.terminal_code
-    
+
     # Try to find a unique code
     counter = 2
     suggested_code = f"{base_code}-copy"
@@ -857,6 +887,12 @@ def terminal_duplicate(request, terminal_id):
     terminal_copy.terminal_code = suggested_code
     terminal_copy.terminal_name = f"{source_terminal.terminal_name} (Copy)"
 
+    # Load payment profiles and pre-select from source terminal
+    available_profiles = PaymentMethodProfile.objects.filter(
+        brand=source_terminal.brand, is_active=True
+    ).order_by('sort_order', 'name')
+    assigned_profile_ids = set(source_terminal.payment_profiles.values_list('id', flat=True))
+
     context = {
         'store_config': store_config,
         'store_brands': store_brands,
@@ -864,6 +900,8 @@ def terminal_duplicate(request, terminal_id):
         'printer_types': POSTerminal.PRINTER_TYPE_CHOICES,
         'print_to_choices': POSTerminal.PRINT_TO_CHOICES,
         'edc_modes': POSTerminal.EDC_MODE_CHOICES,
+        'payment_profiles': available_profiles,
+        'assigned_profile_ids': assigned_profile_ids,
         'terminal': terminal_copy,
         'is_edit': False,
         'is_duplicate': True,
@@ -2886,7 +2924,7 @@ def payments_list(request):
     
     payments = Payment.objects.filter(
         bill__brand=Brand
-    ).select_related('bill', 'bill__created_by').order_by('-created_at')
+    ).select_related('bill', 'bill__created_by', 'payment_profile').order_by('-created_at')
     
     # Filter by payment method
     method_filter = request.GET.get('method', '')
@@ -4766,25 +4804,27 @@ def session_close(request):
             return JsonResponse({'success': False, 'error': 'No active session found'}, status=400)
         
         # Check for open cashier shifts
-        from apps.core.models import CashierShift
+        from apps.core.models_session import CashierShift
         open_shifts = CashierShift.objects.filter(
-            session=current_session,
-            closed_at__isnull=True
+            store_session=current_session,
+            status='open'
         )
-        
+
         if open_shifts.exists():
-            shift_users = ', '.join([shift.cashier.get_full_name() or shift.cashier.username 
+            shift_users = ', '.join([shift.cashier.get_full_name() or shift.cashier.username
                                      for shift in open_shifts])
             return JsonResponse({
-                'success': False, 
+                'success': False,
                 'error': f'Cannot close session. Open shifts found for: {shift_users}'
             }, status=400)
-        
+
         # Close the session
         closing_notes = request.POST.get('closing_notes', '').strip()
         current_session.closed_at = timezone.now()
         current_session.closed_by = request.user
-        current_session.closing_notes = closing_notes
+        current_session.eod_notes = closing_notes
+        current_session.status = 'closed'
+        current_session.is_current = False
         current_session.save()
         
         return JsonResponse({
@@ -6127,3 +6167,498 @@ def stock_sync_product_ids(request):
     messages.success(request, f'Sync complete: {updated} product IDs updated, {stocks.count()} total checked')
     return redirect('management:stock_management')
 
+
+# =============================================================================
+# Payment Method Profiles
+# =============================================================================
+
+@manager_required
+def payment_profile_list(request):
+    """List all payment method profiles"""
+    store_config, error_response = check_store_config(request, 'management/payment_profiles.html')
+    if error_response:
+        return error_response
+
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+
+    # Use global brand filter
+    context_brand_id = request.session.get('context_brand_id', '')
+    if context_brand_id and context_brand_id in [str(bid) for bid in brand_ids]:
+        brand_ids = [context_brand_id]
+
+    profiles = PaymentMethodProfile.objects.filter(brand_id__in=brand_ids).select_related('brand', 'media_group').prefetch_related('prompts').order_by('sort_order', 'name')
+
+    context = {
+        'store_config': store_config,
+        'profiles': profiles,
+    }
+    return render(request, 'management/payment_profiles.html', context)
+
+
+def _clean_number_input(value, default=0):
+    """Clean number input by removing dots/commas and converting to int"""
+    if not value:
+        return default
+    try:
+        # Remove dots and commas (thousand separators)
+        cleaned = str(value).replace('.', '').replace(',', '').strip()
+        return int(cleaned) if cleaned else default
+    except (ValueError, AttributeError):
+        return default
+
+
+@manager_required
+def payment_profile_create(request):
+    """Create payment method profile with inline prompts"""
+    store_config, error_response = check_store_config(request, 'management/payment_profile_form.html')
+    if error_response:
+        return error_response
+
+    # Resolve brand from global filter
+    context_brand_id = request.session.get('context_brand_id', '')
+    current_brand = None
+    if context_brand_id:
+        current_brand = Brand.objects.filter(id=context_brand_id).first()
+    if not current_brand:
+        current_brand = store_config.brand
+
+    media_groups = MediaGroup.objects.filter(company=store_config.company, is_active=True)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip()
+        brand_id = str(current_brand.id)
+        media_group_id = request.POST.get('media_group') or None
+        media_id = request.POST.get('media_id', '0')
+        color = request.POST.get('color', '#6b7280')
+        sort_order = request.POST.get('sort_order', '0')
+        smallest_denomination = request.POST.get('smallest_denomination', '0')
+        allow_change = request.POST.get('allow_change') == 'on'
+        open_cash_drawer = request.POST.get('open_cash_drawer') == 'on'
+        legacy_method_id = request.POST.get('legacy_method_id', '')
+
+        if not name:
+            messages.error(request, 'Profile name is required')
+        elif not code:
+            messages.error(request, 'Profile code is required')
+        elif PaymentMethodProfile.objects.filter(brand_id=brand_id, code=code).exists():
+            messages.error(request, f'Profile with code "{code}" already exists for this brand')
+        else:
+            try:
+                profile = PaymentMethodProfile.objects.create(
+                    brand_id=brand_id,
+                    media_group_id=media_group_id,
+                    name=name,
+                    code=code,
+                    media_id=_clean_number_input(media_id, 0),
+                    color=color,
+                    sort_order=_clean_number_input(sort_order, 0),
+                    smallest_denomination=_clean_number_input(smallest_denomination, 0),
+                    allow_change=allow_change,
+                    open_cash_drawer=open_cash_drawer,
+                    legacy_method_id=legacy_method_id,
+                )
+                _save_prompts_from_post(request, profile)
+                messages.success(request, f'Payment profile "{name}" created successfully')
+                return redirect('management:payment_profile_list')
+            except Exception as e:
+                messages.error(request, f'Error creating profile: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'current_brand': current_brand,
+        'media_groups': media_groups,
+        'is_edit': False,
+        'legacy_method_choices': [
+            ('cash', 'Cash'), ('card', 'Card'), ('qris', 'QRIS'),
+            ('ewallet', 'E-Wallet'), ('transfer', 'Transfer'),
+            ('voucher', 'Voucher'), ('debit', 'Debit'),
+        ],
+    }
+    return render(request, 'management/payment_profile_form.html', context)
+
+
+@manager_required
+def payment_profile_edit(request, profile_id):
+    """Edit payment method profile with inline prompts"""
+    store_config, error_response = check_store_config(request, 'management/payment_profile_form.html')
+    if error_response:
+        return error_response
+
+    profile = get_object_or_404(PaymentMethodProfile, id=profile_id)
+    current_brand = profile.brand
+    media_groups = MediaGroup.objects.filter(company=store_config.company, is_active=True)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip()
+        brand_id = str(current_brand.id)
+        media_group_id = request.POST.get('media_group') or None
+        media_id = request.POST.get('media_id', '0')
+        color = request.POST.get('color', '#6b7280')
+        sort_order = request.POST.get('sort_order', '0')
+        smallest_denomination = request.POST.get('smallest_denomination', '0')
+        allow_change = request.POST.get('allow_change') == 'on'
+        open_cash_drawer = request.POST.get('open_cash_drawer') == 'on'
+        legacy_method_id = request.POST.get('legacy_method_id', '')
+
+        if not name:
+            messages.error(request, 'Profile name is required')
+        elif not code:
+            messages.error(request, 'Profile code is required')
+        elif PaymentMethodProfile.objects.filter(brand_id=brand_id, code=code).exclude(id=profile.id).exists():
+            messages.error(request, f'Profile with code "{code}" already exists for this brand')
+        else:
+            try:
+                profile.media_group_id = media_group_id
+                profile.name = name
+                profile.code = code
+                profile.media_id = _clean_number_input(media_id, 0)
+                profile.color = color
+                profile.sort_order = _clean_number_input(sort_order, 0)
+                profile.smallest_denomination = _clean_number_input(smallest_denomination, 0)
+                profile.allow_change = allow_change
+                profile.open_cash_drawer = open_cash_drawer
+                profile.legacy_method_id = legacy_method_id
+                profile.save()
+                _save_prompts_from_post(request, profile)
+                messages.success(request, f'Payment profile "{name}" updated successfully')
+                return redirect('management:payment_profile_list')
+            except Exception as e:
+                messages.error(request, f'Error updating profile: {str(e)}')
+
+    import json
+    prompts_list = list(profile.prompts.order_by('sort_order').values(
+        'field_name', 'label', 'field_type', 'min_length', 'max_length',
+        'placeholder', 'use_scanner', 'is_required',
+    ))
+    context = {
+        'store_config': store_config,
+        'current_brand': current_brand,
+        'media_groups': media_groups,
+        'profile': profile,
+        'prompts': json.dumps(prompts_list),
+        'is_edit': True,
+        'legacy_method_choices': [
+            ('cash', 'Cash'), ('card', 'Card'), ('qris', 'QRIS'),
+            ('ewallet', 'E-Wallet'), ('transfer', 'Transfer'),
+            ('voucher', 'Voucher'), ('debit', 'Debit'),
+        ],
+    }
+    return render(request, 'management/payment_profile_form.html', context)
+
+
+@manager_required
+@require_POST
+def payment_profile_delete(request, profile_id):
+    """Delete payment method profile"""
+    try:
+        profile = get_object_or_404(PaymentMethodProfile, id=profile_id)
+        name = profile.name
+        profile.prompts.all().delete()
+        profile.delete()
+        messages.success(request, f'Payment profile "{name}" deleted successfully')
+    except ProtectedError:
+        messages.error(request, 'Cannot delete: this profile is used by existing payments')
+    except Exception as e:
+        messages.error(request, f'Error deleting profile: {str(e)}')
+    return redirect('management:payment_profile_list')
+
+
+@manager_required
+@require_POST
+def payment_profile_toggle(request, profile_id):
+    """Toggle payment profile active status"""
+    try:
+        profile = get_object_or_404(PaymentMethodProfile, id=profile_id)
+        profile.is_active = not profile.is_active
+        profile.save(update_fields=['is_active'])
+        status = 'activated' if profile.is_active else 'deactivated'
+        return JsonResponse({'success': True, 'is_active': profile.is_active, 'message': f'Profile {status}'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def _save_prompts_from_post(request, profile):
+    """Parse prompt data from POST and save to profile"""
+    import json
+    profile.prompts.all().delete()
+
+    prompts_json = request.POST.get('prompts_data', '[]')
+    try:
+        prompts = json.loads(prompts_json)
+    except json.JSONDecodeError:
+        prompts = []
+
+    for i, p in enumerate(prompts):
+        if not p.get('field_name'):
+            continue
+        DataEntryPrompt.objects.create(
+            profile=profile,
+            field_name=p.get('field_name', '').strip(),
+            label=p.get('label', '').strip(),
+            field_type=p.get('field_type', 'text'),
+            min_length=_clean_number_input(p.get('min_length'), 0),
+            max_length=_clean_number_input(p.get('max_length'), 99),
+            placeholder=p.get('placeholder', '').strip(),
+            use_scanner=p.get('use_scanner', False),
+            is_required=p.get('is_required', False),
+            sort_order=i,
+        )
+
+
+# ============================================================================
+# MEDIA GROUPS
+# ============================================================================
+
+@manager_required
+def media_group_list(request):
+    """List all media groups"""
+    store_config, error_response = check_store_config(request, 'management/media_groups.html')
+    if error_response:
+        return error_response
+
+    groups = MediaGroup.objects.filter(company=store_config.company).order_by('sort_order', 'name')
+
+    context = {
+        'store_config': store_config,
+        'groups': groups,
+    }
+    return render(request, 'management/media_groups.html', context)
+
+
+@manager_required
+def media_group_create(request):
+    """Create new media group"""
+    store_config, error_response = check_store_config(request, 'management/media_group_form.html')
+    if error_response:
+        return error_response
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip()
+        orafin_group = request.POST.get('orafin_group', '').strip()
+        sort_order = request.POST.get('sort_order', '0')
+
+        if not name:
+            messages.error(request, 'Group name is required')
+        elif not code:
+            messages.error(request, 'Group code is required')
+        elif MediaGroup.objects.filter(company=store_config.company, code=code).exists():
+            messages.error(request, f'Media group with code "{code}" already exists')
+        else:
+            try:
+                MediaGroup.objects.create(
+                    company=store_config.company,
+                    name=name,
+                    code=code,
+                    orafin_group=orafin_group,
+                    sort_order=_clean_number_input(sort_order, 0),
+                )
+                messages.success(request, f'Media group "{name}" created successfully')
+                return redirect('management:media_group_list')
+            except Exception as e:
+                messages.error(request, f'Error creating media group: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'is_edit': False,
+    }
+    return render(request, 'management/media_group_form.html', context)
+
+
+@manager_required
+def media_group_edit(request, group_id):
+    """Edit media group"""
+    store_config, error_response = check_store_config(request, 'management/media_group_form.html')
+    if error_response:
+        return error_response
+
+    group = get_object_or_404(MediaGroup, id=group_id, company=store_config.company)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip()
+        orafin_group = request.POST.get('orafin_group', '').strip()
+        sort_order = request.POST.get('sort_order', '0')
+
+        if not name:
+            messages.error(request, 'Group name is required')
+        elif not code:
+            messages.error(request, 'Group code is required')
+        elif MediaGroup.objects.filter(company=store_config.company, code=code).exclude(id=group.id).exists():
+            messages.error(request, f'Media group with code "{code}" already exists')
+        else:
+            try:
+                group.name = name
+                group.code = code
+                group.orafin_group = orafin_group
+                group.sort_order = _clean_number_input(sort_order, 0)
+                group.save()
+                messages.success(request, f'Media group "{name}" updated successfully')
+                return redirect('management:media_group_list')
+            except Exception as e:
+                messages.error(request, f'Error updating media group: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'group': group,
+        'is_edit': True,
+    }
+    return render(request, 'management/media_group_form.html', context)
+
+
+@manager_required
+@require_POST
+def media_group_delete(request, group_id):
+    """Delete media group"""
+    try:
+        group = get_object_or_404(MediaGroup, id=group_id)
+        name = group.name
+        group.delete()
+        messages.success(request, f'Media group "{name}" deleted successfully')
+    except ProtectedError:
+        messages.error(request, 'Cannot delete: this group is used by payment profiles')
+    except Exception as e:
+        messages.error(request, f'Error deleting group: {str(e)}')
+    return redirect('management:media_group_list')
+
+
+@manager_required
+@require_POST
+def media_group_toggle(request, group_id):
+    """Toggle media group active status"""
+    try:
+        group = get_object_or_404(MediaGroup, id=group_id)
+        group.is_active = not group.is_active
+        group.save(update_fields=['is_active'])
+        status = 'activated' if group.is_active else 'deactivated'
+        return JsonResponse({'success': True, 'is_active': group.is_active, 'message': f'Group {status}'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# =====================================================
+# EFT Terminal Management
+# =====================================================
+
+@login_required
+def eft_terminal_list(request):
+    """List all EFT terminals"""
+    store_config, error_response = check_store_config(request, 'management/eft_terminals.html')
+    if error_response:
+        return error_response
+
+    terminals = EFTTerminal.objects.filter(company=store_config.company).order_by('sort_order', 'code')
+
+    context = {
+        'store_config': store_config,
+        'terminals': terminals,
+    }
+    return render(request, 'management/eft_terminals.html', context)
+
+
+@manager_required
+def eft_terminal_create(request):
+    """Create new EFT terminal"""
+    store_config, error_response = check_store_config(request, 'management/eft_terminal_form.html')
+    if error_response:
+        return error_response
+
+    if request.method == 'POST':
+        code = request.POST.get('code', '').strip()
+        name = request.POST.get('name', '').strip()
+        sort_order = request.POST.get('sort_order', '0')
+
+        if not code:
+            messages.error(request, 'EFT code is required')
+        elif not name:
+            messages.error(request, 'Bank/terminal name is required')
+        elif EFTTerminal.objects.filter(company=store_config.company, code=code).exists():
+            messages.error(request, f'EFT terminal with code "{code}" already exists')
+        else:
+            try:
+                EFTTerminal.objects.create(
+                    company=store_config.company,
+                    code=code,
+                    name=name,
+                    sort_order=_clean_number_input(sort_order, 0),
+                )
+                messages.success(request, f'EFT terminal "{code}: {name}" created successfully')
+                return redirect('management:eft_terminal_list')
+            except Exception as e:
+                messages.error(request, f'Error creating EFT terminal: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'is_edit': False,
+    }
+    return render(request, 'management/eft_terminal_form.html', context)
+
+
+@manager_required
+def eft_terminal_edit(request, terminal_id):
+    """Edit EFT terminal"""
+    store_config, error_response = check_store_config(request, 'management/eft_terminal_form.html')
+    if error_response:
+        return error_response
+
+    eft = get_object_or_404(EFTTerminal, id=terminal_id, company=store_config.company)
+
+    if request.method == 'POST':
+        code = request.POST.get('code', '').strip()
+        name = request.POST.get('name', '').strip()
+        sort_order = request.POST.get('sort_order', '0')
+
+        if not code:
+            messages.error(request, 'EFT code is required')
+        elif not name:
+            messages.error(request, 'Bank/terminal name is required')
+        elif EFTTerminal.objects.filter(company=store_config.company, code=code).exclude(id=eft.id).exists():
+            messages.error(request, f'EFT terminal with code "{code}" already exists')
+        else:
+            try:
+                eft.code = code
+                eft.name = name
+                eft.sort_order = _clean_number_input(sort_order, 0)
+                eft.save()
+                messages.success(request, f'EFT terminal "{code}: {name}" updated successfully')
+                return redirect('management:eft_terminal_list')
+            except Exception as e:
+                messages.error(request, f'Error updating EFT terminal: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'eft': eft,
+        'is_edit': True,
+    }
+    return render(request, 'management/eft_terminal_form.html', context)
+
+
+@manager_required
+@require_POST
+def eft_terminal_delete(request, terminal_id):
+    """Delete EFT terminal"""
+    try:
+        eft = get_object_or_404(EFTTerminal, id=terminal_id)
+        label = f"{eft.code}: {eft.name}"
+        eft.delete()
+        messages.success(request, f'EFT terminal "{label}" deleted successfully')
+    except Exception as e:
+        messages.error(request, f'Error deleting EFT terminal: {str(e)}')
+    return redirect('management:eft_terminal_list')
+
+
+@manager_required
+@require_POST
+def eft_terminal_toggle(request, terminal_id):
+    """Toggle EFT terminal active status"""
+    try:
+        eft = get_object_or_404(EFTTerminal, id=terminal_id)
+        eft.is_active = not eft.is_active
+        eft.save(update_fields=['is_active'])
+        status = 'activated' if eft.is_active else 'deactivated'
+        return JsonResponse({'success': True, 'is_active': eft.is_active, 'message': f'EFT terminal {status}'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

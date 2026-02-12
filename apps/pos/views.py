@@ -1698,28 +1698,110 @@ def send_to_kitchen(request, bill_id):
 @login_required
 def payment_modal(request, bill_id):
     """Payment modal - HTMX"""
+    import json as json_lib
     bill = get_object_or_404(Bill, id=bill_id)
-    
+
     # Get terminal from session to filter available payment methods
     terminal = None
     terminal_payment_methods = []
+    profiles_data = []
+    use_profiles = False
+
     if 'terminal_id' in request.session:
         try:
             terminal = POSTerminal.objects.get(id=request.session['terminal_id'])
             terminal_payment_methods = terminal.default_payment_methods or []
         except POSTerminal.DoesNotExist:
             pass
-    
+
+    # Try profile-based payment methods first
+    if terminal and terminal.payment_profiles.exists():
+        from apps.core.models import PaymentMethodProfile
+        profiles = terminal.payment_profiles.filter(is_active=True).prefetch_related('prompts').order_by('sort_order', 'name')
+        profiles_data = []
+        for p in profiles:
+            prompts = list(p.prompts.order_by('sort_order').values(
+                'field_name', 'label', 'field_type', 'min_length', 'max_length',
+                'placeholder', 'use_scanner', 'is_required',
+            ))
+            profiles_data.append({
+                'id': str(p.id),
+                'code': p.code,
+                'name': p.name,
+                'color': p.color,
+                'legacy_method_id': p.legacy_method_id,
+                'allow_change': p.allow_change,
+                'open_cash_drawer': p.open_cash_drawer,
+                'prompts': prompts,
+            })
+        if profiles_data:
+            use_profiles = True
+
     # Default to all methods if terminal not configured
-    if not terminal_payment_methods:
+    if not terminal_payment_methods and not use_profiles:
         terminal_payment_methods = ['cash', 'card', 'qris', 'ewallet', 'transfer', 'voucher']
-    
+
+    # Build unified payment methods list for server-side template rendering
+    # This avoids x-for in HTMX-injected content (Alpine initTree bug with x-for markers)
+    payment_methods_list = []
+    if use_profiles and profiles_data:
+        for p in profiles_data:
+            non_amount_prompts = [pr for pr in p['prompts'] if pr['field_type'] != 'amount']
+            payment_methods_list.append({
+                'id': p['code'],  # unique code per brand (e.g. qris_bca_cpm)
+                'method_id': p['legacy_method_id'] or p['code'],  # for Payment.method
+                'profile_id': p['id'],
+                'label': p['name'],
+                'color': p['color'],
+                'allow_change': p['allow_change'],
+                'open_cash_drawer': p['open_cash_drawer'],
+                'prompts': non_amount_prompts,
+                'ref': False,
+            })
+    else:
+        legacy_all = [
+            {'id': 'cash', 'label': 'Cash', 'color': '#16a34a', 'ref': False, 'refPlaceholder': ''},
+            {'id': 'card', 'label': 'Card', 'color': '#2563eb', 'ref': True, 'refPlaceholder': 'Last 4 digits'},
+            {'id': 'qris', 'label': 'QRIS', 'color': '#7c3aed', 'ref': False, 'refPlaceholder': ''},
+            {'id': 'ewallet', 'label': 'E-Wallet', 'color': '#0891b2', 'ref': True, 'refPlaceholder': 'Reference number'},
+            {'id': 'transfer', 'label': 'Transfer', 'color': '#1e40af', 'ref': True, 'refPlaceholder': 'Transfer reference'},
+            {'id': 'voucher', 'label': 'Voucher', 'color': '#ea580c', 'ref': True, 'refPlaceholder': 'Voucher code'},
+            {'id': 'debit', 'label': 'Debit', 'color': '#9333ea', 'ref': True, 'refPlaceholder': 'Approval code'},
+        ]
+        allowed = terminal_payment_methods or ['cash', 'card', 'qris', 'ewallet', 'transfer', 'voucher']
+        for m in legacy_all:
+            if m['id'] in allowed:
+                m['method_id'] = m['id']
+                m['profile_id'] = ''
+                m['prompts'] = []
+                payment_methods_list.append(m)
+
+    default_method = payment_methods_list[0]['id'] if payment_methods_list else 'cash'
+
+    # Load EFT terminals for dropdown in payment modal
+    eft_terminals = []
+    if use_profiles:
+        from apps.core.models import EFTTerminal
+        company = None
+        if terminal:
+            company = terminal.store.brand.company if terminal.store and terminal.store.brand else None
+        if company:
+            eft_terminals = list(
+                EFTTerminal.objects.filter(company=company, is_active=True)
+                .order_by('sort_order', 'code')
+                .values('code', 'name')
+            )
+
     context = {
         'bill': bill,
         'amount_int': int(bill.get_remaining()),
         'total_int': int(bill.total),
         'paid_int': int(bill.get_paid_amount()),
-        'terminal_payment_methods': terminal_payment_methods,
+        'payment_methods_list': payment_methods_list,
+        'payment_methods_json': json_lib.dumps(payment_methods_list),
+        'default_method': default_method,
+        'use_profiles': use_profiles,
+        'eft_terminals': eft_terminals,
     }
     return render(request, 'pos/partials/payment_modal.html', context)
 
@@ -1753,9 +1835,10 @@ def send_receipt_to_local_printer(bill, terminal_id=None):
         }
         
         # Get payment method (use first payment or combine multiple)
-        payments = bill.payments.all()
+        payments = bill.payments.select_related('payment_profile')
         if payments.count() == 1:
-            receipt_data['payment_method'] = payments.first().get_method_display()
+            p = payments.first()
+            receipt_data['payment_method'] = p.payment_profile.name if p.payment_profile else p.get_method_display()
         elif payments.count() > 1:
             receipt_data['payment_method'] = 'Split Payment'
         
@@ -1949,6 +2032,40 @@ def process_payment(request, bill_id):
         payment_count = 0
         total_paid = Decimal('0')
         
+        # Helper: resolve profile and build metadata for a payment entry
+        def _resolve_profile(profile_id_str, prompt_data_str):
+            """Returns (profile_obj_or_None, metadata_dict, reference_str, eft_desc_str)"""
+            profile_obj = None
+            metadata = {}
+            ref_parts = []
+            eft_desc = ''
+            if profile_id_str:
+                from apps.core.models import PaymentMethodProfile
+                try:
+                    profile_obj = PaymentMethodProfile.objects.get(id=profile_id_str)
+                except PaymentMethodProfile.DoesNotExist:
+                    pass
+            if prompt_data_str:
+                import json as json_lib
+                try:
+                    metadata = json_lib.loads(prompt_data_str)
+                except (json_lib.JSONDecodeError, TypeError):
+                    metadata = {}
+            # Resolve EFT description from master data
+            eft_code = metadata.get('eft_no', '')
+            if eft_code:
+                from apps.core.models import EFTTerminal
+                eft_obj = EFTTerminal.objects.filter(code=eft_code).first()
+                if eft_obj:
+                    eft_desc = f"{eft_obj.code}: {eft_obj.name}"
+                else:
+                    eft_desc = eft_code
+            # Build reference summary from metadata
+            for k, v in metadata.items():
+                if v and k != 'amount':
+                    ref_parts.append(f"{k}:{v}")
+            return profile_obj, metadata, '; '.join(ref_parts), eft_desc
+
         # Process split payments array
         print("Step 5: Processing split payments array...")
         for key in request.POST.keys():
@@ -1958,63 +2075,79 @@ def process_payment(request, bill_id):
                 method = request.POST.get(f'payments[{index}][method]')
                 amount = parse_amount(request.POST.get(f'payments[{index}][amount]', 0))
                 reference = request.POST.get(f'payments[{index}][reference]', '')
-                
+                profile_id = request.POST.get(f'payments[{index}][profile_id]', '')
+                prompt_data = request.POST.get(f'payments[{index}][prompt_data]', '')
+
                 print(f"  Split payment {index}: method={method}, amount={amount}, ref={reference}")
-                
+
                 if amount > 0:
+                    profile_obj, metadata, ref_summary, eft_desc = _resolve_profile(profile_id, prompt_data)
                     Payment.objects.create(
                         bill=bill,
                         method=method,
                         amount=amount,
-                        reference=reference,
+                        reference=reference or ref_summary,
+                        payment_profile=profile_obj,
+                        payment_metadata=metadata,
+                        eft_desc=eft_desc,
                         created_by=request.user,
                     )
-                    
+
                     BillLog.objects.create(
                         bill=bill,
                         action='payment',
                         user=request.user,
-                        details={'method': method, 'amount': float(amount), 'split': True}
+                        details={'method': method, 'amount': float(amount), 'split': True,
+                                 'profile': profile_obj.name if profile_obj else None,
+                                 'eft_desc': eft_desc}
                     )
-                    
+
                     total_paid += amount
                     payment_count += 1
-        
+
         # Process current payment (if any)
         method = request.POST.get('method')
         amount_raw = request.POST.get('amount', 0)
         reference = request.POST.get('reference', '')
-        
+        profile_id = request.POST.get('profile_id', '')
+        prompt_data = request.POST.get('prompt_data', '')
+
         print(f"Processing current payment...")
         print(f"  method: {method}")
         print(f"  amount_raw: {amount_raw} (type: {type(amount_raw)})")
         print(f"  reference: {reference}")
-        
+
         try:
             amount = parse_amount(amount_raw)
             print(f"  amount parsed: {amount} (type: {type(amount)})")
         except Exception as e:
             print(f"ERROR parsing amount: {e}")
             raise
-        
+
         if amount > 0:
             print(f"Amount > 0, creating payment...")
+            profile_obj, metadata, ref_summary, eft_desc = _resolve_profile(profile_id, prompt_data)
             Payment.objects.create(
                 bill=bill,
                 method=method,
                 amount=amount,
-                reference=reference,
+                reference=reference or ref_summary,
+                payment_profile=profile_obj,
+                payment_metadata=metadata,
+                eft_desc=eft_desc,
                 created_by=request.user,
             )
-            
+
             BillLog.objects.create(
                 bill=bill,
                 action='payment',
                 user=request.user,
                 details={
-                    'method': method, 
+                    'method': method,
                     'amount': float(amount),
-                    'split': payment_count > 0
+                    'split': payment_count > 0,
+                    'profile': profile_obj.name if profile_obj else None,
+                    'eft_desc': eft_desc
                 }
             )
             
@@ -2103,8 +2236,8 @@ def process_payment(request, bill_id):
             })
             return trigger_client_event(response, 'paymentComplete')
         
-        # Still has remaining balance
-        return render(request, 'pos/partials/payment_modal.html', {'bill': bill})
+        # Still has remaining balance - redirect back to payment_modal for full context
+        return payment_modal(request, bill_id)
         
     except Exception as e:
         import traceback
@@ -3752,3 +3885,202 @@ def shift_status_check(request):
     return JsonResponse({
         'has_active_shift': has_active_shift,
     })
+
+
+# ============================================================================
+# QRIS Payment Endpoints
+# ============================================================================
+
+@login_required
+@require_http_methods(["POST"])
+def qris_create(request, bill_id):
+    """Create a QRIS transaction - generates QR code for payment."""
+    from .payment_gateway import get_payment_gateway
+    from .models import QRISTransaction
+
+    bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
+
+    try:
+        amount = Decimal(request.POST.get('amount', '0'))
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'Invalid amount'}, status=400)
+
+    if amount <= 0:
+        return JsonResponse({'success': False, 'error': 'Amount must be positive'}, status=400)
+
+    remaining = bill.get_remaining()
+
+    # Account for any pending split payments sent from frontend
+    pending_payments_json = request.POST.get('pending_payments', '')
+    pending_total = Decimal('0')
+    if pending_payments_json:
+        try:
+            pending_payments = json.loads(pending_payments_json)
+            for pp in pending_payments:
+                pending_total += Decimal(str(pp.get('amount', 0)))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    effective_remaining = remaining - pending_total
+    if amount > effective_remaining:
+        return JsonResponse({'success': False, 'error': f'Amount exceeds remaining balance (Rp {effective_remaining})'}, status=400)
+
+    # Cancel any existing pending QRIS transactions for this bill
+    QRISTransaction.objects.filter(bill=bill, status='pending').update(status='cancelled')
+
+    gateway = get_payment_gateway()
+    result = gateway.create_qris_transaction(bill, amount, user=request.user)
+
+    if not result.success:
+        return JsonResponse({'success': False, 'error': result.error_message}, status=500)
+
+    return JsonResponse({
+        'success': True,
+        'transaction_id': result.transaction_id,
+        'qr_string': result.qr_string,
+        'expires_at': result.expires_at.isoformat() if result.expires_at else None,
+        'amount': float(amount),
+    })
+
+
+@login_required
+def qris_status(request, bill_id, transaction_id):
+    """Poll QRIS transaction status - called every 3s from frontend."""
+    from .payment_gateway import get_payment_gateway
+
+    get_object_or_404(Bill, id=bill_id)
+    gateway = get_payment_gateway()
+    result = gateway.check_status(transaction_id)
+
+    return JsonResponse({
+        'status': result.status,
+        'transaction_id': result.transaction_id,
+        'paid_at': result.paid_at.isoformat() if result.paid_at else None,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def qris_simulate(request, bill_id, transaction_id):
+    """DEV ONLY: Simulate a successful QRIS payment."""
+    from .payment_gateway import get_payment_gateway
+    from .models import QRISTransaction
+
+    bill = get_object_or_404(Bill, id=bill_id)
+    gateway = get_payment_gateway()
+
+    if not hasattr(gateway, 'simulate_payment'):
+        return JsonResponse({'success': False, 'error': 'Simulation not available'}, status=400)
+
+    success = gateway.simulate_payment(transaction_id)
+    if not success:
+        return JsonResponse({'success': False, 'error': 'Transaction not found or not pending'}, status=400)
+
+    # Complete the payment on the bill
+    _complete_qris_payment(request, bill, transaction_id)
+
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def qris_cancel(request, bill_id, transaction_id):
+    """Cancel a pending QRIS transaction."""
+    from .payment_gateway import get_payment_gateway
+
+    get_object_or_404(Bill, id=bill_id)
+    gateway = get_payment_gateway()
+    gateway.cancel_transaction(transaction_id)
+
+    return JsonResponse({'success': True})
+
+
+@login_required
+def qris_payment_success(request, bill_id):
+    """Render payment success page after QRIS payment completes."""
+    bill = get_object_or_404(Bill, id=bill_id)
+
+    context = {
+        'bill': bill,
+        'split_payment': bill.payments.count() > 1,
+        'payment_count': bill.payments.count(),
+    }
+    response = render(request, 'pos/partials/payment_success.html', context)
+    return trigger_client_event(response, 'paymentComplete')
+
+
+def _complete_qris_payment(request, bill, transaction_id):
+    """Helper: Create Payment record, close bill, update table after QRIS payment."""
+    from .models import QRISTransaction
+
+    try:
+        txn = QRISTransaction.objects.get(transaction_id=transaction_id, status='paid')
+    except QRISTransaction.DoesNotExist:
+        return
+
+    # Check if payment already recorded for this transaction
+    if Payment.objects.filter(bill=bill, reference=transaction_id, method='qris').exists():
+        return
+
+    # Save any pending split payments that were sent with the QRIS create request
+    # (These are non-QRIS payments like cash/card added before QRIS)
+
+    # Create QRIS payment record
+    Payment.objects.create(
+        bill=bill,
+        method='qris',
+        amount=txn.amount,
+        reference=transaction_id,
+        created_by=request.user,
+    )
+
+    BillLog.objects.create(
+        bill=bill,
+        action='payment',
+        user=request.user,
+        details={'method': 'qris', 'amount': float(txn.amount), 'transaction_id': transaction_id}
+    )
+
+    # Check if bill is fully paid
+    bill.refresh_from_db()
+    if bill.get_remaining() <= 0:
+        bill.status = 'paid'
+        bill.closed_by = request.user
+        bill.closed_at = timezone.now()
+        bill.save()
+
+        # Update table status
+        if bill.table:
+            from apps.tables.models import TableGroup
+            table_group = bill.table.table_group
+
+            if table_group:
+                joined_tables = Table.objects.filter(table_group=table_group)
+                joined_tables.update(table_group=None, status='dirty')
+                table_group.delete()
+            else:
+                bill.table.status = 'dirty'
+                bill.table.save()
+
+        # Clear active bill from session
+        request.session.pop('active_bill_id', None)
+
+        BillLog.objects.create(
+            bill=bill,
+            action='close',
+            user=request.user,
+            details={'method': 'qris', 'transaction_id': transaction_id}
+        )
+
+        # Queue receipt print
+        try:
+            from apps.pos.print_queue import queue_print_receipt
+            queue_print_receipt(bill, terminal_id=request.session.get('terminal_id'))
+        except Exception:
+            pass
+
+        # Send to local printer
+        try:
+            send_receipt_to_local_printer(bill, terminal_id=request.session.get('terminal_id'))
+        except Exception:
+            pass

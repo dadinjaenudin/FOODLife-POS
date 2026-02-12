@@ -37,8 +37,9 @@ CATATAN:
     function checkShiftActive() {
         const shiftHeader = document.getElementById('header-shift-status');
 
-        {# Cek apakah header menampilkan "Shift Active" #}
-        const hasActiveShift = shiftHeader && shiftHeader.textContent.includes('Shift Active');
+        {# Cek apakah header menampilkan badge shift aktif (green badge with "Shift" text, bukan "Open Shift" button) #}
+        const hasActiveShift = shiftHeader &&
+            shiftHeader.querySelector('.bg-green-50') !== null;
 
         if (!hasActiveShift) {
             {# Shift belum aktif → tampilkan modal warning via Alpine.js #}

@@ -23,8 +23,12 @@ document.addEventListener('keydown', function(e) {
     const hasOpenModal = modalContainer && modalContainer.innerHTML.trim() !== '';
     const hasFloorPlan = document.getElementById('floor-plan-overlay');
 
-    {# ESC: Tutup modal atau floor plan #}
+    {# ESC: Tutup modal atau floor plan (kecuali payment modal yang dilindungi) #}
     if (e.key === 'Escape') {
+        if (window._paymentModalActive) {
+            e.preventDefault();
+            return;
+        }
         if (hasOpenModal) {
             e.preventDefault();
             if (typeof closeModal === 'function') {

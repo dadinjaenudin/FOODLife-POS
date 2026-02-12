@@ -1,3 +1,83 @@
+<!--
+============================================================================
+CUSTOMER DISPLAY (customer_display.html)
+============================================================================
+Layar kedua (second monitor) yang menampilkan informasi bill dan
+slideshow promosi ke customer. Dijalankan dari POS Launcher Qt
+(pos_launcher_qt.py) sebagai QWebEngineView window terpisah.
+
+ARSITEKTUR: SSE (Server-Sent Events)
+=====================================
+SSE adalah protokol HTTP one-way streaming dimana server mengirim
+event secara real-time ke client melalui koneksi HTTP yang tetap
+terbuka (persistent connection).
+
+DATA FLOW:
+┌───────────────────────────┐
+│  POS Main Screen          │
+│  (Django + HTMX)          │
+│  - User tambah item       │
+│  - User buka payment      │
+└─────────┬─────────────────┘
+          │ HTTP POST (clone bill panel HTML)
+          ▼
+┌───────────────────────────┐
+│  Flask Local API (:5000)  │
+│  POST /api/customer-      │
+│       display/update      │
+│  - Simpan ke display_data │
+│  - notify_subscribers()   │
+│    → queue.put(data)      │
+└─────────┬─────────────────┘
+          │ SSE stream (text/event-stream)
+          ▼
+┌───────────────────────────┐
+│  Customer Display (ini)   │
+│  GET /api/customer-       │
+│      display/stream       │
+│  - EventSource listener   │
+│  - updateDisplay(data)    │
+│  - Render bill panel HTML │
+└───────────────────────────┘
+
+ENDPOINT API (Flask Local - localhost:5000):
+- GET  /health                        : Health check
+- GET  /api/customer-display/stream   : SSE stream (persistent connection)
+- POST /api/customer-display/update   : Terima update dari POS
+- GET  /api/customer-display/config   : Config branding/slideshow
+
+FUNGSI UTAMA:
+- connectSSE()        : Health check → startSSE()
+- startSSE()          : Buat EventSource, handle onmessage/onerror
+- updateDisplay(data) : Render bill panel HTML atau empty state
+- handleModalDisplay(): Tampilkan payment modal di customer display
+- showQRCode(data)    : Tampilkan QR code untuk pembayaran digital
+- loadConfig()        : Load branding config + slideshow images
+
+LAYOUT (2-column grid):
+┌──────────────────────┬──────────────┐
+│                      │              │
+│   Slideshow (70%)    │  Bill Panel  │
+│   Promo images dari  │  (30%)       │
+│   MinIO storage      │  Mirror dari │
+│                      │  POS bill    │
+│                      │              │
+├──────────────────────┴──────────────┤
+│  Footer: Running text + status      │
+└─────────────────────────────────────┘
+
+RECONNECTION:
+- connectSSE() cek /health dulu sebelum buka SSE
+- Jika gagal, retry setiap 3 detik
+- EventSource.onerror → close + retry 3 detik
+- Server kirim keepalive setiap 30 detik agar koneksi tidak timeout
+
+ANTI-FLICKER:
+- Track lastBillHash & lastModalHash untuk skip duplicate update
+- Hanya toggle display state jika berubah (showContainers/hideContainers)
+- Modal inject langsung tanpa delay
+============================================================================
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -316,7 +396,17 @@
         .billing-container::-webkit-scrollbar-thumb:hover {
             background: #764ba2;
         }
-        
+
+        /* ========== HIDE POS-ONLY CONTROLS IN MIRRORED BILL PANEL ========== */
+        /* Customer sees: item list, prices, totals only.
+           Hide: all buttons, keyboard shortcuts, qty controls, button grids */
+        #bill-panel-container button,
+        #bill-panel-container kbd,
+        #bill-panel-container .inline-flex,
+        #bill-panel-container [class*="grid-cols"] {
+            display: none !important;
+        }
+
         /* ========== QR CODE MODAL ========== */
         .qr-modal {
             position: fixed;
@@ -464,6 +554,12 @@
         let config = null;
         let currentSlide = 0;
         let slideInterval = null;
+
+        // Anti-flicker: track last rendered content to skip duplicate updates
+        let lastBillHash = '';
+        let lastModalHash = '';
+        let lastUpdatedAt = 0;
+        let currentDisplayState = 'hidden'; // 'hidden' | 'active'
         
         // ========== UTILITY FUNCTIONS ==========
         function formatCurrency(amount) {
@@ -707,21 +803,36 @@
             }
         }
         
-        // ========== DISPLAY UPDATE ==========
+        // ========== CONTAINER HELPERS (anti-flicker) ==========
+        function showContainers() {
+            const bp = document.getElementById('bill-panel-container');
+            const ss = document.querySelector('.slideshow-container');
+            const hd = document.querySelector('.header');
+            if (currentDisplayState === 'active') return; // Already visible
+            if (bp) bp.style.display = 'block';
+            if (ss) ss.style.display = 'block';
+            if (hd) hd.style.display = 'flex';
+            currentDisplayState = 'active';
+        }
+
+        function hideContainers() {
+            const bp = document.getElementById('bill-panel-container');
+            const ss = document.querySelector('.slideshow-container');
+            const hd = document.querySelector('.header');
+            if (currentDisplayState === 'hidden') return; // Already hidden
+            if (bp) bp.style.display = 'none';
+            if (ss) ss.style.display = 'none';
+            if (hd) hd.style.display = 'none';
+            currentDisplayState = 'hidden';
+        }
+
+        // ========== DISPLAY UPDATE (anti-flicker) ==========
         function updateDisplay(data) {
-            console.log('Updating display:', data);
-            console.log('🔍 Debug - bill_panel_html exists:', !!data.bill_panel_html);
-            console.log('🔍 Debug - has_bill:', data.has_bill);
-            console.log('🔍 Debug - show_modal:', data.show_modal);
-            if (data.bill_panel_html) {
-                console.log('🔍 Debug - HTML length:', data.bill_panel_html.length);
-            }
-            
             // Handle modal display
             if (data.show_modal !== undefined) {
                 handleModalDisplay(data.show_modal, data.modal_html);
             }
-            
+
             // Check if showing QR code for payment
             if (data.show_qr && data.qr_code) {
                 showQRCode(data);
@@ -729,39 +840,41 @@
             } else {
                 hideQRCode();
             }
-            
-            const billPanelContainer = document.getElementById('bill-panel-container');
-            const slideshowContainer = document.querySelector('.slideshow-container');
-            const header = document.querySelector('.header');
-            
-            // Check if we have bill panel HTML (new format - mirror POS bill panel)
-            if (data.bill_panel_html && data.has_bill) {
-                console.log('📋 Rendering bill panel HTML mirror');
-                billPanelContainer.innerHTML = data.bill_panel_html;
-                // Remove the outer container styling to let bill panel styling take over
-                billPanelContainer.className = '';
-                // Keep white background to prevent body gradient from showing
-                billPanelContainer.style.background = 'white';
-                
-                // Show containers when there's an active order
-                if (billPanelContainer) billPanelContainer.style.display = 'block';
-                if (slideshowContainer) slideshowContainer.style.display = 'block';
-                if (header) header.style.display = 'flex';
-                
+
+            // Skip if updated_at hasn't changed (duplicate SSE event)
+            if (data.updated_at && data.updated_at === lastUpdatedAt && !data.show_modal) {
                 return;
             }
-            
-            console.log('⚠️ No bill panel HTML, showing fallback/empty state');
-            
+            lastUpdatedAt = data.updated_at || 0;
+
+            const billPanelContainer = document.getElementById('bill-panel-container');
+
+            // Check if we have bill panel HTML (new format - mirror POS bill panel)
+            if (data.bill_panel_html && data.has_bill) {
+                // Anti-flicker: skip innerHTML replacement if content is the same
+                const newHash = data.bill_panel_html.length + '_' + data.updated_at;
+                if (newHash === lastBillHash) {
+                    return; // Content unchanged, skip re-render
+                }
+                lastBillHash = newHash;
+
+                billPanelContainer.innerHTML = data.bill_panel_html;
+                // Set styling once (className check avoids redundant reflow)
+                if (billPanelContainer.className !== '') {
+                    billPanelContainer.className = '';
+                    billPanelContainer.style.background = 'white';
+                }
+
+                showContainers();
+                return;
+            }
+
             // Fallback to legacy JSON format or empty state
-            const itemsList = document.getElementById('items-list');
-            const billingTotal = document.getElementById('billing-total');
-            
             // Restore billing container styling if it was removed
             if (!billPanelContainer.classList.contains('billing-container')) {
                 billPanelContainer.className = 'billing-container';
                 billPanelContainer.innerHTML = `
-                    <div class="billing-header">📋 Your Order</div>
+                    <div class="billing-header">Your Order</div>
                     <div class="items-list" id="items-list"></div>
                     <div class="billing-total" id="billing-total" style="display: none;">
                         <div class="total-row"><span>Subtotal</span><span id="subtotal-value">Rp 0</span></div>
@@ -769,27 +882,25 @@
                     </div>
                 `;
             }
-            
+
             const itemsListEl = document.getElementById('items-list');
             const billingTotalEl = document.getElementById('billing-total');
-            
+
             if (!data.items || data.items.length === 0) {
-                // Show empty state - hide all UI for blank screen
-                itemsListEl.innerHTML = `
-                    <div class="empty-bill">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-                        </svg>
-                        <p>Waiting for items...</p>
-                    </div>
-                `;
-                billingTotalEl.style.display = 'none';
-                
-                // Hide containers for blank screen when no items
-                if (billPanelContainer) billPanelContainer.style.display = 'none';
-                if (slideshowContainer) slideshowContainer.style.display = 'none';
-                if (header) header.style.display = 'none';
-                
+                // Empty state — hide all UI for blank screen
+                if (currentDisplayState !== 'hidden') {
+                    itemsListEl.innerHTML = `
+                        <div class="empty-bill">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                            </svg>
+                            <p>Waiting for items...</p>
+                        </div>
+                    `;
+                    billingTotalEl.style.display = 'none';
+                    hideContainers();
+                }
+                lastBillHash = '';
             } else {
                 // Show items (legacy format)
                 itemsListEl.innerHTML = data.items.map(item => `
@@ -801,16 +912,12 @@
                         <div class="item-price">${formatCurrency(item.quantity * item.price)}</div>
                     </div>
                 `).join('');
-                
-                // Show total
+
                 billingTotalEl.style.display = 'block';
                 document.getElementById('subtotal-value').textContent = formatCurrency(data.subtotal || data.total || 0);
                 document.getElementById('total-value').textContent = formatCurrency(data.total || 0);
-                
-                // Show containers when there are items
-                if (billPanelContainer) billPanelContainer.style.display = 'block';
-                if (slideshowContainer) slideshowContainer.style.display = 'block';
-                if (header) header.style.display = 'flex';
+
+                showContainers();
             }
         }
         
@@ -818,27 +925,26 @@
         function handleModalDisplay(showModal, modalHTML) {
             const modalOverlay = document.getElementById('customer-modal-overlay');
             const modalContent = document.getElementById('customer-modal-content');
-            
+
             if (showModal && modalHTML) {
-                const timestamp = Date.now();
-                console.log('🎭 Showing modal on customer display at:', timestamp);
-                console.log('📏 Modal HTML length:', modalHTML.length);
-                console.log('📄 Modal HTML preview:', modalHTML.substring(0, 200));
-                
-                // Force refresh by clearing first, then setting
-                modalContent.innerHTML = '';
-                setTimeout(() => {
-                    modalContent.innerHTML = modalHTML;
-                    console.log('✅ Modal HTML injected at:', Date.now());
-                }, 10);
-                
+                // Anti-flicker: skip if modal content is the same
+                const newHash = modalHTML.length + '_' + modalHTML.substring(0, 100);
+                if (newHash === lastModalHash && modalOverlay.style.display === 'flex') {
+                    return; // Same modal already showing
+                }
+                lastModalHash = newHash;
+
+                // Inject directly — no delay to avoid blank frame flicker
+                modalContent.innerHTML = modalHTML;
                 modalOverlay.style.display = 'flex';
                 modalOverlay.style.alignItems = 'center';
                 modalOverlay.style.justifyContent = 'center';
             } else {
-                console.log('🎭 Hiding modal on customer display');
-                modalOverlay.style.display = 'none';
-                modalContent.innerHTML = '';
+                if (modalOverlay.style.display !== 'none') {
+                    modalOverlay.style.display = 'none';
+                    modalContent.innerHTML = '';
+                    lastModalHash = '';
+                }
             }
         }
         
@@ -943,18 +1049,13 @@
             };
             
             eventSource.onerror = function(error) {
-                console.error('SSE connection failed');
-                console.log('Event source readyState:', eventSource.readyState);
-                
+                console.warn('SSE disconnected, reconnecting in 3s...');
                 statusEl.textContent = 'Reconnecting...';
                 statusEl.className = 'connection-status status-disconnected';
-                
                 if (eventSource) {
                     eventSource.close();
                     eventSource = null;
                 }
-                
-                console.log('Will retry in 3 seconds...');
                 setTimeout(connectSSE, 3000);
             };
         }
@@ -965,35 +1066,21 @@
             try {
                 localStorage.clear();
                 sessionStorage.clear();
-                console.log('[Customer Display] Browser storage cleared');
-            } catch (e) {
-                console.warn('[Customer Display] Could not clear storage:', e);
-            }
-            
-            // Force clear bill panel and modal containers (with null checks)
+            } catch (e) { /* ignore */ }
+
+            // Force clear bill panel and modal containers
             const billPanel = document.getElementById('bill-panel');
             const modalOverlay = document.getElementById('modal-overlay');
             const modalContent = document.getElementById('modal-content');
-            
+
             if (billPanel) billPanel.innerHTML = '';
             if (modalOverlay) modalOverlay.style.display = 'none';
             if (modalContent) modalContent.innerHTML = '';
-            
-            // Hide all default content for completely blank screen
-            const slideshowContainer = document.querySelector('.slideshow-container');
-            const billPanelContainer = document.getElementById('bill-panel-container');
-            const footer = document.querySelector('.footer');
-            const header = document.querySelector('.header');
-            
-            if (slideshowContainer) slideshowContainer.style.display = 'none';
-            if (billPanelContainer) billPanelContainer.style.display = 'none';
-            // Keep footer visible for running text and connection status
-            // if (footer) footer.style.display = 'none';
-            if (header) header.style.display = 'none';
-            
-            console.log('[Customer Display] UI containers cleared - Blank screen mode');
-            console.log('[Customer Display] Footer kept visible for running text');
-            
+
+            // Start hidden — containers shown when SSE data arrives
+            hideContainers();
+
+            console.log('[Customer Display] Initialized');
             await loadConfig();
             connectSSE();
         }
@@ -1006,23 +1093,12 @@
         }
         
         // ========== STUB FUNCTIONS (Prevent errors from cloned HTML) ==========
-        // These functions are called from the main POS display but don't need to work here
-        window.checkShiftActive = function() { 
-            console.log('[Customer Display] checkShiftActive stub called'); 
-            return false; 
-        };
-        window.openFloorPlanModal = function() { 
-            console.log('[Customer Display] openFloorPlanModal stub called'); 
-        };
-        window.updateCustomerDisplay = function() { 
-            console.log('[Customer Display] updateCustomerDisplay stub called'); 
-        };
-        window.closeModal = function() { 
-            console.log('[Customer Display] closeModal stub called'); 
-        };
-        window.printReceipt = function() { 
-            console.log('[Customer Display] printReceipt stub called'); 
-        };
+        // POS bill panel HTML may reference these — stubs prevent JS errors
+        window.checkShiftActive = function() { return false; };
+        window.openFloorPlanModal = function() {};
+        window.updateCustomerDisplay = function() {};
+        window.closeModal = function() {};
+        window.printReceipt = function() {};
         
         // Cleanup
         window.addEventListener('beforeunload', function() {

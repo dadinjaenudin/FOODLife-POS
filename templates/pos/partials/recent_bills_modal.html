@@ -16,17 +16,26 @@ CONTEXT VARIABLES:
      onclick="if(event.target === this) closeModal()">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         <!-- Header -->
-        <div class="px-4 py-3 border-b bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-t-xl flex items-center justify-between">
-            <div>
-                <h2 class="text-lg font-bold">Recent Orders</h2>
-                <p class="text-xs text-indigo-200">Last {{ bills|length }} orders</p>
+        <div class="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2.5 rounded-t-xl">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold">Recent Orders</h3>
+                        <p class="text-green-100 text-[10px]">Last {{ bills|length }} orders</p>
+                    </div>
+                </div>
+                <button onclick="closeModal()"
+                        class="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
             </div>
-            <button onclick="closeModal()"
-                    class="text-white hover:bg-white/20 rounded-lg p-1.5 transition">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
         </div>
 
         <!-- Bills List -->

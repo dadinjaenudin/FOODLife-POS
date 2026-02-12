@@ -318,7 +318,13 @@ class POSTerminal(models.Model):
         default='none',
         help_text='EDC/Card payment integration mode'
     )
-    
+    payment_profiles = models.ManyToManyField(
+        'PaymentMethodProfile',
+        blank=True,
+        related_name='terminals',
+        help_text='Payment method profiles assigned to this terminal'
+    )
+
     registered_at = models.DateTimeField(auto_now_add=True)
     registered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     
@@ -973,4 +979,128 @@ class ReceiptTemplate(models.Model):
             print(f"[Warning] Failed to cleanup logo on delete: {e}")
         
         super().delete(*args, **kwargs)
+
+
+class MediaGroup(models.Model):
+    """Payment media grouping for reporting and Orafin integration"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='media_groups')
+
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=50)
+    orafin_group = models.CharField(max_length=100, blank=True, help_text='Orafin mapping group for financial integration')
+
+    sort_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'core_media_group'
+        unique_together = [['company', 'code']]
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class PaymentMethodProfile(models.Model):
+    """Configurable payment method profile with dynamic data entry prompts"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    brand = models.ForeignKey('Brand', on_delete=models.CASCADE, related_name='payment_profiles')
+    media_group = models.ForeignKey(MediaGroup, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payment_profiles')
+
+    media_id = models.IntegerField(default=0, help_text='Media ID from backoffice keyboard mapping')
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=50)
+    color = models.CharField(max_length=20, default='#6b7280', help_text='Button color hex')
+    icon = models.CharField(max_length=50, blank=True, help_text='Icon identifier')
+    sort_order = models.IntegerField(default=0)
+
+    smallest_denomination = models.IntegerField(default=0,
+        help_text='Smallest denomination allowed (0 = any amount)')
+    allow_change = models.BooleanField(default=False,
+        help_text='Whether overpayment returns change (True for cash)')
+    open_cash_drawer = models.BooleanField(default=False,
+        help_text='Whether to trigger cash drawer on this payment method')
+
+    legacy_method_id = models.CharField(max_length=20, blank=True,
+        help_text='Maps to old method IDs: cash, card, qris, ewallet, transfer, voucher, debit')
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'core_payment_method_profile'
+        unique_together = [['brand', 'code']]
+        ordering = ['sort_order', 'name']
+        indexes = [
+            models.Index(fields=['brand', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.brand.name} - {self.name}"
+
+
+class DataEntryPrompt(models.Model):
+    """Data entry field definition for a payment method profile"""
+    FIELD_TYPE_CHOICES = [
+        ('amount', 'Amount'),
+        ('text', 'Text Input'),
+        ('numeric', 'Numeric Input'),
+        ('scanner', 'Scanner Input'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(PaymentMethodProfile, on_delete=models.CASCADE, related_name='prompts')
+
+    field_name = models.CharField(max_length=50)
+    label = models.CharField(max_length=100)
+    field_type = models.CharField(max_length=20, choices=FIELD_TYPE_CHOICES, default='text')
+
+    min_length = models.IntegerField(default=0, help_text='Minimum input length (0 = optional)')
+    max_length = models.IntegerField(default=99, help_text='Maximum input length')
+
+    placeholder = models.CharField(max_length=200, blank=True)
+    use_scanner = models.BooleanField(default=False, help_text='Enable barcode/QR scanner for this field')
+    is_required = models.BooleanField(default=False)
+    sort_order = models.IntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'core_data_entry_prompt'
+        ordering = ['sort_order']
+        unique_together = [['profile', 'field_name']]
+
+    def __str__(self):
+        return f"{self.profile.name} - {self.label}"
+
+
+class EFTTerminal(models.Model):
+    """Master data for EFT (Electronic Funds Transfer) terminal/bank codes.
+    Used as reference lookup when cashier inputs EFT terminal number during card payments."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='eft_terminals')
+
+    code = models.CharField(max_length=10, help_text='EFT terminal code (e.g. 01, 02)')
+    name = models.CharField(max_length=100, help_text='Bank/terminal name (e.g. BCA, MANDIRI)')
+
+    sort_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'core_eft_terminal'
+        unique_together = [['company', 'code']]
+        ordering = ['sort_order', 'code']
+
+    def __str__(self):
+        return f"{self.code}: {self.name}"
 

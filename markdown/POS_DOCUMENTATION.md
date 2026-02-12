@@ -2,7 +2,7 @@
 
 > **Tujuan dokumen**: Agar developer baru atau LLM lain bisa memahami detail aplikasi POS ini tanpa harus eksplorasi dari awal.
 >
-> **Terakhir diupdate**: 2026-02-11 (added Kitchen Agent HTTP health server & widget Alpine.js rewrite)
+> **Terakhir diupdate**: 2026-02-12 (added QRIS auto-polling payment with mock gateway)
 
 ---
 
@@ -77,7 +77,7 @@ templates/pos/partials/
 ├── bill_items.html              ← Daftar item dalam bill (HTMX swappable)
 ├── product_card.html            ← Satu kartu produk (di-include dari product_grid)
 ├── product_grid.html            ← Grid produk + JS quickAdd/quickRemove
-├── payment_modal.html           ← Modal pembayaran (Alpine.js component)
+├── payment_modal.html           ← Modal pembayaran (Alpine.js component, incl. QRIS auto-polling)
 ├── confirm_hold_modal.html      ← Modal konfirmasi hold bill
 ├── move_table_modal.html        ← Modal pindah meja
 ├── merge_bills_modal.html       ← Modal gabung bill
@@ -168,6 +168,19 @@ Types: receipt, kitchen, report, reprint
 Fields: job_uuid, terminal_id, bill, job_type, status, content(JSON)
 ```
 Antrian print job untuk Kitchen Printer Agent.
+
+#### QRISTransaction
+```
+Status: pending → paid/expired/failed/cancelled
+Table: pos_qris_transaction
+Fields: id(UUID), bill(FK), transaction_id(unique), amount, qr_string,
+        status, gateway_name, gateway_response(JSON), expires_at,
+        paid_at, created_at, created_by
+```
+Tracks QRIS payment lifecycle. Terpisah dari Payment model (Payment hanya dibuat setelah pembayaran berhasil).
+- `gateway_response` menyimpan data dari payment gateway + pending split payments
+- `expires_at` menentukan kapan QR code kadaluarsa (default 5 menit)
+- Dibuat oleh `PaymentGateway.create_qris_transaction()`
 
 ### Table Management (apps/tables/models.py)
 
@@ -318,6 +331,15 @@ Fields: company, member_code, full_name, phone, tier, points, point_balance
 | `/pos/bill/<id>/payment/` | `payment_modal` | GET | Modal pembayaran |
 | `/pos/bill/<id>/pay/` | `process_payment` | POST | Proses bayar |
 
+### QRIS Payment (Auto-Polling)
+| URL | View | Method | Keterangan |
+|-----|------|--------|------------|
+| `/pos/bill/<id>/qris/create/` | `qris_create` | POST | Buat QRIS transaction, return QR data |
+| `/pos/bill/<id>/qris/<txn_id>/status/` | `qris_status` | GET | Poll status (frontend tiap 3 detik) |
+| `/pos/bill/<id>/qris/<txn_id>/simulate/` | `qris_simulate` | POST | DEV: simulasi pembayaran berhasil |
+| `/pos/bill/<id>/qris/<txn_id>/cancel/` | `qris_cancel` | POST | Batalkan QRIS transaction |
+| `/pos/bill/<id>/qris/success/` | `qris_payment_success` | GET | Render success modal + close bill |
+
 ### Bill Management
 | URL | View | Method | Keterangan |
 |-----|------|--------|------------|
@@ -443,16 +465,77 @@ File: `bill_panel.html`
 ### 6.5 Payment Modal
 File: `payment_modal.html`
 
+**Layout:** 2-column (30% payment methods sidebar kiri, 70% input & numpad kanan)
+
 **Metode Pembayaran:** Cash, Card, QRIS, E-Wallet, Transfer, Voucher, Debit
 (difilter berdasarkan konfigurasi terminal)
 
 **Fitur:**
 - **Numpad visual** (0-9, 00, 000, DEL, C)
-- **Quick amount buttons** (Cash only): Exact, 50K, 100K, Round up
-- **Split payment** - Bisa bayar dengan beberapa metode
+- **Quick amount buttons**: Exact, 50K, 100K, Round up
+- **Split payment** - Bisa bayar dengan beberapa metode (termasuk kombinasi cash + QRIS)
 - **Real-time validation** - Warning jika amount > remaining (non-cash)
 - **Change display** - Tampil otomatis jika bayar cash lebih
 - **Customer display integration** - Update real-time ke layar customer
+- **QRIS auto-polling** - QR code + countdown timer + auto-detect pembayaran
+
+### 6.13 QRIS Auto-Polling Payment
+Files: `payment_modal.html` (frontend), `apps/pos/payment_gateway.py` (backend), `apps/pos/views.py` (endpoints)
+
+**Arsitektur Gateway:**
+```
+PaymentGateway (ABC)          ← Interface abstrak
+    ├── MockQRISGateway       ← Development (sekarang, simulasi)
+    ├── MidtransQRISGateway   ← Future (real gateway)
+    └── XenditQRISGateway     ← Future (real gateway)
+```
+Factory function `get_payment_gateway()` membaca `settings.PAYMENT_GATEWAY` untuk menentukan gateway.
+
+**State Machine (Frontend Alpine.js):**
+```
+idle → loading → waiting → paid → success page
+                    ↓          ↓
+                 expired     error
+                    ↓          ↓
+                 retry       retry
+```
+
+| State | Tampilan | Aksi |
+|-------|----------|------|
+| `idle` | Tombol "Generate QR Code" di footer | User klik generate |
+| `loading` | Spinner "Generating QR Code..." | Tunggu response server |
+| `waiting` | QR code + countdown timer + polling indicator | Auto-poll tiap 3 detik |
+| `paid` | Green checkmark "Payment Received!" | Auto-redirect ke success (1.5s) |
+| `expired` | Warning "QR Code Expired" + tombol "Generate New QR" | User klik retry |
+| `error` | Error message + tombol "Try Again" | User klik retry |
+
+**Side Panel QRIS:**
+- Muncul di kanan payment form saat `method === 'qris' && qrisStatus !== 'idle'`
+- Modal width expand dari 720px → 1060px
+- QR code warna purple (#7c3aed), library: qrcodejs
+- Countdown timer: warna hijau (>60s), amber (30-60s), merah (<30s)
+- Tombol "[DEV] Simulate Payment" (hanya di mock mode)
+- Tombol "Cancel QRIS" untuk batalkan dan kembali ke idle
+
+**Split Payment + QRIS:**
+- User bisa add cash/card payment dulu, lalu tutup sisa dengan QRIS
+- Saat "Generate QR Code" ditekan, pending payments dikirim ke server via `pending_payments` JSON parameter
+- Data pending payments disimpan di `QRISTransaction.gateway_response`
+- Saat QRIS berhasil: `_complete_qris_payment()` membuat Payment record untuk SEMUA payments (pending + QRIS)
+- Idempotent: aman dipanggil >1 kali (guard via `Payment.objects.filter(reference=txn_id).exists()`)
+
+**Polling Mechanism:**
+- Frontend: `setInterval` tiap 3 detik → `GET /pos/bill/<id>/qris/<txn_id>/status/`
+- Backend: cek `QRISTransaction.status` + auto-expire jika `timezone.now() > expires_at`
+- Saat status `paid` → stop polling → tampilkan checkmark → 1.5s delay → fetch success page
+- Success page inject via `fetch()` + `innerHTML` + manual script re-execution
+
+**Cara Ganti ke Gateway Asli:**
+1. Buat class baru implement `PaymentGateway` (misal `MidtransQRISGateway`)
+2. Register di `get_payment_gateway()` factory
+3. Set `PAYMENT_GATEWAY=midtrans` di environment variable
+4. Opsional: tambah webhook endpoint untuk push notification
+5. **Tidak perlu ubah frontend, model, atau URL**
 
 ### 6.6 Floor Plan (Denah Meja)
 Files: `templates/pos/partials/main/js/floor_plan.html` (modal POS), `templates/tables/floor_plan.html` (standalone)
@@ -769,8 +852,35 @@ Resume:
 2. Buka Payment → pilih Cash → input 100,000 → "Add Payment"
 3. Payment #1 ditambahkan ke list
 4. Remaining: 100,000
-5. Pilih QRIS → input 100,000 → "Complete Payment"
+5. Pilih Card/Transfer → input 100,000 → "Add Payment" → "Complete Payment"
 6. Bill paid dengan 2 metode pembayaran
+```
+
+### 8.5 Flow QRIS Payment
+```
+1. Bill total Rp 46,400
+2. Buka Payment → pilih QRIS
+3. Input nominal → klik "Generate QR Code"
+4. Side panel muncul: QR code + countdown (5 menit)
+5. Customer scan QR dengan app QRIS (GoPay, OVO, DANA, dll)
+6. [DEV] Klik "Simulate Payment" untuk simulasi
+7. Polling deteksi status "paid"
+8. Tampil "Payment Received!" (1.5 detik)
+9. Auto-redirect ke Payment Successful → auto-print receipt
+10. Klik "Done" → modal tutup, page reload, bill closed
+```
+
+### 8.6 Flow Split Payment + QRIS
+```
+1. Bill total Rp 200,000
+2. Buka Payment → pilih Cash → input 100,000 → "Add Payment"
+3. Payment #1 (Cash 100K) ditambahkan ke list
+4. Remaining: 100,000
+5. Pilih QRIS → input 100,000 → klik "Generate QR Code"
+6. Pending payments (Cash 100K) dikirim ke server bersama QRIS create request
+7. QR code muncul → customer scan → pembayaran berhasil
+8. Server buat Payment record: Cash 100K + QRIS 100K
+9. Bill fully paid → closed → receipt print (menampilkan semua payment methods)
 ```
 
 ---
@@ -780,6 +890,8 @@ Resume:
 ### Django Settings (terkait POS)
 - `USE_L10N = True` → Format angka sesuai locale Indonesia
 - **PERHATIAN**: Gunakan `{% localize off %}` di template yang output JSON/angka mentah
+- `PAYMENT_GATEWAY` → Gateway QRIS: `'mock'` (default, simulasi) atau `'midtrans'`/`'xendit'` (future)
+- `QRIS_TIMEOUT_MINUTES` → Durasi QR code valid sebelum expired (default: `5` menit)
 
 ### Terminal Config (POSTerminal model)
 - `auto_print_receipt`: Auto-print receipt saat payment selesai
@@ -822,6 +934,7 @@ Resume:
 | `templates/pos/printer_status.html` | Receipt printer widget (sidebar, Alpine.js) |
 | `templates/pos/partials/main/kitchen_printer_widget.html` | Kitchen printer widget (sidebar, Alpine.js) |
 | `kitchen_printer_agent/kitchen_agent.py` | Kitchen Agent daemon (polling, printing, HTTP health server) |
+| `apps/pos/payment_gateway.py` | Payment gateway abstraction (ABC + MockQRISGateway) |
 
 ---
 
@@ -861,6 +974,20 @@ Resume:
 - [x] Fix Docker subnet conflict: `bip: 172.30.0.1/16` + `pos_network` explicit subnet `172.28.0.0/16` (hindari 172.17.x.x)
 - [x] Django view `kitchen_agent_status`: try `host.docker.internal` → localhost → systemctl fallback
 - [x] Test Print functionality via `POST /api/print`
+
+### QRIS Auto-Polling Payment (Completed)
+- [x] Payment gateway abstraction layer (`PaymentGateway` ABC + `MockQRISGateway`)
+- [x] `QRISTransaction` model untuk track lifecycle (pending → paid/expired/cancelled)
+- [x] 5 backend endpoints: create, status, simulate, cancel, success
+- [x] Frontend QRIS side panel dengan state machine (idle/loading/waiting/paid/expired/error)
+- [x] Auto-polling tiap 3 detik + countdown timer (default 5 menit)
+- [x] "[DEV] Simulate Payment" button untuk testing tanpa real gateway
+- [x] Split payment support: pending payments (cash/card/dll) dikirim bersama QRIS flow
+- [x] Idempotent `_complete_qris_payment()` — aman dipanggil >1 kali
+- [x] Pluggable architecture: ganti ke Midtrans/Xendit cukup ubah env `PAYMENT_GATEWAY`
+- [x] Settings: `PAYMENT_GATEWAY` (mock/midtrans/xendit), `QRIS_TIMEOUT_MINUTES` (default 5)
+- [x] Admin registration untuk `QRISTransaction`
+- [x] Fix `print_receipt.html` handle `closed_by` None (fallback ke `created_by`)
 
 ### Bug Fixes
 - [x] Fix multi-brand printer routing: `get_printer_for_station()` sekarang filter by `brand_id` — food court ticket dikirim ke printer brand yang benar

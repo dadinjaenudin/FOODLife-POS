@@ -28,6 +28,28 @@ ENDPOINT API (Django - fallback):
 ============================================================================
 {% endcomment %}
 
+{# Heartbeat keyframes - CSS animation untuk pulsing red dot saat offline #}
+<style>
+    @keyframes heartbeat {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        15% { transform: scale(1.4); opacity: 1; }
+        30% { transform: scale(1); opacity: 0.7; }
+        45% { transform: scale(1.25); opacity: 1; }
+        60% { transform: scale(1); opacity: 0.7; }
+    }
+    .heartbeat-pulse {
+        animation: heartbeat 1.5s ease-in-out infinite;
+    }
+    @keyframes ripple {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+        70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .heartbeat-ripple {
+        animation: ripple 1.5s ease-in-out infinite;
+    }
+</style>
+
 {# SIDEBAR ITEM: Compact button with status dot #}
 <div id="kitchen-printer-widget" class="relative"
      x-data="kitchenPrinterWidget()"
@@ -66,7 +88,7 @@ ENDPOINT API (Django - fallback):
          x-transition:leave-end="opacity-0 scale-95"
          class="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-y-auto"
          :style="flyoutPosition"
-         style="width: 270px; max-height: calc(100vh - 16px);">
+         style="width: 210px; max-height: calc(100vh - 16px);">
 
         {# Flyout Header - color-coded #}
         <div class="flex items-center justify-between px-2.5 py-1.5 border-b"
@@ -110,38 +132,15 @@ ENDPOINT API (Django - fallback):
             </button>
         </div>
 
-        {# Agent Status Details #}
-        <div class="px-2.5 py-1.5 space-y-0.5">
-            <div class="flex justify-between items-center text-[10px]">
-                <span class="text-gray-500">Agent:</span>
-                <span class="font-medium"
-                      :class="agentOnline ? 'text-green-600' : 'text-red-600'"
-                      x-text="agentOnline ? 'Running' : 'Offline'"></span>
-            </div>
-            <div class="flex justify-between items-center text-[10px]" x-show="agentOnline">
-                <span class="text-gray-500">Uptime:</span>
-                <span class="font-medium text-gray-700" x-text="formatUptime()"></span>
-            </div>
-            <div class="flex justify-between items-center text-[10px]" x-show="agentOnline">
-                <span class="text-gray-500">Tickets:</span>
-                <span class="font-medium text-gray-700" x-text="ticketsProcessed"></span>
-            </div>
-            <div class="flex justify-between items-center text-[10px]" x-show="agentOnline && agentName">
-                <span class="text-gray-500">Name:</span>
-                <span class="font-medium text-gray-700 truncate max-w-[120px]" x-text="agentName"></span>
-            </div>
-        </div>
-
         {# Printer List #}
         <div class="px-2.5 py-1.5 border-t border-gray-100">
             <div class="text-[10px] font-semibold text-gray-500 mb-1">PRINTERS</div>
             <template x-for="printer in printers" :key="printer.id || printer.station_code">
                 <div class="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50 mb-1">
-                    <div class="flex items-center gap-2 min-w-0">
+                    <div class="flex items-center gap-1.5 min-w-0">
                         <span class="h-2 w-2 rounded-full flex-shrink-0"
                               :class="printer.is_online === true ? 'bg-green-500' : printer.is_online === false ? 'bg-red-500' : 'bg-gray-400'"></span>
-                        <span class="text-[11px] font-semibold text-gray-800" x-text="(printer.station_code || '').toUpperCase()"></span>
-                        <span class="text-[10px] text-gray-500 truncate max-w-[80px]" x-text="printer.printer_name || printer.printer_ip"></span>
+                        <span class="text-[10px] font-semibold text-gray-800" x-text="(printer.station_code || '').toUpperCase()"></span>
                     </div>
                     <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                           :class="printer.is_online === true ? 'bg-green-100 text-green-700' : printer.is_online === false ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'"
@@ -153,11 +152,6 @@ ENDPOINT API (Django - fallback):
             </div>
         </div>
 
-        {# Agent offline warning #}
-        <div x-show="!agentOnline" x-cloak
-             class="mx-2.5 mb-1.5 px-2 py-1 bg-red-50 border border-red-200 rounded text-[9px] text-red-700">
-            Kitchen Agent tidak berjalan. Data printer dari database.
-        </div>
     </div>
 </div>
 
@@ -334,7 +328,7 @@ function kitchenPrinterWidget() {
             if (!btn || !panel) return;
             const rect = btn.getBoundingClientRect();
             const panelRect = panel.getBoundingClientRect();
-            const flyoutWidth = 270;
+            const flyoutWidth = 210;
             let top = rect.top;
             let left = rect.right + 6;
             if (top + panelRect.height > window.innerHeight - 8) {
