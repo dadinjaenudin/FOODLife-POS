@@ -579,6 +579,12 @@ def get_display_config(request):
                 }
             })
         
+        # Get store login_image URL for customer display idle state
+        store_image_url = None
+        current_store = store or Store.objects.first()
+        if current_store and current_store.login_image:
+            store_image_url = request.build_absolute_uri(current_store.login_image.url)
+
         # Build response
         return JsonResponse({
             'success': True,
@@ -586,6 +592,7 @@ def get_display_config(request):
                 'brand_name': config.brand_name,
                 'brand_logo_url': config.get_logo_url(request),
                 'brand_tagline': config.brand_tagline,
+                'store_image_url': store_image_url,
                 'running_text': config.running_text,
                 'running_text_speed': config.running_text_speed,
                 'theme': {

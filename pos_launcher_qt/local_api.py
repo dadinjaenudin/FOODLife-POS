@@ -48,9 +48,6 @@ CORS(app)  # Allow requests from webview
 @app.errorhandler(404)
 def handle_404(e):
     """Handle 404 errors silently for common browser requests"""
-    # Don't print traceback for common browser requests
-    if request.path not in ['/favicon.ico', '/robots.txt', '/apple-touch-icon.png']:
-        print(f"[WARNING] 404 Not Found: {request.path}")
     return jsonify({
         'success': False,
         'error': 'Not Found',
@@ -107,7 +104,6 @@ def load_display_config():
             company_code = json_config.get('company_code', company_code)
             brand_code = json_config.get('brand_code', brand_code)
             store_code = json_config.get('store_code', store_code)
-            print(f"[Config] Loaded from config.json: company={company_code}, brand={brand_code}, store={store_code}")
     except Exception as e:
         print(f"[Config] Warning: Could not load config.json: {e}")
     
@@ -122,18 +118,11 @@ def load_display_config():
             'store': store_code
         }
         
-        print(f"[Config] Fetching display config from: {config_api_url}")
-        print(f"[Config] Params: {config_params}")
-        
         config_response = requests.get(config_api_url, params=config_params, timeout=5)
         if config_response.status_code == 200:
             config_data = config_response.json()
             if config_data.get('success'):
                 display_config = config_data.get('config', {})
-                print(f"[Config] ✓ Display config loaded!")
-                print(f"[Config]   Brand: {display_config.get('brand_name')}")
-                print(f"[Config]   Running text: {display_config.get('running_text', '')[:50]}...")
-                print(f"[Config]   Speed: {display_config.get('running_text_speed')} px/s")
     except Exception as e:
         print(f"[Config] Display config API error: {e}")
     
@@ -148,14 +137,11 @@ def load_display_config():
             'store': store_code
         }
         
-        print(f"[Config] Fetching slideshow from: {slideshow_api_url}")
-        
         slideshow_response = requests.get(slideshow_api_url, params=slideshow_params, timeout=5)
         if slideshow_response.status_code == 200:
             slideshow_json = slideshow_response.json()
             if slideshow_json.get('success'):
                 slideshow_data = slideshow_json.get('slides', [])
-                print(f"[Config] ✓ Slideshow loaded: {len(slideshow_data)} slides")
     except Exception as e:
         print(f"[Config] Slideshow API error: {e}")
     
@@ -182,7 +168,6 @@ def load_display_config():
                 # Replace localhost with actual host
                 url = url.replace('http://localhost:9002', minio_base)
                 url = url.replace('http://127.0.0.1:9002', minio_base)
-                print(f"[Config] Replaced MinIO URL: {url}")
                 return url
         
         # Already absolute URL (and not localhost:9002)
@@ -200,7 +185,12 @@ def load_display_config():
         brand_logo = display_config.get('brand_logo_url')
         if brand_logo:
             brand_logo = make_absolute_url(brand_logo, edge_server)
-        
+
+        # Fix store image URL (for idle/waiting state)
+        store_image = display_config.get('store_image_url')
+        if store_image:
+            store_image = make_absolute_url(store_image, edge_server)
+
         # Fix slideshow image URLs
         for slide in slideshow_data:
             if 'image_url' in slide:
@@ -216,6 +206,7 @@ def load_display_config():
                 'logo_url': brand_logo,
                 'tagline': display_config.get('brand_tagline', '')
             },
+            'store_image_url': store_image,
             'slideshow': slideshow_data,
             'running_text': display_config.get('running_text', 'Welcome!'),
             'running_text_speed': display_config.get('running_text_speed', 50),
@@ -228,15 +219,9 @@ def load_display_config():
             })
         }
         
-        print(f"[Config] Final config ready:")
-        print(f"[Config]   - Brand: {result['brand']['name']}")
-        print(f"[Config]   - Slides: {len(result['slideshow'])}")
-        print(f"[Config]   - Running text: {result['running_text'][:60]}...")
-        
         return result
     
     # Fallback to default config
-    print("[Config] Using fallback default config")
     return {
         'edge_server': edge_server,
         'company_code': company_code,
@@ -433,24 +418,18 @@ def download_and_process_logo(logo_url, edge_server, paper_width=58):
         else:
             full_url = logo_url
         
-        print(f"[Logo] Downloading from: {full_url}")
-        
         # Download image
         response = requests.get(full_url, timeout=5)
         response.raise_for_status()
         
         # Open image
         image = Image.open(BytesIO(response.content))
-        print(f"[Logo] Image loaded: {image.size[0]}x{image.size[1]} pixels")
         
         # Convert paper width to pixels (58mm = ~384px, 80mm = ~576px)
         max_width = 384 if paper_width == 58 else 576
         
         # Convert to ESC/POS bitmap
         bitmap_data = image_to_escpos_bitmap(image, max_width)
-        
-        if bitmap_data:
-            print(f"[Logo] Converted to ESC/POS bitmap ({len(bitmap_data)} bytes)")
         
         return bitmap_data
         
@@ -474,7 +453,6 @@ def generate_receipt_escpos(data):
     
     # Check if we received pre-rendered text (new format)
     if 'text' in data:
-        print("[Print] Using pre-rendered receipt text")
         receipt_text = data.get('text', '')
         
         # Check for logo marker and insert actual logo image
@@ -482,7 +460,6 @@ def generate_receipt_escpos(data):
             logo_data = data.get('logo_data', b'')
             
             if logo_data:
-                print("[Print] Inserting logo image into receipt")
                 # Split text at logo marker
                 parts = receipt_text.split('[LOGO_START]')
                 before_logo = parts[0]
@@ -496,7 +473,6 @@ def generate_receipt_escpos(data):
                 receipt += after_logo.encode('utf-8', errors='replace')
             else:
                 # No logo data, just remove markers
-                print("[Print] No logo data, removing markers")
                 receipt_text = receipt_text.replace('[LOGO_START]', '').replace('[LOGO_END]', '')
                 receipt += receipt_text.encode('utf-8', errors='replace')
         else:
@@ -514,7 +490,6 @@ def generate_receipt_escpos(data):
         return receipt
     
     # Legacy format (JSON data) - keep for backward compatibility
-    print("[Print] Using legacy JSON format")
     
     # Header
     receipt += ALIGN_CENTER + BOLD_ON
@@ -902,14 +877,10 @@ def api_dashboard():
 @app.route('/customer-display', methods=['GET'])
 def serve_customer_display():
     """Serve customer display HTML"""
-    print(f"[API] Received request: GET /customer-display from {request.remote_addr}")
     try:
         html_path = Path(__file__).parent / 'customer_display.html'
-        print(f"[DEBUG] Serving HTML from: {html_path}")
-        print(f"[DEBUG] File exists: {html_path.exists()}")
-        
+
         if html_path.exists():
-            print(f"[API] Successfully serving customer_display.html")
             return send_file(str(html_path))
         else:
             print(f"[ERROR] customer_display.html not found at {html_path}")
@@ -927,11 +898,7 @@ def serve_assets(filename):
     try:
         assets_dir = Path(__file__).parent / 'assets'
         file_path = assets_dir / filename
-        
-        print(f"[DEBUG] Serving asset: {filename}")
-        print(f"[DEBUG] Full path: {file_path}")
-        print(f"[DEBUG] File exists: {file_path.exists()}")
-        
+
         if file_path.exists() and file_path.is_file():
             # Security: Ensure file is within assets directory (prevent path traversal)
             if not str(file_path.resolve()).startswith(str(assets_dir.resolve())):
@@ -1269,10 +1236,8 @@ def _get_printer_status_linux():
 @app.route('/api/customer-display/config', methods=['GET'])
 def get_display_config():
     """Get customer display configuration"""
-    print(f"[API] Received request: GET /api/customer-display/config from {request.remote_addr}")
     try:
         config = load_display_config()
-        print(f"[API] Successfully loaded config, returning {len(str(config))} chars")
         return jsonify(config)
     except Exception as e:
         print(f"[ERROR] Exception in get_display_config: {e}")
@@ -1393,7 +1358,6 @@ def update_customer_display():
             display_data['show_modal'] = data.get('show_modal', False)
             display_data['modal_html'] = data.get('modal_html', None)
             display_data['updated_at'] = time.time()
-            print(f"[Modal Update] show_modal={data.get('show_modal')}, modal_html_length={len(data.get('modal_html', '')) if data.get('modal_html') else 0}")
         # Check if we're receiving bill panel HTML (new format)
         elif 'bill_panel_html' in data:
             display_data['bill_panel_html'] = data.get('bill_panel_html')
@@ -1434,9 +1398,7 @@ def customer_display_stream():
             # Create queue for this subscriber
             q = queue.Queue()
             display_subscribers.append(q)
-            
-            print(f"[SSE] New subscriber connected (total: {len(display_subscribers)})")
-            
+
             try:
                 while True:
                     # Wait for updates with timeout to avoid hanging
@@ -1450,7 +1412,6 @@ def customer_display_stream():
                 # Client disconnected
                 if q in display_subscribers:
                     display_subscribers.remove(q)
-                print(f"[SSE] Subscriber disconnected (remaining: {len(display_subscribers)})")
         except Exception as e:
             print(f"[SSE] Error in event stream: {e}")
             if q in display_subscribers:
@@ -1814,7 +1775,6 @@ def api_print_receipt():
             print(f"[Print Receipt] Warning: Could not load config.json: {e}")
         
         # Fetch terminal config to get print_to setting
-        print(f"[Print Receipt] Fetching terminal config: {terminal_code}")
         print_to_destination = 'printer'  # default
         
         try:
@@ -1832,12 +1792,10 @@ def api_print_receipt():
                 config_data = response.json()
                 if config_data.get('success'):
                     print_to_destination = config_data.get('terminal', {}).get('device_config', {}).get('print_to', 'printer')
-                    print(f"[Print Receipt] Print destination: {print_to_destination}")
         except Exception as e:
             print(f"[Print Receipt] Warning: Could not fetch terminal config: {e}")
-        
+
         # Fetch receipt template
-        print(f"[Print Receipt] Fetching template for terminal: {terminal_code}")
         template = fetch_receipt_template(edge_server, terminal_code, company_code, brand_code, store_code)
         
         if not template:
@@ -1846,15 +1804,8 @@ def api_print_receipt():
                 'error': 'Receipt template not found'
             }), 404
         
-        print(f"[Print Receipt] Template loaded: {template.get('template_name')}")
-        print(f"[Print Receipt] Paper width: {template.get('paper_width')} chars")
-        
         # Generate formatted receipt text
         receipt_text = format_receipt_text(data, template)
-        
-        print(f"[Print Receipt] Generated receipt ({len(receipt_text)} chars)")
-        print("[Print Receipt] Preview:")
-        print(receipt_text[:500])  # Print first 500 chars
         
         # Download and process logo if available
         logo_data = b''
@@ -1862,10 +1813,6 @@ def api_print_receipt():
             logo_url = template.get('logo_url')
             paper_width = template.get('paper_width', 58)
             logo_data = download_and_process_logo(logo_url, edge_server, paper_width)
-            if logo_data:
-                print(f"[Print Receipt] Logo processed successfully ({len(logo_data)} bytes)")
-            else:
-                print("[Print Receipt] Logo processing failed or disabled")
         
         # Check print destination
         if print_to_destination == 'file':
@@ -1973,7 +1920,6 @@ def api_print_checker():
             print(f"[Checker Receipt] Warning: Could not load config.json: {e}")
         
         # Fetch terminal config to get print_to setting
-        print(f"[Checker Receipt] Fetching terminal config: {terminal_code}")
         print_to_destination = 'printer'  # default
         
         try:
@@ -1991,17 +1937,12 @@ def api_print_checker():
                 config_data = response.json()
                 if config_data.get('success'):
                     print_to_destination = config_data.get('terminal', {}).get('device_config', {}).get('print_to', 'printer')
-                    print(f"[Checker Receipt] Print destination: {print_to_destination}")
         except Exception as e:
             print(f"[Checker Receipt] Warning: Could not fetch terminal config: {e}")
-        
+
         # Generate checker receipt text (simple format with checkboxes)
         checker_text = format_checker_receipt_text(data)
-        
-        print(f"[Checker Receipt] Generated receipt ({len(checker_text)} chars)")
-        print("[Checker Receipt] Preview:")
-        print(checker_text)
-        
+
         # Check print destination
         if print_to_destination == 'file':
             # Save to file instead (separate folder from payment receipts)

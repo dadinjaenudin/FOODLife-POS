@@ -413,7 +413,10 @@ CATATAN:
             }
         }
 
-        const modalHTML = modalClone.innerHTML;
+        {# Fix relative URLs: customer display runs from file:// so needs absolute URLs #}
+        let modalHTML = modalClone.innerHTML;
+        modalHTML = modalHTML.replace(/src="\/(media|static)\//g, `src="${window.location.origin}/$1/`);
+        modalHTML = modalHTML.replace(/src='\/(media|static)\//g, `src='${window.location.origin}/$1/`);
         console.log('Cloned modal HTML length:', modalHTML.length);
 
         {# Kirim ke local API #}
@@ -500,7 +503,11 @@ CATATAN:
             el.style.cursor = 'default';
         });
 
-        const billPanelHTML = billPanelClone.outerHTML;
+        {# Fix relative URLs: customer display runs from file:// so needs absolute URLs #}
+        const origin = window.location.origin;
+        let billPanelHTML = billPanelClone.outerHTML;
+        billPanelHTML = billPanelHTML.replace(/src="\/(media|static)\//g, `src="${origin}/$1/`);
+        billPanelHTML = billPanelHTML.replace(/src='\/(media|static)\//g, `src='${origin}/$1/`);
         console.log(`Bill panel HTML captured (${billPanelHTML.length} chars)`);
 
         {# Kirim ke local API #}

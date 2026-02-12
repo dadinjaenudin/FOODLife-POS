@@ -1372,7 +1372,7 @@ def cancel_bill(request, bill_id):
         else:
             bill_to_show = None
         
-        response = render(request, 'pos/partials/bill_panel.html', {'bill': bill_to_show})
+        response = render_bill_panel(request, bill_to_show)
         return trigger_client_event(response, 'billCancelled')
     
     # POST method - Void with PIN verification for bills with SENT items
@@ -1435,7 +1435,7 @@ def cancel_bill(request, bill_id):
     else:
         bill_to_show = None
     
-    response = render(request, 'pos/partials/bill_panel.html', {'bill': bill_to_show})
+    response = render_bill_panel(request, bill_to_show)
     return trigger_client_event(response, 'billVoided')
 
 

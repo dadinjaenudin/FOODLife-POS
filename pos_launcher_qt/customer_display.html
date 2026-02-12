@@ -321,7 +321,15 @@ ANTI-FLICKER:
             margin-bottom: 1rem;
             opacity: 0.3;
         }
-        
+
+        .empty-bill img {
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+            border-radius: 16px;
+            margin-bottom: 1rem;
+        }
+
         .empty-bill p {
             font-size: 1.1rem;
         }
@@ -513,7 +521,7 @@ ANTI-FLICKER:
             </div>
             
             <div class="items-list" id="items-list">
-                <div class="empty-bill">
+                <div class="empty-bill" id="empty-bill-default">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
                     </svg>
@@ -645,7 +653,24 @@ ANTI-FLICKER:
                 document.getElementById('header-logo').innerHTML = logoHtml;
                 console.log('[Brand] Logo URL:', brand.logo_url);
             }
-            
+
+            // Store image for empty-bill state
+            if (config.store_image_url) {
+                const emptyBill = document.getElementById('empty-bill-default');
+                if (emptyBill) {
+                    const svg = emptyBill.querySelector('svg');
+                    if (svg) {
+                        const img = document.createElement('img');
+                        img.src = config.store_image_url;
+                        img.alt = brand.name || '';
+                        img.onerror = function() { this.style.display = 'none'; svg.style.display = ''; };
+                        svg.style.display = 'none';
+                        svg.parentNode.insertBefore(img, svg);
+                    }
+                }
+                console.log('[Brand] Store image URL:', config.store_image_url);
+            }
+
             // Theme colors
             if (config.theme) {
                 const theme = config.theme;
@@ -889,9 +914,14 @@ ANTI-FLICKER:
             if (!data.items || data.items.length === 0) {
                 // Empty state — hide all UI for blank screen
                 if (currentDisplayState !== 'hidden') {
+                    const storeImg = (config && config.store_image_url)
+                        ? `<img src="${config.store_image_url}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='';">`
+                        : '';
+                    const svgDisplay = storeImg ? 'style="display:none;"' : '';
                     itemsListEl.innerHTML = `
                         <div class="empty-bill">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            ${storeImg}
+                            <svg ${svgDisplay} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
                             </svg>
                             <p>Waiting for items...</p>
