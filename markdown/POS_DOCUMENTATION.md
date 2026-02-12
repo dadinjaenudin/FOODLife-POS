@@ -2,7 +2,7 @@
 
 > **Tujuan dokumen**: Agar developer baru atau LLM lain bisa memahami detail aplikasi POS ini tanpa harus eksplorasi dari awal.
 >
-> **Terakhir diupdate**: 2026-02-12 (added QRIS auto-polling payment with mock gateway)
+> **Terakhir diupdate**: 2026-02-12 (dynamic payment profiles, customer display integration, store branding)
 
 ---
 
@@ -106,6 +106,28 @@ templates/pos/partials/
 │       └── launcher_integration.html ← Integrasi POS Launcher Qt
 ```
 
+### Management Templates
+```
+templates/management/
+├── payment_profiles.html        ← List payment profiles (card grid, filter by MediaGroup)
+├── payment_profile_form.html    ← Create/Edit profile + inline prompts editor
+├── media_groups.html            ← List/Create/Edit media groups
+├── eft_terminals.html           ← List/Create/Edit EFT terminals
+├── stock_management.html        ← Stock tracking dashboard
+├── terminal_form.html           ← Terminal config form (includes payment profiles M2M)
+└── ...
+```
+
+### POS Launcher (standalone, non-Django)
+```
+pos_launcher_qt/
+├── local_api.py                 ← Flask server port 5000 (print, SSE, customer display)
+├── customer_display.html        ← Customer display HTML (Qt WebView, SSE client)
+├── assets/
+│   └── tailwind.js              ← Tailwind CSS for customer display
+└── ...
+```
+
 ### Floor Plan (standalone page)
 ```
 templates/tables/
@@ -148,10 +170,16 @@ Fields: bill, product, quantity, unit_price, modifier_price, total,
 
 #### Payment
 ```
-Methods: cash, card, qris, transfer, ewallet, voucher
-Fields: bill, method, amount, reference, created_by
+Methods: cash, card, qris, transfer, ewallet, voucher, debit
+Fields: bill, method, amount, reference, created_by,
+        payment_profile(FK nullable → PaymentMethodProfile),
+        payment_metadata(JSONField), eft_desc(CharField)
 ```
 Satu bill bisa punya banyak payment (split payment).
+- `payment_profile`: Link ke profil dinamis (null untuk legacy payments)
+- `payment_metadata`: Data dari DataEntryPrompt, misal `{"account_no":"1234","eft_no":"01","approval_code":"ABC123"}`
+- `eft_desc`: Denormalized EFT terminal description, misal "01: BCA"
+- `method` dan `reference` tetap di-populate untuk backward compat
 
 #### BillLog
 ```
@@ -278,20 +306,71 @@ Mendukung 2 level: Parent Category → Subcategory.
 #### POSTerminal
 ```
 Fields: store, brand, terminal_code(unique), device_type, ip_address,
-        printer configs, display configs, payment configs, is_active
+        printer configs, display configs, payment configs,
+        payment_profiles(M2M → PaymentMethodProfile), is_active
 ```
 Konfigurasi per mesin kasir (auto-print, paper width, dll).
+`payment_profiles` M2M menentukan metode pembayaran yang aktif di terminal.
+`default_payment_methods` JSONField tetap di-maintain (dual-write) untuk backward compat.
 
 #### Store (Singleton per Edge Server)
 ```
-Fields: company, store_code, store_name, address, phone
+Fields: company, store_code, store_name, address, phone, login_image
 Method: get_current() → returns single Store instance
 ```
+`login_image` digunakan untuk branding di bill panel idle state dan customer display.
 
 #### Member (dari CRM eksternal)
 ```
 Fields: company, member_code, full_name, phone, tier, points, point_balance
 ```
+
+### Payment Method Profiles (apps/core/models.py)
+
+#### MediaGroup
+```
+Table: core_media_group
+Fields: company(FK), name, code, orafin_group, sort_order, is_active
+Unique: [company, code]
+```
+Grouping metode pembayaran untuk reporting/integrasi Orafin.
+
+#### PaymentMethodProfile
+```
+Table: core_payment_method_profile
+Fields: brand(FK), media_group(FK nullable), media_id(int),
+        name, code, color, icon, sort_order,
+        smallest_denomination(int), allow_change(bool), open_cash_drawer(bool),
+        legacy_method_id(CharField), is_active
+Unique: [brand, code]
+Index: [brand, is_active]
+```
+Profil metode pembayaran yang dikonfigurasi dari management backoffice.
+- `allow_change`: True untuk cash (kembalian), False untuk non-cash
+- `legacy_method_id`: Maps ke ID lama (cash, card, qris, dll) untuk backward compat
+- `media_id`: ID dari backoffice keyboard mapping system
+
+#### DataEntryPrompt
+```
+Table: core_data_entry_prompt
+Fields: profile(FK → PaymentMethodProfile), field_name, label,
+        field_type(amount/text/numeric/scanner),
+        min_length, max_length, placeholder, use_scanner(bool),
+        is_required(bool), sort_order
+Unique: [profile, field_name]
+```
+Field input dinamis per profil pembayaran (misal: account_no, eft_no, approval_code, qrcontent).
+Ditampilkan di payment modal berdasarkan metode yang dipilih.
+
+#### EFTTerminal
+```
+Table: core_eft_terminal
+Fields: company(FK), code(CharField 10), name(CharField 100),
+        sort_order, is_active
+Unique: [company, code]
+```
+Master data EFT terminal/bank (misal: "01: BCA", "02: MANDIRI").
+Ditampilkan sebagai dropdown di prompt `eft_no` pada payment modal.
 
 ---
 
@@ -370,6 +449,23 @@ Fields: company, member_code, full_name, phone, tier, points, point_balance
 | `/management/stock/<id>/remove/` | `stock_remove` | POST | Soft delete (is_active=False) |
 | `/management/stock/reset-all/` | `stock_reset_all` | POST | Reset semua produk sekaligus |
 | `/management/stock/sync-product-ids/` | `stock_sync_product_ids` | POST | Re-match product_id setelah HO sync |
+
+### Payment Profile Management (apps/management/urls.py)
+| URL | View | Method | Keterangan |
+|-----|------|--------|------------|
+| `/management/payment-profiles/` | `payment_profiles_list` | GET | List semua payment profiles |
+| `/management/payment-profiles/create/` | `payment_profile_create` | GET/POST | Buat profil baru + inline prompts |
+| `/management/payment-profiles/<uuid>/edit/` | `payment_profile_edit` | GET/POST | Edit profil + inline prompts |
+| `/management/payment-profiles/<uuid>/delete/` | `payment_profile_delete` | POST | Hapus profil |
+| `/management/payment-profiles/<uuid>/toggle/` | `payment_profile_toggle` | POST | Toggle active/inactive |
+| `/management/media-groups/` | `media_groups_list` | GET | List media groups |
+| `/management/media-groups/create/` | `media_group_create` | GET/POST | Buat media group |
+| `/management/media-groups/<uuid>/edit/` | `media_group_edit` | GET/POST | Edit media group |
+| `/management/media-groups/<uuid>/delete/` | `media_group_delete` | POST | Hapus media group |
+| `/management/eft-terminals/` | `eft_terminals_list` | GET | List EFT terminals |
+| `/management/eft-terminals/create/` | `eft_terminal_create` | GET/POST | Buat EFT terminal |
+| `/management/eft-terminals/<uuid>/edit/` | `eft_terminal_edit` | GET/POST | Edit EFT terminal |
+| `/management/eft-terminals/<uuid>/delete/` | `eft_terminal_delete` | POST | Hapus EFT terminal |
 
 ### Table Management (apps/tables/urls.py)
 | URL | View | Keterangan |
@@ -467,16 +563,30 @@ File: `payment_modal.html`
 
 **Layout:** 2-column (30% payment methods sidebar kiri, 70% input & numpad kanan)
 
-**Metode Pembayaran:** Cash, Card, QRIS, E-Wallet, Transfer, Voucher, Debit
-(difilter berdasarkan konfigurasi terminal)
+**Metode Pembayaran:** Dinamis dari PaymentMethodProfile yang di-assign ke terminal.
+Fallback ke hardcoded list (Cash, Card, QRIS, E-Wallet, Transfer, Voucher, Debit) jika profil belum dikonfigurasi.
+
+**Dynamic Data Entry Prompts:**
+Setiap metode pembayaran bisa punya field input dinamis dari DataEntryPrompt:
+- `account_no` (6 digit) — untuk Credit Card, Debit Card
+- `eft_no` — EFT Terminal dropdown (dari master data EFTTerminal)
+- `approval_code` (4-6 digit) — kode approval dari bank
+- `qrcontent` (scanner) — scan QR code content
+- Field custom lainnya sesuai konfigurasi backoffice
+
+**Numpad Routing:**
+- Default: numpad input ke field amount
+- Klik field prompt → numpad route ke field tersebut (indicator "Numpad → FIELD_NAME")
+- Tombol "← Amount" untuk kembali routing ke amount
+- State `activeField` menentukan target numpad (`'amount'` atau `'prompt:field_name'`)
 
 **Fitur:**
-- **Numpad visual** (0-9, 00, 000, DEL, C)
+- **Numpad visual** (0-9, 00, 000, DEL, C) dengan routing ke amount atau prompt field
 - **Quick amount buttons**: Exact, 50K, 100K, Round up
 - **Split payment** - Bisa bayar dengan beberapa metode (termasuk kombinasi cash + QRIS)
-- **Real-time validation** - Warning jika amount > remaining (non-cash)
-- **Change display** - Tampil otomatis jika bayar cash lebih
-- **Customer display integration** - Update real-time ke layar customer
+- **Real-time validation** - Warning jika amount > remaining (non-cash/allow_change=false)
+- **Change display** - Tampil otomatis jika bayar cash lebih (allow_change=true)
+- **Customer display integration** - Update real-time ke layar customer (syncDisplay → sendModalToCustomerDisplay)
 - **QRIS auto-polling** - QR code + countdown timer + auto-detect pembayaran
 
 ### 6.13 QRIS Auto-Polling Payment
@@ -737,6 +847,138 @@ Dua widget status printer ditampilkan di sidebar kiri, masing-masing dengan flyo
 - Satu agent bisa handle semua brand (`STATION_IDS=1,2,3,...`) atau subset tertentu
 - Tidak ada cross-brand routing — Brand A ticket selalu ke Brand A printer
 
+### 6.14 POS Launcher & Customer Display Integration
+Files: `pos_launcher_qt/local_api.py` (Flask API), `pos_launcher_qt/customer_display.html` (2nd screen),
+`templates/pos/partials/main/js/launcher_integration.html` (POS-side integration)
+
+**Arsitektur:**
+```
+┌───────────────────────────┐
+│  POS Main Screen          │
+│  (Django + HTMX)          │
+│  launcher_integration.html│
+│  - updateCustomerDisplay()│  ← Clone bill panel HTML
+│  - sendModalToCustomerDisplay() ← Clone payment modal
+└─────────┬─────────────────┘
+          │ HTTP POST (cloned HTML)
+          ▼
+┌───────────────────────────┐
+│  Flask Local API (:5000)  │
+│  local_api.py             │
+│  POST /api/customer-      │
+│       display/update      │
+│  - Simpan ke display_data │
+│  - notify_subscribers()   │
+│    → queue.put(data)      │
+└─────────┬─────────────────┘
+          │ SSE stream (text/event-stream)
+          ▼
+┌───────────────────────────┐
+│  Customer Display         │
+│  customer_display.html    │
+│  GET /api/customer-       │
+│      display/stream       │
+│  - EventSource listener   │
+│  - updateDisplay(data)    │
+│  - 2-column layout:       │
+│    Left: Slideshow (45%)  │
+│    Right: Bill Panel (55%)│
+└───────────────────────────┘
+```
+
+**POS Launcher (pos_launcher_qt/):**
+Aplikasi PyQt5 yang menjalankan POS browser dalam mode kiosk + customer display di monitor kedua.
+- Built-in Flask server di port 5000 (bukan Django, separate process)
+- Serve customer_display.html via `/customer-display`
+- SSE streaming via `/api/customer-display/stream`
+- Config dari Edge Server via `/api/customer-display/config`
+- Print receipt via `/api/print`
+
+**Bill Panel Cloning (`updateCustomerDisplay()`):**
+1. Clone `#bill-panel` DOM element
+2. Remove semua buttons dan interactive attributes (hx-get, hx-post, onclick, dll)
+3. Fix relative URLs → absolute (customer display jalan dari `file://`, tidak bisa resolve `/media/`)
+4. Kirim cloned HTML via POST ke Flask API
+5. Flask kirim via SSE ke customer display
+6. Customer display inject HTML: `billPanelContainer.innerHTML = data.bill_panel_html`
+
+**Modal Cloning (`sendModalToCustomerDisplay()`):**
+1. Whitelist: hanya payment modal yang dikirim (cek `data-payment-modal` attribute)
+2. Blacklist: Quick Order modal, shift modal, PIN modal TIDAK dikirim
+3. Capture Alpine.js data (amount, change, method, promptValues)
+4. Clone modal, replace x-text/x-show dengan nilai aktual
+5. Disable semua button/input (read-only untuk pelanggan)
+6. Remove semua Alpine.js attributes (@click, x-model, x-show, dll)
+7. Fix relative URLs → absolute
+8. Kirim ke Flask API → SSE → customer display modal overlay
+
+**Payment Success di Customer Display:**
+- `payment_success.html` mengirim HTML sukses sendiri langsung ke Flask API (tidak via clone)
+- `sendModalToCustomerDisplay()` di htmx:afterSwap mendeteksi "Payment Successful"/"Pembayaran Berhasil" dan skip (menghindari race condition yang men-clear modal sukses)
+- Setelah 8 detik, customer display di-clear kembali ke idle state
+
+**Store Image Branding:**
+- POS bill panel: `store_config.login_image` → brand logo → SVG fallback
+- Customer display: image URL dikirim melalui cloned HTML (sudah absolute URL)
+- Customer display config: `store_image_url` di-load dari Edge Server API → Flask → SSE
+
+**Anti-Flicker:**
+- Track `lastBillHash` dan `lastModalHash` untuk skip duplicate update
+- `currentDisplayState` tracking: `'visible'` / `'hidden'`
+- SSE keepalive setiap 30 detik
+
+**Reconnection:**
+- `connectSSE()` cek `/health` sebelum buka SSE
+- Jika gagal, retry setiap 3 detik
+- `EventSource.onerror` → close + retry 3 detik
+
+### 6.15 Dynamic Payment Method Profiles
+Files: `apps/core/models.py` (MediaGroup, PaymentMethodProfile, DataEntryPrompt, EFTTerminal),
+`templates/management/payment_profiles.html`, `templates/pos/partials/payment_modal.html`
+
+**Konsep:**
+Sistem "Keyboard Mapping" dari backoffice dimana setiap metode pembayaran dikonfigurasi dengan:
+- Profil (nama, warna, icon, media group)
+- Data Entry Prompts (field input dinamis: account_no, eft_no, approval_code, qrcontent, dll)
+- Setting: allow_change, open_cash_drawer, smallest_denomination
+
+**Contoh Konfigurasi Backoffice:**
+
+| Profile | Media Group | Prompts |
+|---------|-------------|---------|
+| Credit Card | Credit Card Group | account_no(6), eft_no(dropdown), approval_code(5-6) |
+| Debit Card | Debit Card Group | account_no(6), eft_no(dropdown), approval_code(4-6) |
+| DANA | Online Payment | eft_no(dropdown), approval_code(4-6) |
+| YOGYA VOUCHER | Voucher Group | (amount only) |
+| QRIS BCA CPM | QRIS | qrcontent(scanner) |
+
+**Flow di POS:**
+1. Terminal di-assign profil pembayaran di management (M2M `POSTerminal.payment_profiles`)
+2. `payment_modal` view load profil aktif + prefetch prompts, serialize ke JSON
+3. Alpine.js render metode pembayaran dari JSON (bukan hardcoded)
+4. Saat pilih metode → tampilkan prompt fields yang sesuai (x-show per method)
+5. `eft_no` field render sebagai dropdown dari EFTTerminal master data
+6. Submit: `profile_id` + `prompt_data` (JSON) dikirim ke `process_payment`
+7. Backend: simpan ke `Payment.payment_profile` + `Payment.payment_metadata`
+8. `Payment.method` dan `Payment.reference` tetap di-populate dari `legacy_method_id` + concatenated metadata
+
+**Backward Compatibility:**
+
+| Field | Legacy | Dynamic Profile |
+|-------|--------|----------------|
+| `Payment.method` | Always populated | From `profile.legacy_method_id` |
+| `Payment.reference` | Single ref string | Concatenated from metadata |
+| `Payment.payment_profile` | null | FK to profile |
+| `Payment.payment_metadata` | `{}` | Full prompt data as JSON |
+| `POSTerminal.default_payment_methods` | List of string IDs | Dual-written from profiles |
+| Payment modal | Hardcoded methods | `use_profiles` flag, fallback to legacy |
+
+**Management UI (`/management/payment-profiles/`):**
+- Card list profil per brand, filter by MediaGroup
+- Create/Edit form dengan inline prompts editor (Alpine.js addPrompt/removePrompt)
+- Toggle active, duplicate, delete
+- Sidebar navigasi: Payment Profiles, Media Groups, EFT Terminals
+
 ---
 
 ## 7. Pola Teknis (Patterns)
@@ -897,7 +1139,8 @@ Resume:
 - `auto_print_receipt`: Auto-print receipt saat payment selesai
 - `auto_print_kitchen_order`: Auto-print ke dapur saat send to kitchen
 - `print_checker_receipt`: Print checker receipt untuk verifikasi
-- `default_payment_methods`: JSON array metode pembayaran yang aktif
+- `payment_profiles`: M2M ke PaymentMethodProfile (metode pembayaran dinamis)
+- `default_payment_methods`: JSON array metode pembayaran lama (dual-write, backward compat)
 - `enable_customer_display`: Aktifkan layar customer
 - `receipt_paper_width`: Lebar kertas (58mm / 80mm)
 
@@ -915,22 +1158,31 @@ Resume:
 7. **Table positions**: Di-setting dari HO, POS hanya menampilkan. Drag di POS bersifat temporary dan sync dari HO akan overwrite
 8. **StoreProductStock vs core_product**: Stock management menggunakan table `pos_store_product_stock` yang terpisah dari `core_product`. Jangan gunakan `product.track_stock` atau `product.stock_quantity` dari core_product karena akan ter-overwrite saat HO sync. `product_id` di StoreProductStock adalah UUIDField biasa (bukan FK) agar survive DELETE+INSERT sync
 9. **Stock warning di send_to_kitchen**: Hanya WARNING (informasi), bukan blocking. Kasir bisa tetap kirim pesanan meski ada item yang stoknya habis (via `force=1` parameter)
+10. **Customer display relative URLs**: Cloned HTML dari POS berisi relative URLs (`/media/...`). Customer display jalan dari `file://` di Qt WebView, jadi URL harus di-convert ke absolute (`http://server:port/media/...`) sebelum dikirim via SSE. Fix ada di `launcher_integration.html`.
+11. **Payment success race condition**: `sendModalToCustomerDisplay()` dipanggil 500ms setelah htmx:afterSwap. `payment_success.html` kirim modal sukses 300ms setelah load. Tanpa guard, sendModalToCustomerDisplay() akan men-clear modal sukses. Solusi: detect "Payment Successful"/"Pembayaran Berhasil" dan skip.
+12. **Payment profiles backward compat**: Saat profil baru di-assign ke terminal, `default_payment_methods` JSONField juga di-update (dual-write) agar code lama tetap berjalan. Payment model tetap populate `method` dan `reference` dari `legacy_method_id`.
 
 ### File yang Sering Dimodifikasi
 | File | Alasan |
 |------|--------|
 | `apps/pos/views.py` | Tambah view baru, modifikasi logic |
-| `templates/pos/partials/bill_panel.html` | UI bill panel, action buttons |
+| `apps/core/models.py` | Payment profiles, EFT terminals, core models |
+| `templates/pos/partials/bill_panel.html` | UI bill panel, action buttons, store branding |
 | `templates/pos/partials/product_card.html` | UI kartu produk |
 | `templates/pos/partials/product_grid.html` | Logic add/remove product |
-| `templates/pos/partials/payment_modal.html` | Flow pembayaran |
+| `templates/pos/partials/payment_modal.html` | Flow pembayaran, dynamic profiles |
+| `templates/pos/partials/payment_success.html` | Payment success modal + customer display sync |
 | `templates/pos/partials/main/js/keyboard_shortcuts.html` | Tambah shortcut |
+| `templates/pos/partials/main/js/launcher_integration.html` | Customer display clone, modal sync, URL fix |
+| `templates/pos/partials/main/js/htmx_handlers.html` | HTMX event handlers, customer display triggers |
 | `templates/tables/floor_plan.html` | Floor plan visual |
 | `apps/pos/urls.py` | Tambah URL endpoint baru |
-| `apps/pos/models.py` | StoreProductStock model |
-| `apps/management/views.py` | Stock management CRUD views |
-| `templates/management/stock_management.html` | UI stock management |
-| `pos_launcher_qt/local_api.py` | POS Launcher Flask API (print, printer status, customer display) |
+| `apps/pos/models.py` | StoreProductStock, Payment model |
+| `apps/management/views.py` | Stock management, payment profiles CRUD |
+| `apps/management/urls.py` | Management URL routes |
+| `apps/core/api_customer_display.py` | Customer display config API (store image, branding) |
+| `pos_launcher_qt/local_api.py` | POS Launcher Flask API (print, SSE, customer display) |
+| `pos_launcher_qt/customer_display.html` | Customer display HTML (SSE client, branding) |
 | `templates/pos/printer_status.html` | Receipt printer widget (sidebar, Alpine.js) |
 | `templates/pos/partials/main/kitchen_printer_widget.html` | Kitchen printer widget (sidebar, Alpine.js) |
 | `kitchen_printer_agent/kitchen_agent.py` | Kitchen Agent daemon (polling, printing, HTTP health server) |
@@ -989,6 +1241,34 @@ Resume:
 - [x] Admin registration untuk `QRISTransaction`
 - [x] Fix `print_receipt.html` handle `closed_by` None (fallback ke `created_by`)
 
+### Dynamic Payment Method Profiles (Completed)
+- [x] `MediaGroup` model — grouping metode pembayaran untuk reporting/Orafin
+- [x] `PaymentMethodProfile` model — profil pembayaran konfigurabel (nama, warna, allow_change, dll)
+- [x] `DataEntryPrompt` model — field input dinamis per profil (account_no, eft_no, approval_code, dll)
+- [x] `EFTTerminal` model — master data EFT terminal/bank untuk dropdown di payment modal
+- [x] `Payment` model extended — `payment_profile` FK, `payment_metadata` JSONField, `eft_desc`
+- [x] `POSTerminal.payment_profiles` M2M — assign profil ke terminal
+- [x] Management CRUD: Payment Profiles, Media Groups, EFT Terminals (list, create, edit, delete, toggle)
+- [x] Inline prompts editor di profile form (Alpine.js addPrompt/removePrompt)
+- [x] Dynamic payment modal: render metode dari profil, show/hide prompt fields per method
+- [x] Numpad routing: amount field ↔ prompt fields (activeField state)
+- [x] EFT terminal dropdown rendered dari master data
+- [x] Backward compat: dual-write `Payment.method`/`reference` + `default_payment_methods`
+- [x] Seed command: `seed_payment_profiles` untuk default profiles
+
+### POS Launcher & Customer Display (Completed)
+- [x] Bill panel cloning via SSE: `updateCustomerDisplay()` clone → Flask → SSE → customer display
+- [x] Payment modal cloning: whitelist payment modal, blacklist internal modals
+- [x] Alpine.js data capture: resolve x-text/x-show sebelum clone
+- [x] Input read-only pada clone (disable buttons, set input readOnly)
+- [x] Fix relative URL `/media/` → absolute URL untuk customer display (file:// context)
+- [x] Payment success modal: dedicated handling (tidak via clone, langsung ke Flask API)
+- [x] Race condition fix: `sendModalToCustomerDisplay()` skip payment success modal
+- [x] Store image branding: login_image di bill panel dan customer display
+- [x] Store image URL di config API chain (Edge Server → Flask → customer display)
+- [x] Customer display empty-bill state: store image fallback dari config
+- [x] Log cleanup local_api.py: removed 51 verbose debug prints (84→33)
+
 ### Bug Fixes
 - [x] Fix multi-brand printer routing: `get_printer_for_station()` sekarang filter by `brand_id` — food court ticket dikirim ke printer brand yang benar
 - [x] Fix `print_attempts` tidak pernah di-increment — ticket retry tanpa batas. Fix: increment di `mark_ticket_printing()`
@@ -997,3 +1277,6 @@ Resume:
 - [x] Fix hold bill tidak kembali ke menu utama - Solusi: `window.location.href = '/pos/'` (bukan reload)
 - [x] Fix product card currency format ($200000.00 → Rp. 200,000) - Gunakan `|rupiah` filter
 - [x] Fix floor plan enrichment error handling - try/except + default values pada semua table objects
+- [x] Fix cancel/void bill: `render_bill_panel()` instead of bare render (missing store_config)
+- [x] Fix payment success not showing on customer display (race condition: 500ms clear vs 300ms send)
+- [x] Fix relative image URLs in cloned HTML for customer display (file:// cannot resolve /media/ paths)

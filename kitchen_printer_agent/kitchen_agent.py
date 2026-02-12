@@ -283,19 +283,23 @@ class PrinterInterface:
             'XPRINTER': EpsonProfile()  # XPrinter uses Epson commands
         }
     
-    def print_ticket(self, ticket_data, printer_config):
+    def print_ticket(self, ticket_data, printer_config, db=None):
         """Print kitchen ticket with dynamic printer config"""
         try:
             # Get printer profile
             brand = printer_config.get('brand', self.fallback_brand).upper()
             profile = self.profiles.get(brand, self.profiles['HRPT'])
-            
-            # Format ticket with appropriate profile
-            raw_data = self._format_ticket(ticket_data, profile)
-            
+            chars = printer_config.get('chars_per_line', 42)
+
+            # Route to appropriate formatter based on ticket type
+            if ticket_data.get('printer_target') == 'checker' and db:
+                raw_data = self._format_checker_ticket(ticket_data, profile, chars, db)
+            else:
+                raw_data = self._format_ticket(ticket_data, profile, chars, db)
+
             # Print based on type
             printer_type = printer_config.get('type', 'network')
-            
+
             if printer_type == 'network':
                 return self._print_network(raw_data, printer_config)
             elif printer_type == 'win32':
@@ -303,61 +307,170 @@ class PrinterInterface:
             else:
                 self.logger.error(f"Unknown printer type: {printer_type}")
                 return False
-        
+
         except Exception as e:
             self.logger.error(f"Print failed: {e}")
             return False
-    
-    def _format_ticket(self, ticket, profile):
-        """Format kitchen ticket dengan ESC/POS commands"""
+
+    def _format_ticket(self, ticket, profile, chars_per_line=42, db=None):
+        """Format kitchen ticket with template from database"""
         data = bytearray()
-        
+        sep = b'=' * chars_per_line + b'\n'
+        dash_sep = b'-' * chars_per_line + b'\n'
+
+        # Fetch kitchen template from DB
+        tmpl = db.fetch_kitchen_template(ticket.get('brand_id')) if db else None
+
+        # Template values with fallback defaults
+        header1 = (tmpl.get('header_line_1') if tmpl else None) or 'KITCHEN TICKET'
+        header2 = (tmpl.get('header_line_2') if tmpl else None) or ''
+        footer1 = (tmpl.get('footer_line_1') if tmpl else None) or ''
+        footer2 = (tmpl.get('footer_line_2') if tmpl else None) or ''
+        show_bill = tmpl.get('show_bill_number', True) if tmpl else True
+        show_table = tmpl.get('show_table_number', True) if tmpl else True
+        show_customer = tmpl.get('show_customer_name', True) if tmpl else True
+        show_station = tmpl.get('show_station_name', True) if tmpl else True
+        show_datetime = tmpl.get('show_date_time', True) if tmpl else True
+        show_qty = tmpl.get('show_item_qty', True) if tmpl else True
+        show_notes = tmpl.get('show_item_notes', True) if tmpl else True
+        feed_lines = tmpl.get('feed_lines', 3) if tmpl else 3
+
         # Initialize
         data.extend(profile.init_printer())
-        
+
         # Header - Center aligned, double size
         data.extend(profile.set_center_align())
         data.extend(profile.set_double_font())
-        data.extend(b'KITCHEN TICKET\n')
+        data.extend(header1.encode('utf-8') + b'\n')
         data.extend(profile.set_normal_font())
-        
-        # Separator
-        data.extend(b'\n')
-        data.extend(b'================================\n')
-        
+        if header2:
+            data.extend(header2.encode('utf-8') + b'\n')
+        data.extend(sep)
+
         # Ticket info - Left aligned
         data.extend(profile.set_left_align())
-        data.extend(f"Bill #: {ticket['bill_number']}\n".encode('utf-8'))
-        data.extend(f"Table: {ticket.get('table_number', 'N/A')}\n".encode('utf-8'))
-        
-        if ticket.get('customer_name'):
-            data.extend(f"Customer: {ticket['customer_name']}\n".encode('utf-8'))
-        
-        data.extend(f"Station: {ticket['printer_target']}\n".encode('utf-8'))
-        data.extend(f"Time: {ticket['created_at']}\n".encode('utf-8'))
-        
+        if show_bill:
+            data.extend(f"Bill     : {ticket['bill_number']}\n".encode('utf-8'))
+        if show_table:
+            data.extend(f"Table    : {ticket.get('table_number', 'N/A')}\n".encode('utf-8'))
+        if show_customer and ticket.get('customer_name'):
+            data.extend(f"Customer : {ticket['customer_name']}\n".encode('utf-8'))
+        if show_station:
+            data.extend(f"Station  : {ticket['printer_target'].upper()}\n".encode('utf-8'))
+        if show_datetime:
+            data.extend(f"Time     : {ticket['created_at']}\n".encode('utf-8'))
+
         data.extend(b'\n')
-        data.extend(b'--- ITEMS ---\n')
-        
+        data.extend(dash_sep)
+
         # Items
         for item in ticket['items']:
             qty = item['quantity']
             name = item['product_name']
-            data.extend(f"{qty}x {name}\n".encode('utf-8'))
-            
-            # Notes if any
-            if item.get('notes'):
+            qty_str = f"{qty}x " if show_qty else ''
+            data.extend(f"{qty_str}{name}\n".encode('utf-8'))
+
+            if show_notes and item.get('notes'):
                 data.extend(f"   Note: {item['notes']}\n".encode('utf-8'))
-        
+
         # Footer
         data.extend(b'\n')
-        data.extend(b'================================\n')
+        data.extend(sep)
         data.extend(profile.set_center_align())
-        data.extend(f"Printer: {ticket['printer_target']}\n".encode('utf-8'))
-        
+        if footer1:
+            data.extend(footer1.encode('utf-8') + b'\n')
+        elif not tmpl:
+            # Default footer when no template
+            data.extend(f"Printer: {ticket['printer_target']}\n".encode('utf-8'))
+        if footer2:
+            data.extend(footer2.encode('utf-8') + b'\n')
+
         # Feed and cut
+        data.extend(b'\n' * feed_lines)
         data.extend(profile.feed_and_cut())
-        
+
+        return bytes(data)
+
+    def _format_checker_ticket(self, ticket, profile, chars_per_line, db):
+        """Format checker ticket with template from database"""
+        data = bytearray()
+        sep = b'=' * chars_per_line + b'\n'
+        dash_sep = b'-' * chars_per_line + b'\n'
+
+        # Fetch checker template from DB
+        tmpl = db.fetch_checker_template(ticket.get('brand_id'))
+
+        # Template defaults
+        header1 = (tmpl.get('header_line_1') if tmpl else None) or 'CHECKER'
+        header2 = (tmpl.get('header_line_2') if tmpl else None) or 'Cek item sebelum disajikan'
+        footer1 = (tmpl.get('footer_line_1') if tmpl else None) or 'CEK SEMUA ITEM SEBELUM DISAJIKAN'
+        footer2 = (tmpl.get('footer_line_2') if tmpl else None) or ''
+        show_bill = tmpl.get('show_bill_number', True) if tmpl else True
+        show_table = tmpl.get('show_table_number', True) if tmpl else True
+        show_datetime = tmpl.get('show_date_time', True) if tmpl else True
+        show_station = tmpl.get('show_station_label', True) if tmpl else True
+        show_notes = tmpl.get('show_item_notes', True) if tmpl else True
+        show_qty = tmpl.get('show_item_qty', True) if tmpl else True
+        show_checkbox = tmpl.get('show_checkbox', True) if tmpl else True
+        feed_lines = tmpl.get('feed_lines', 3) if tmpl else 3
+
+        # Initialize
+        data.extend(profile.init_printer())
+
+        # Header
+        data.extend(profile.set_center_align())
+        data.extend(profile.set_double_font())
+        data.extend(header1.encode('utf-8') + b'\n')
+        data.extend(profile.set_normal_font())
+        data.extend(header2.encode('utf-8') + b'\n')
+        data.extend(sep)
+
+        # Bill info
+        data.extend(profile.set_left_align())
+        if show_bill:
+            data.extend(f"Bill     : {ticket['bill_number']}\n".encode('utf-8'))
+        if show_table:
+            data.extend(f"Table    : {ticket.get('table_number', 'N/A')}\n".encode('utf-8'))
+        if show_datetime:
+            data.extend(f"Time     : {ticket['created_at']}\n".encode('utf-8'))
+
+        data.extend(b'\n')
+        data.extend(dash_sep)
+        data.extend(b'\n')
+
+        # Items with checkboxes
+        for item in ticket['items']:
+            qty = item['quantity']
+            name = item['product_name']
+            notes = item.get('notes', '')
+            station = item.get('station', '')
+
+            # Build item line
+            prefix = '[ ]  ' if show_checkbox else '  '
+            qty_str = f"{qty}x " if show_qty else ''
+            station_str = f" [{station.upper()}]" if (show_station and station) else ''
+            data.extend(f"{prefix}{qty_str}{name}{station_str}\n".encode('utf-8'))
+
+            # Notes
+            if show_notes and notes:
+                data.extend(f"     {notes}\n".encode('utf-8'))
+
+            data.extend(b'\n')
+
+        # Footer
+        data.extend(dash_sep)
+        data.extend(profile.set_center_align())
+        data.extend(f"Total Items: {len(ticket['items'])}\n".encode('utf-8'))
+        data.extend(sep)
+        if footer1:
+            data.extend(footer1.encode('utf-8') + b'\n')
+        if footer2:
+            data.extend(footer2.encode('utf-8') + b'\n')
+
+        # Feed extra lines and cut
+        data.extend(b'\n' * feed_lines)
+        data.extend(profile.feed_and_cut())
+
         return bytes(data)
     
     def _print_network(self, data, printer_config):
@@ -467,7 +580,9 @@ class DatabaseManager:
                         priority,
                         COALESCE(printer_brand, 'HRPT') as printer_brand,
                         COALESCE(printer_type, 'network') as printer_type,
-                        COALESCE(timeout_seconds, 5) as timeout_seconds
+                        COALESCE(timeout_seconds, 5) as timeout_seconds,
+                        COALESCE(paper_width_mm, 80) as paper_width_mm,
+                        COALESCE(chars_per_line, 42) as chars_per_line
                     FROM kitchen_stationprinter
                     WHERE station_code = %s AND brand_id = %s AND is_active = true
                     ORDER BY priority ASC
@@ -485,7 +600,9 @@ class DatabaseManager:
                         priority,
                         COALESCE(printer_brand, 'HRPT') as printer_brand,
                         COALESCE(printer_type, 'network') as printer_type,
-                        COALESCE(timeout_seconds, 5) as timeout_seconds
+                        COALESCE(timeout_seconds, 5) as timeout_seconds,
+                        COALESCE(paper_width_mm, 80) as paper_width_mm,
+                        COALESCE(chars_per_line, 42) as chars_per_line
                     FROM kitchen_stationprinter
                     WHERE station_code = %s AND is_active = true
                     ORDER BY priority ASC
@@ -507,7 +624,9 @@ class DatabaseManager:
             printer_brand = result[5]  # From database
             printer_type = result[6]   # From database: 'network' or 'win32'
             timeout_seconds = result[7]  # From database
-            
+            paper_width_mm = result[8]  # From database: 58 or 80
+            chars_per_line = result[9]  # From database: 32 or 42
+
             printer_config = {
                 'name': printer_name,
                 'type': printer_type,
@@ -515,16 +634,116 @@ class DatabaseManager:
                 'ip': printer_ip,
                 'port': printer_port,
                 'brand': printer_brand,
-                'timeout': timeout_seconds
+                'timeout': timeout_seconds,
+                'paper_width_mm': paper_width_mm,
+                'chars_per_line': chars_per_line,
             }
-            
-            self.logger.debug(f"Printer config for {station_code}: {printer_brand} @ {printer_ip}:{printer_port} (type: {printer_type})")
+
+            self.logger.debug(f"Printer config for {station_code}: {printer_brand} @ {printer_ip}:{printer_port} (type: {printer_type}, {paper_width_mm}mm/{chars_per_line}cpl)")
             return printer_config
         
         except Exception as e:
             self.logger.error(f"Failed to get printer config: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+            return None
+
+    def fetch_checker_template(self, brand_id=None):
+        """Fetch checker template from database.
+
+        Priority: brand-specific > company-wide (brand_id IS NULL).
+        Returns dict with template fields or None if not found.
+        """
+        try:
+            cursor = self.conn.cursor()
+            query = """
+                SELECT
+                    header_line_1, header_line_2,
+                    show_bill_number, show_table_number, show_date_time,
+                    show_station_label, show_item_notes, show_item_qty,
+                    show_checkbox,
+                    footer_line_1, footer_line_2,
+                    auto_cut, feed_lines, paper_width
+                FROM kitchen_checkertemplate
+                WHERE is_active = true
+                  AND (brand_id = %s OR brand_id IS NULL)
+                ORDER BY CASE WHEN brand_id = %s THEN 1 ELSE 2 END
+                LIMIT 1
+            """
+            cursor.execute(query, (brand_id, brand_id))
+            row = cursor.fetchone()
+            cursor.close()
+
+            if not row:
+                return None
+
+            return {
+                'header_line_1': row[0] or '',
+                'header_line_2': row[1] or '',
+                'show_bill_number': row[2],
+                'show_table_number': row[3],
+                'show_date_time': row[4],
+                'show_station_label': row[5],
+                'show_item_notes': row[6],
+                'show_item_qty': row[7],
+                'show_checkbox': row[8],
+                'footer_line_1': row[9] or '',
+                'footer_line_2': row[10] or '',
+                'auto_cut': row[11],
+                'feed_lines': row[12],
+                'paper_width': row[13],
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to fetch checker template: {e}")
+            return None
+
+    def fetch_kitchen_template(self, brand_id=None):
+        """Fetch kitchen ticket template from database.
+
+        Priority: brand-specific > company-wide (brand_id IS NULL).
+        Returns dict with template fields or None if not found.
+        """
+        try:
+            cursor = self.conn.cursor()
+            query = """
+                SELECT
+                    header_line_1, header_line_2,
+                    show_bill_number, show_table_number, show_customer_name,
+                    show_station_name, show_date_time, show_item_qty, show_item_notes,
+                    footer_line_1, footer_line_2,
+                    auto_cut, feed_lines
+                FROM kitchen_kitchentickettemplate
+                WHERE is_active = true
+                  AND (brand_id = %s OR brand_id IS NULL)
+                ORDER BY CASE WHEN brand_id = %s THEN 1 ELSE 2 END
+                LIMIT 1
+            """
+            cursor.execute(query, (brand_id, brand_id))
+            row = cursor.fetchone()
+            cursor.close()
+
+            if not row:
+                return None
+
+            return {
+                'header_line_1': row[0] or '',
+                'header_line_2': row[1] or '',
+                'show_bill_number': row[2],
+                'show_table_number': row[3],
+                'show_customer_name': row[4],
+                'show_station_name': row[5],
+                'show_date_time': row[6],
+                'show_item_qty': row[7],
+                'show_item_notes': row[8],
+                'footer_line_1': row[9] or '',
+                'footer_line_2': row[10] or '',
+                'auto_cut': row[11],
+                'feed_lines': row[12],
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to fetch kitchen template: {e}")
             return None
 
     def get_active_printers(self, station_codes, brand_ids=None):
@@ -636,27 +855,29 @@ class DatabaseManager:
                 
                 # Fetch bill items - ONLY items in this specific ticket
                 items_query = """
-                    SELECT 
+                    SELECT
                         bi.id,
                         kti.quantity,
                         p.name as product_name,
-                        bi.notes
+                        bi.notes,
+                        COALESCE(bi.printer_target, '') as station
                     FROM kitchen_kitchenticketitem kti
                     JOIN pos_billitem bi ON kti.bill_item_id = bi.id
                     JOIN core_product p ON bi.product_id = p.id
                     WHERE kti.kitchen_ticket_id = %s
                     ORDER BY bi.id
                 """
-                
+
                 cursor.execute(items_query, (ticket[0],))
                 items = cursor.fetchall()
-                
+
                 for item in items:
                     ticket_dict['items'].append({
                         'id': item[0],
                         'quantity': item[1],
                         'product_name': item[2],
-                        'notes': item[3] or ''
+                        'notes': item[3] or '',
+                        'station': item[4] or '',
                     })
                 
                 result.append(ticket_dict)
@@ -1053,8 +1274,8 @@ class KitchenAgent:
                 self.logger.error(f"Failed to mark ticket {ticket_id} as printing")
                 return
             
-            # Print ticket with dynamic config
-            success = self.printer.print_ticket(ticket, printer_config)
+            # Print ticket with dynamic config (pass db for checker template lookup)
+            success = self.printer.print_ticket(ticket, printer_config, db=self.db)
             
             if success:
                 # Mark as printed

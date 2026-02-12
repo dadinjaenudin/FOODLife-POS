@@ -593,7 +593,141 @@ class PrinterHealthCheck(models.Model):
     def is_healthy(self):
         """Quick check if printer is in good state"""
         return (
-            self.is_online and 
+            self.is_online and
             self.paper_status in ['ok', 'low', 'unknown'] and
             not self.error_message
         )
+
+
+class CheckerTemplate(models.Model):
+    """
+    Checker receipt template configuration.
+    Controls the format of checker tickets printed for kitchen staff
+    to verify/mark completed items before serving.
+    """
+    from apps.core.models import Company, Brand, Store
+
+    company = models.ForeignKey('core.Company', on_delete=models.CASCADE, related_name='checker_templates')
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE, related_name='checker_templates', null=True, blank=True)
+    store = models.ForeignKey('core.Store', on_delete=models.CASCADE, related_name='checker_templates', null=True, blank=True)
+
+    # Template Info
+    template_name = models.CharField(max_length=100, help_text='Template identifier')
+    is_active = models.BooleanField(default=True)
+
+    # Paper Settings
+    paper_width = models.IntegerField(default=80, help_text='Paper width in mm (58 or 80)')
+
+    # Header
+    header_line_1 = models.CharField(max_length=100, blank=True, default='CHECKER', help_text='Main header text')
+    header_line_2 = models.CharField(max_length=100, blank=True, default='Cek item sebelum disajikan', help_text='Sub header text')
+
+    # Content Display Options
+    show_bill_number = models.BooleanField(default=True)
+    show_table_number = models.BooleanField(default=True)
+    show_date_time = models.BooleanField(default=True)
+    show_station_label = models.BooleanField(default=True, help_text='Show station name (kitchen/bar/dessert) per item')
+    show_item_notes = models.BooleanField(default=True)
+    show_item_qty = models.BooleanField(default=True)
+    show_checkbox = models.BooleanField(default=True, help_text='Show [ ] checkbox per item')
+
+    # Footer
+    footer_line_1 = models.CharField(max_length=100, blank=True, default='CEK SEMUA ITEM SEBELUM DISAJIKAN', help_text='Footer message')
+    footer_line_2 = models.CharField(max_length=100, blank=True)
+
+    # Print Settings
+    auto_cut = models.BooleanField(default=True, help_text='Auto cut paper')
+    feed_lines = models.IntegerField(default=3, help_text='Lines to feed after print')
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='checker_templates_created'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='checker_templates_updated'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'is_active']),
+            models.Index(fields=['brand', 'is_active']),
+        ]
+        verbose_name = 'Checker Template'
+        verbose_name_plural = 'Checker Templates'
+
+    def __str__(self):
+        scope = "Company"
+        if self.brand:
+            scope = f"{self.brand.name}"
+        elif self.store:
+            scope = f"{self.store.name}"
+        return f"{self.template_name} ({scope})"
+
+
+class KitchenTicketTemplate(models.Model):
+    """
+    Kitchen ticket template configuration.
+    Controls the format of kitchen tickets printed at each station printer.
+    """
+    company = models.ForeignKey('core.Company', on_delete=models.CASCADE, related_name='kitchen_ticket_templates')
+    brand = models.ForeignKey('core.Brand', on_delete=models.CASCADE, related_name='kitchen_ticket_templates', null=True, blank=True)
+    store = models.ForeignKey('core.Store', on_delete=models.CASCADE, related_name='kitchen_ticket_templates', null=True, blank=True)
+
+    # Template Info
+    template_name = models.CharField(max_length=100, help_text='Template identifier')
+    is_active = models.BooleanField(default=True)
+
+    # Header
+    header_line_1 = models.CharField(max_length=100, blank=True, default='KITCHEN TICKET', help_text='Main header text')
+    header_line_2 = models.CharField(max_length=100, blank=True, help_text='Sub header text')
+
+    # Content Display Options
+    show_bill_number = models.BooleanField(default=True)
+    show_table_number = models.BooleanField(default=True)
+    show_customer_name = models.BooleanField(default=True, help_text='Show customer name if available')
+    show_station_name = models.BooleanField(default=True, help_text='Show station name (kitchen/bar/dessert)')
+    show_date_time = models.BooleanField(default=True)
+    show_item_qty = models.BooleanField(default=True)
+    show_item_notes = models.BooleanField(default=True)
+
+    # Footer
+    footer_line_1 = models.CharField(max_length=100, blank=True, help_text='Footer message')
+    footer_line_2 = models.CharField(max_length=100, blank=True)
+
+    # Print Settings
+    auto_cut = models.BooleanField(default=True, help_text='Auto cut paper')
+    feed_lines = models.IntegerField(default=3, help_text='Lines to feed after print')
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='kitchen_ticket_templates_created'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='kitchen_ticket_templates_updated'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'is_active']),
+            models.Index(fields=['brand', 'is_active']),
+        ]
+        verbose_name = 'Kitchen Ticket Template'
+        verbose_name_plural = 'Kitchen Ticket Templates'
+
+    def __str__(self):
+        scope = "Company"
+        if self.brand:
+            scope = f"{self.brand.name}"
+        elif self.store:
+            scope = f"{self.store.name}"
+        return f"{self.template_name} ({scope})"

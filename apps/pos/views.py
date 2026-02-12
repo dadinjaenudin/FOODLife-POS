@@ -1662,20 +1662,9 @@ def send_to_kitchen(request, bill_id):
             }
         )
         
-        # Print checker receipt if enabled (for marking completed items)
-        # This prints to POSLauncher local printer via local_api.py
-        try:
-            if terminal and terminal.print_checker_receipt:
-                # Get the items that were just sent (use the pending_item_ids list)
-                items_sent = bill.items.filter(id__in=pending_item_ids)
-                print(f"\n[Checker Receipt] Terminal has print_checker_receipt enabled")
-                print(f"[Checker Receipt] Sending {items_sent.count()} items to checker receipt printer")
-                send_checker_receipt_to_local_printer(bill, items_sent, terminal_id=str(terminal.id))
-        except Exception as e:
-            print(f"[Checker Receipt] Error printing checker receipt: {e}")
-            # Don't fail the whole operation if checker receipt fails
-            pass
-        
+        # Checker receipt is now handled via KitchenTicket system
+        # create_kitchen_tickets() auto-creates a checker ticket if a checker StationPrinter exists
+
         response = render_bill_panel(request, bill)
         
         # Show success notification
@@ -1907,76 +1896,6 @@ def send_receipt_to_local_printer(bill, terminal_id=None):
         return False
 
 
-def send_checker_receipt_to_local_printer(bill, items_to_check, terminal_id=None):
-    """Send checker receipt to local printer via POS Launcher API
-    
-    Checker receipt is used by kitchen staff to mark completed items with checkboxes.
-    Printed when items are sent to kitchen if terminal.print_checker_receipt is enabled.
-    """
-    try:
-        import requests
-        from datetime import datetime
-        
-        print(f"\n[Checker Receipt Print] Starting for Bill #{bill.bill_number}")
-        
-        # Prepare checker receipt data
-        checker_data = {
-            'bill_number': bill.bill_number,
-            'table_number': bill.table.number if bill.table else '',
-            'date': datetime.now().strftime('%d/%m/%Y'),
-            'time': datetime.now().strftime('%H:%M:%S'),
-            'items': []
-        }
-        
-        # Add items to check
-        for item in items_to_check:
-            item_data = {
-                'name': item.product.name if item.product else item.notes,
-                'quantity': int(item.quantity),
-                'notes': item.notes or ''
-            }
-            checker_data['items'].append(item_data)
-        
-        print(f"[Checker Receipt Print] Data prepared: {len(checker_data['items'])} items")
-        
-        # Send to local API (use host.docker.internal for Docker to reach host machine)
-        local_api_url = 'http://host.docker.internal:5000/api/print/checker'
-        
-        try:
-            response = requests.post(
-                local_api_url,
-                json=checker_data,
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('success'):
-                    print_to = result.get('print_to', 'printer')
-                    if print_to == 'file':
-                        print(f"[Checker Receipt Print] ✅ SUCCESS - Saved to file: {result.get('file_path')}")
-                    else:
-                        print(f"[Checker Receipt Print] ✅ SUCCESS - Printed to: {result.get('printer')}")
-                    return True
-                else:
-                    print(f"[Checker Receipt Print] ❌ FAILED - {result.get('error')}")
-                    return False
-            else:
-                print(f"[Checker Receipt Print] ❌ HTTP {response.status_code}")
-                return False
-                
-        except requests.exceptions.ConnectionError:
-            print(f"[Checker Receipt Print] ⚠️ Local API not running (port 5000)")
-            return False
-        except requests.exceptions.Timeout:
-            print(f"[Checker Receipt Print] ⚠️ Request timeout")
-            return False
-            
-    except Exception as e:
-        print(f"[Checker Receipt Print] ❌ ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
 
 
 @login_required

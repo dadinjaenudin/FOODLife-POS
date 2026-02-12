@@ -485,6 +485,151 @@ ANTI-FLICKER:
             color: #999;
             margin-top: 1rem;
         }
+
+        /* ========== CUSTOMER REVIEW OVERLAY ========== */
+        .review-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .review-overlay.active {
+            display: flex;
+        }
+
+        .review-card {
+            background: white;
+            border-radius: 24px;
+            padding: 3rem 3.5rem;
+            text-align: center;
+            max-width: 640px;
+            width: 90%;
+            animation: scaleIn 0.4s ease-out;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .review-card h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .review-card p {
+            font-size: 1.15rem;
+            color: #6b7280;
+            margin-bottom: 2rem;
+        }
+
+        .review-faces {
+            display: flex;
+            justify-content: center;
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .review-face {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            padding: 1rem 0.75rem;
+            border-radius: 16px;
+            border: 3px solid transparent;
+            transition: all 0.2s ease;
+            min-width: 90px;
+        }
+
+        .review-face:hover {
+            transform: translateY(-6px);
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .review-face:active {
+            transform: scale(0.95);
+        }
+
+        .review-face .emoji {
+            font-size: 3.5rem;
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }
+
+        .review-face .label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .review-face.selected {
+            border-color: #667eea;
+            background: #eef2ff;
+        }
+
+        .review-timer {
+            font-size: 0.9rem;
+            color: #9ca3af;
+            margin-top: 0.5rem;
+        }
+
+        .review-timer-bar {
+            width: 100%;
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 2px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+
+        .review-timer-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            transition: width 1s linear;
+        }
+
+        .review-thankyou {
+            display: none;
+            animation: scaleIn 0.3s ease-out;
+        }
+
+        .review-thankyou.active {
+            display: block;
+        }
+
+        .review-thankyou .checkmark {
+            width: 80px;
+            height: 80px;
+            background: #dcfce7;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+        }
+
+        .review-thankyou h3 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #16a34a;
+            margin-bottom: 0.5rem;
+        }
+
+        .review-thankyou p {
+            font-size: 1.1rem;
+            color: #6b7280;
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
@@ -553,6 +698,56 @@ ANTI-FLICKER:
             </div>
             <div class="qr-amount" id="qr-amount">Rp 0</div>
             <div class="qr-timer" id="qr-timer">Expires in 5:00</div>
+        </div>
+    </div>
+
+    <!-- Customer Review Overlay -->
+    <div class="review-overlay" id="review-overlay">
+        <div class="review-card">
+            <!-- Rating Selection (shown first) -->
+            <div id="review-form">
+                <h2>Bagaimana pelayanan kami?</h2>
+                <p>Sentuh untuk memberikan penilaian Anda</p>
+
+                <div class="review-faces">
+                    <div class="review-face" onclick="submitReview(1)">
+                        <div class="emoji">😡</div>
+                        <div class="label">Sangat Buruk</div>
+                    </div>
+                    <div class="review-face" onclick="submitReview(2)">
+                        <div class="emoji">😟</div>
+                        <div class="label">Buruk</div>
+                    </div>
+                    <div class="review-face" onclick="submitReview(3)">
+                        <div class="emoji">😐</div>
+                        <div class="label">Biasa</div>
+                    </div>
+                    <div class="review-face" onclick="submitReview(4)">
+                        <div class="emoji">😊</div>
+                        <div class="label">Baik</div>
+                    </div>
+                    <div class="review-face" onclick="submitReview(5)">
+                        <div class="emoji">🤩</div>
+                        <div class="label">Sangat Baik</div>
+                    </div>
+                </div>
+
+                <div class="review-timer" id="review-timer-text">Otomatis tertutup dalam 15 detik</div>
+                <div class="review-timer-bar">
+                    <div class="review-timer-bar-fill" id="review-timer-bar"></div>
+                </div>
+            </div>
+
+            <!-- Thank You (shown after selection) -->
+            <div class="review-thankyou" id="review-thankyou">
+                <div class="checkmark">
+                    <svg width="40" height="40" fill="none" stroke="#16a34a" viewBox="0 0 24 24" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </div>
+                <h3>Terima Kasih!</h3>
+                <p>Penilaian Anda sangat berarti bagi kami</p>
+            </div>
         </div>
     </div>
     
@@ -851,8 +1046,120 @@ ANTI-FLICKER:
             currentDisplayState = 'hidden';
         }
 
+        // ========== CUSTOMER REVIEW ==========
+        let reviewTimer = null;
+        let reviewCountdown = 15; // seconds
+        let reviewBillId = null;
+        let reviewActive = false; // Guard against duplicate SSE triggers
+
+        function showReview(billId) {
+            // Anti-flicker: skip if review is already showing
+            if (reviewActive) {
+                console.log('[Review] Already showing, skipping duplicate trigger');
+                return;
+            }
+            console.log('[Review] Showing customer review for bill:', billId);
+            reviewActive = true;
+            reviewBillId = billId;
+            reviewCountdown = 15;
+
+            // Reset UI: show form, hide thank you
+            const form = document.getElementById('review-form');
+            const thankyou = document.getElementById('review-thankyou');
+            form.style.display = 'block';
+            thankyou.className = 'review-thankyou';
+
+            // Show overlay
+            const overlay = document.getElementById('review-overlay');
+            overlay.classList.add('active');
+
+            // Start countdown timer bar
+            const timerBar = document.getElementById('review-timer-bar');
+            timerBar.style.width = '100%';
+
+            // Update timer text and bar every second
+            updateReviewTimer();
+            reviewTimer = setInterval(() => {
+                reviewCountdown--;
+                updateReviewTimer();
+
+                if (reviewCountdown <= 0) {
+                    console.log('[Review] Auto-closing review (timeout)');
+                    hideReview();
+                }
+            }, 1000);
+        }
+
+        function updateReviewTimer() {
+            const timerText = document.getElementById('review-timer-text');
+            const timerBar = document.getElementById('review-timer-bar');
+            timerText.textContent = `Otomatis tertutup dalam ${reviewCountdown} detik`;
+            timerBar.style.width = `${(reviewCountdown / 15) * 100}%`;
+        }
+
+        function hideReview() {
+            if (reviewTimer) {
+                clearInterval(reviewTimer);
+                reviewTimer = null;
+            }
+
+            reviewActive = false;
+            const overlay = document.getElementById('review-overlay');
+            overlay.classList.remove('active');
+            reviewBillId = null;
+
+            // Clear customer display back to idle
+            console.log('[Review] Clearing display to idle state');
+        }
+
+        function submitReview(rating) {
+            console.log('[Review] Customer selected rating:', rating);
+
+            // Stop countdown
+            if (reviewTimer) {
+                clearInterval(reviewTimer);
+                reviewTimer = null;
+            }
+
+            // Show thank you animation
+            const form = document.getElementById('review-form');
+            const thankyou = document.getElementById('review-thankyou');
+            form.style.display = 'none';
+            thankyou.className = 'review-thankyou active';
+
+            // Send review to Flask API → Django
+            fetch(`${API_URL}/api/customer-display/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rating: rating,
+                    bill_id: reviewBillId
+                })
+            })
+            .then(resp => resp.json())
+            .then(data => console.log('[Review] Saved:', data))
+            .catch(err => console.warn('[Review] Save failed:', err.message));
+
+            // Auto-close after 3 seconds showing "thank you"
+            setTimeout(() => {
+                hideReview();
+            }, 3000);
+        }
+
         // ========== DISPLAY UPDATE (anti-flicker) ==========
         function updateDisplay(data) {
+            // Handle customer review trigger
+            if (data.show_review) {
+                // Hide payment success modal first, then show review
+                handleModalDisplay(false, null);
+                showReview(data.review_bill_id);
+                return; // Don't process bill updates while review is showing
+            } else if (data.show_review === false && reviewActive) {
+                // Only call hideReview if review is currently active and explicitly told to hide
+                hideReview();
+                return; // Skip processing stale bill data from this event
+            }
+
             // Handle modal display
             if (data.show_modal !== undefined) {
                 handleModalDisplay(data.show_modal, data.modal_html);

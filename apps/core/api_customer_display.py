@@ -16,8 +16,9 @@ import uuid
 from datetime import date
 from functools import wraps
 
-from .models import CustomerDisplaySlide, Brand, Store, Company
+from .models import CustomerDisplaySlide, Brand, Store, Company, CustomerReview, POSTerminal
 from .minio_client import upload_to_minio, delete_from_minio, get_minio_url
+from apps.pos.models import Bill
 
 
 def cors_allow_all(view_func):
@@ -604,9 +605,68 @@ def get_display_config(request):
                 }
             }
         })
-        
+
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@csrf_exempt
+@cors_allow_all
+@require_http_methods(['POST', 'OPTIONS'])
+def submit_customer_review(request):
+    """
+    Submit customer satisfaction review from customer display.
+    Called by Flask local API which proxies from customer display.
+
+    POST /api/customer-display/review/
+    Body: {
+        "rating": 5,              // 1-5
+        "bill_id": 123,           // optional
+        "store_code": "KPT",      // optional
+        "terminal_code": "POS01"  // optional
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        rating = data.get('rating')
+
+        if not rating or rating not in range(1, 6):
+            return JsonResponse({'success': False, 'error': 'Rating must be 1-5'}, status=400)
+
+        # Resolve optional FKs
+        store = None
+        terminal = None
+        bill = None
+
+        store_code = data.get('store_code')
+        if store_code:
+            store = Store.objects.filter(store_code=store_code).first()
+
+        terminal_code = data.get('terminal_code')
+        if terminal_code:
+            terminal = POSTerminal.objects.filter(terminal_code=terminal_code).first()
+
+        bill_id = data.get('bill_id')
+        if bill_id:
+            bill = Bill.objects.filter(id=bill_id).first()
+
+        review = CustomerReview.objects.create(
+            rating=rating,
+            store=store,
+            terminal=terminal,
+            bill=bill,
+        )
+
+        return JsonResponse({
+            'success': True,
+            'review_id': str(review.id),
+            'rating': review.rating,
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

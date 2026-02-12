@@ -1,11 +1,11 @@
 {% extends 'management/base.html' %}
 
-{% block title %}Receipt Templates{% endblock %}
+{% block title %}Kitchen Ticket Templates{% endblock %}
 
 {% block content %}
 <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900">Receipt Templates</h1>
-    <p class="text-gray-500">Manage receipt printing templates and formats</p>
+    <h1 class="text-3xl font-bold text-gray-900">Kitchen Ticket Templates</h1>
+    <p class="text-gray-500">Manage kitchen ticket printing templates for station printers</p>
 </div>
 
 <!-- Messages -->
@@ -18,10 +18,10 @@
         {% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800
         {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
         <span class="text-xl">
-            {% if message.tags == 'error' %}❌
-            {% elif message.tags == 'success' %}✅
-            {% elif message.tags == 'warning' %}⚠️
-            {% else %}ℹ️{% endif %}
+            {% if message.tags == 'error' %}&#10060;
+            {% elif message.tags == 'success' %}&#9989;
+            {% elif message.tags == 'warning' %}&#9888;&#65039;
+            {% else %}&#8505;&#65039;{% endif %}
         </span>
         <div class="flex-1">{{ message }}</div>
     </div>
@@ -31,8 +31,9 @@
 
 <!-- Info Banner -->
 <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-    <strong>Info:</strong> Hanya 1 template aktif per brand yang digunakan.
-    Paper width mengikuti setting dari printer (POS Launcher).
+    <strong>Info:</strong> Hanya 1 template aktif per brand yang digunakan oleh sistem.
+    Jika semua brand pakai format yang sama, cukup buat 1 template company-wide (tanpa pilih brand).
+    Paper width mengikuti setting dari Station Printer (Printer Management).
 </div>
 
 <!-- Main Content -->
@@ -40,21 +41,7 @@
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-xl font-bold">Templates ({{ templates.count }})</h2>
         <div class="flex items-center gap-3">
-            <!-- Create Sample Template Button -->
-            <form method="post" action="{% url 'management:receipt_template_create_sample' %}" class="inline">
-                {% csrf_token %}
-                <button type="submit" 
-                        class="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold rounded-lg transition-all duration-300 shadow-lg"
-                        onclick="return confirm('Create a sample template with default values?\n\nThis will create a pre-configured template that you can customize.')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    Create Sample Template
-                </button>
-            </form>
-            
-            <!-- Add New Template Button -->
-            <a href="{% url 'management:receipt_template_create' %}" 
+            <a href="{% url 'management:kitchen_template_create' %}"
                class="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold rounded-lg transition-all duration-300 shadow-lg">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -89,15 +76,15 @@
                     <div class="mt-1 flex items-center gap-1 flex-wrap">
                         {% if template.store %}
                         <span class="inline-flex items-center px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">
-                            🏪 {{ template.store.name }}
+                            {{ template.store.name }}
                         </span>
                         {% elif template.brand %}
                         <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">
-                            🏷️ {{ template.brand.name }}
+                            {{ template.brand.name }}
                         </span>
                         {% else %}
                         <span class="inline-flex items-center px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-semibold rounded-full">
-                            🏢 Company-wide
+                            Company-wide
                         </span>
                         {% endif %}
                     </div>
@@ -106,30 +93,25 @@
                 <!-- Features Summary -->
                 <div>
                     <span class="text-xs font-semibold text-gray-500 uppercase">Features</span>
-                    <div class="mt-1 space-y-2">
-                        <!-- Logo Preview -->
-                        {% if template.show_logo and template.logo %}
-                        <div class="flex items-center gap-2 p-2 bg-blue-50 rounded border border-blue-200">
-                            <img src="{{ template.logo.url }}" alt="Logo" class="h-12 w-auto object-contain">
-                            <span class="text-xs text-blue-700 font-medium">Logo enabled</span>
-                        </div>
+                    <div class="mt-1 flex items-center gap-1 flex-wrap">
+                        {% if template.show_bill_number %}
+                        <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-xs rounded">Bill#</span>
                         {% endif %}
-                        
-                        <!-- Feature Tags -->
-                        <div class="flex items-center gap-1 flex-wrap">
-                            {% if template.show_logo %}
-                            <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-xs rounded">🖼️ Logo</span>
-                            {% endif %}
-                            {% if template.show_qr_payment %}
-                            <span class="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-xs rounded">📱 QR</span>
-                            {% endif %}
-                            {% if template.auto_print %}
-                            <span class="px-1.5 py-0.5 bg-green-50 text-green-700 text-xs rounded">🖨️ Auto</span>
-                            {% endif %}
-                            {% if template.auto_cut %}
-                            <span class="px-1.5 py-0.5 bg-gray-50 text-gray-700 text-xs rounded">✂️ Cut</span>
-                            {% endif %}
-                        </div>
+                        {% if template.show_table_number %}
+                        <span class="px-1.5 py-0.5 bg-green-50 text-green-700 text-xs rounded">Table</span>
+                        {% endif %}
+                        {% if template.show_customer_name %}
+                        <span class="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-xs rounded">Customer</span>
+                        {% endif %}
+                        {% if template.show_station_name %}
+                        <span class="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-xs rounded">Station</span>
+                        {% endif %}
+                        {% if template.show_item_notes %}
+                        <span class="px-1.5 py-0.5 bg-orange-50 text-orange-700 text-xs rounded">Notes</span>
+                        {% endif %}
+                        {% if template.auto_cut %}
+                        <span class="px-1.5 py-0.5 bg-gray-50 text-gray-700 text-xs rounded">Auto Cut</span>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -137,10 +119,10 @@
                 <div class="pt-2 border-t">
                     <div class="text-xs space-y-1">
                         {% if template.header_line_1 %}
-                        <div class="text-gray-600 truncate">📄 {{ template.header_line_1 }}</div>
+                        <div class="text-gray-600 truncate">H: {{ template.header_line_1 }}</div>
                         {% endif %}
                         {% if template.footer_line_1 %}
-                        <div class="text-gray-500 truncate">💬 {{ template.footer_line_1 }}</div>
+                        <div class="text-gray-500 truncate">F: {{ template.footer_line_1 }}</div>
                         {% endif %}
                     </div>
                 </div>
@@ -157,29 +139,24 @@
                 <button onclick="toggleTemplate({{ template.id }}, false)"
                         class="flex-1 px-3 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg text-sm font-medium transition text-center"
                         title="Deactivate">
-                    ⏸️ Deactivate
+                    Deactivate
                 </button>
                 {% else %}
                 <button onclick="toggleTemplate({{ template.id }}, true)"
                         class="flex-1 px-3 py-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg text-sm font-medium transition text-center"
                         title="Activate">
-                    ▶️ Activate
+                    Activate
                 </button>
                 {% endif %}
-                <a href="{% url 'management:receipt_template_edit' template.id %}"
+                <a href="{% url 'management:kitchen_template_edit' template.id %}"
                    class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition text-center"
                    title="Edit">
-                    ✏️ Edit
-                </a>
-                <a href="{% url 'management:receipt_template_duplicate' template.id %}"
-                   class="px-3 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg text-sm font-medium transition"
-                   title="Duplicate">
-                    📋
+                    Edit
                 </a>
                 <button onclick="deleteTemplate({{ template.id }}, '{{ template.template_name|escapejs }}')"
                         class="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-medium transition"
                         title="Delete">
-                    🗑️
+                    Delete
                 </button>
             </div>
         </div>
@@ -187,10 +164,10 @@
     </div>
     {% else %}
     <div class="text-center py-12">
-        <div class="text-6xl mb-4">🧾</div>
-        <p class="text-gray-500 text-lg">No receipt templates yet</p>
-        <p class="text-gray-400 text-sm">Create your first receipt template to customize printing</p>
-        <a href="{% url 'management:receipt_template_create' %}" 
+        <div class="text-6xl mb-4">&#127859;</div>
+        <p class="text-gray-500 text-lg">No kitchen ticket templates yet</p>
+        <p class="text-gray-400 text-sm">Create your first template to customize kitchen ticket printing</p>
+        <a href="{% url 'management:kitchen_template_create' %}"
            class="mt-4 inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -217,16 +194,16 @@
             <p class="text-sm text-gray-700 mb-2">Are you sure you want to delete template:</p>
             <p class="text-base font-bold text-gray-900 mb-3" id="delete-template-name"></p>
             <div class="bg-red-50 border-l-4 border-red-500 p-3 rounded text-xs mb-4">
-                <p class="font-semibold text-red-800 mb-1">⚠️ Warning</p>
+                <p class="font-semibold text-red-800 mb-1">Warning</p>
                 <p class="text-red-700">This action cannot be undone. The template will be permanently deleted.</p>
             </div>
             <div class="flex gap-3">
-                <button 
+                <button
                     onclick="confirmDelete()"
                     class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition">
                     Delete Template
                 </button>
-                <button 
+                <button
                     onclick="document.getElementById('delete-modal').style.display='none'"
                     class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
                     Cancel
@@ -240,7 +217,7 @@
 let deleteTemplateId = null;
 
 function toggleTemplate(templateId, activate) {
-    fetch(`/management/receipt-templates/${templateId}/toggle/`, {
+    fetch(`/management/kitchen-templates/${templateId}/toggle/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}',
@@ -269,17 +246,17 @@ function deleteTemplate(templateId, templateName) {
 
 function confirmDelete() {
     if (!deleteTemplateId) return;
-    
+
     const form = document.createElement('form');
     form.method = 'POST';
-    form.action = `/management/receipt-templates/${deleteTemplateId}/delete/`;
-    
+    form.action = `/management/kitchen-templates/${deleteTemplateId}/delete/`;
+
     const csrfInput = document.createElement('input');
     csrfInput.type = 'hidden';
     csrfInput.name = 'csrfmiddlewaretoken';
     csrfInput.value = '{{ csrf_token }}';
     form.appendChild(csrfInput);
-    
+
     document.body.appendChild(form);
     form.submit();
 }
@@ -290,7 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
     messages.forEach((message, index) => {
         const isError = message.classList.contains('bg-red-50');
         const delay = isError ? 8000 : 5000;
-        
+
         setTimeout(() => {
             message.style.transition = 'opacity 0.5s, transform 0.5s';
             message.style.opacity = '0';

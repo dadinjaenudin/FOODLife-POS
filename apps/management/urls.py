@@ -37,6 +37,20 @@ urlpatterns = [
     path('receipt-templates/<int:template_id>/delete/', views.receipt_template_delete, name='receipt_template_delete'),
     path('receipt-templates/<int:template_id>/toggle/', views.receipt_template_toggle, name='receipt_template_toggle'),
     
+    # Checker Templates
+    path('checker-templates/', views.checker_template_list, name='checker_template_list'),
+    path('checker-templates/create/', views.checker_template_create, name='checker_template_create'),
+    path('checker-templates/<int:template_id>/edit/', views.checker_template_edit, name='checker_template_edit'),
+    path('checker-templates/<int:template_id>/delete/', views.checker_template_delete, name='checker_template_delete'),
+    path('checker-templates/<int:template_id>/toggle/', views.checker_template_toggle, name='checker_template_toggle'),
+
+    # Kitchen Ticket Templates
+    path('kitchen-templates/', views.kitchen_template_list, name='kitchen_template_list'),
+    path('kitchen-templates/create/', views.kitchen_template_create, name='kitchen_template_create'),
+    path('kitchen-templates/<int:template_id>/edit/', views.kitchen_template_edit, name='kitchen_template_edit'),
+    path('kitchen-templates/<int:template_id>/delete/', views.kitchen_template_delete, name='kitchen_template_delete'),
+    path('kitchen-templates/<int:template_id>/toggle/', views.kitchen_template_toggle, name='kitchen_template_toggle'),
+
     # Payment Profiles
     path('payment-profiles/', views.payment_profile_list, name='payment_profile_list'),
     path('payment-profiles/create/', views.payment_profile_create, name='payment_profile_create'),

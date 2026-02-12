@@ -95,18 +95,25 @@
                 body: JSON.stringify({ show_modal: true, modal_html: successHtml })
             }).catch(err => console.warn('Customer display update failed:', err.message));
 
-            // Clear customer display after 8 seconds (show waiting state)
+            // After 5 seconds: hide success modal → show customer review
             setTimeout(() => {
-                console.log('Clearing customer display after payment success');
+                console.log('Triggering customer review on customer display');
                 fetch(LOCAL_API + '/api/customer-display/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ show_modal: false, modal_html: null })
+                    body: JSON.stringify({ show_review: true, bill_id: billId })
                 }).catch(() => {});
-                if (typeof updateCustomerDisplay === 'function') {
-                    updateCustomerDisplay([], 0, 0, 'cash', true);
-                }
-            }, 8000);
+            }, 5000);
+
+            // After 5s (review) + 18s (review timeout + thank you) = 23s total → clear to idle
+            setTimeout(() => {
+                console.log('Clearing customer display after review period');
+                fetch(LOCAL_API + '/api/customer-display/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clear_display: true })
+                }).catch(() => {});
+            }, 23000);
         }
     }, 300);
 })();
@@ -128,16 +135,13 @@ function closeDone() {
     document.getElementById('modal-container').innerHTML = '';
     window._paymentModalActive = false;
 
-    // Clear modal on customer display
+    // Clear customer display in one atomic request (prevents flicker from multiple partial updates)
     if (typeof isKioskMode === 'function' && isKioskMode()) {
         fetch('http://127.0.0.1:5000/api/customer-display/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ show_modal: false, modal_html: null })
+            body: JSON.stringify({ clear_display: true })
         }).catch(() => {});
-        if (typeof updateCustomerDisplay === 'function') {
-            updateCustomerDisplay([], 0, 0, 'cash', true);
-        }
     }
 
     // Refresh page

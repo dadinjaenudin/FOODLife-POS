@@ -6662,3 +6662,483 @@ def eft_terminal_toggle(request, terminal_id):
         return JsonResponse({'success': True, 'is_active': eft.is_active, 'message': f'EFT terminal {status}'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ============================================================================
+# CHECKER TEMPLATES MANAGEMENT
+# ============================================================================
+
+@manager_required
+def checker_template_list(request):
+    """List all checker templates"""
+    from apps.kitchen.models import CheckerTemplate
+
+    store_config, error_response = check_store_config(request, 'management/checker_template_list.html')
+    if error_response:
+        return error_response
+
+    templates = CheckerTemplate.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store').order_by('-created_at')
+
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        templates = templates.filter(
+            Q(brand_id=context_brand_id) | Q(brand__isnull=True)
+        )
+
+    context = {
+        'store_config': store_config,
+        'templates': templates,
+        'context_brand_id': context_brand_id,
+    }
+
+    return render(request, 'management/checker_template_list.html', context)
+
+
+@manager_required
+def checker_template_create(request):
+    """Create new checker template"""
+    from apps.kitchen.models import CheckerTemplate
+
+    store_config, error_response = check_store_config(request, 'management/checker_template_form.html')
+    if error_response:
+        return error_response
+
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        paper_width = request.POST.get('paper_width', '80')
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+
+        # Header fields
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+
+        # Content display options
+        show_bill_number = request.POST.get('show_bill_number') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_station_label = request.POST.get('show_station_label') == '1'
+        show_item_notes = request.POST.get('show_item_notes') == '1'
+        show_item_qty = request.POST.get('show_item_qty') == '1'
+        show_checkbox = request.POST.get('show_checkbox') == '1'
+
+        # Footer
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+
+        # Print settings
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template = CheckerTemplate(
+                    company=store_config.company,
+                    brand_id=brand_id if brand_id else None,
+                    store_id=store_id if store_id else None,
+                    template_name=template_name,
+                    is_active=is_active,
+                    paper_width=int(paper_width),
+                    header_line_1=header_line_1,
+                    header_line_2=header_line_2,
+                    show_bill_number=show_bill_number,
+                    show_table_number=show_table_number,
+                    show_date_time=show_date_time,
+                    show_station_label=show_station_label,
+                    show_item_notes=show_item_notes,
+                    show_item_qty=show_item_qty,
+                    show_checkbox=show_checkbox,
+                    footer_line_1=footer_line_1,
+                    footer_line_2=footer_line_2,
+                    auto_cut=auto_cut,
+                    feed_lines=int(feed_lines),
+                    created_by=request.user
+                )
+                template.save()
+                messages.success(request, f'Checker template "{template_name}" created successfully')
+                return redirect('management:checker_template_list')
+            except Exception as e:
+                messages.error(request, f'Error creating template: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'is_edit': False,
+    }
+
+    return render(request, 'management/checker_template_form.html', context)
+
+
+@manager_required
+def checker_template_edit(request, template_id):
+    """Edit checker template"""
+    from apps.kitchen.models import CheckerTemplate
+
+    store_config, error_response = check_store_config(request, 'management/checker_template_form.html')
+    if error_response:
+        return error_response
+
+    template = get_object_or_404(CheckerTemplate, id=template_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        paper_width = request.POST.get('paper_width', '80')
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+
+        # Header fields
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+
+        # Content display options
+        show_bill_number = request.POST.get('show_bill_number') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_station_label = request.POST.get('show_station_label') == '1'
+        show_item_notes = request.POST.get('show_item_notes') == '1'
+        show_item_qty = request.POST.get('show_item_qty') == '1'
+        show_checkbox = request.POST.get('show_checkbox') == '1'
+
+        # Footer
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+
+        # Print settings
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template.brand_id = brand_id if brand_id else None
+                template.store_id = store_id if store_id else None
+                template.template_name = template_name
+                template.is_active = is_active
+                template.paper_width = int(paper_width)
+                template.header_line_1 = header_line_1
+                template.header_line_2 = header_line_2
+                template.show_bill_number = show_bill_number
+                template.show_table_number = show_table_number
+                template.show_date_time = show_date_time
+                template.show_station_label = show_station_label
+                template.show_item_notes = show_item_notes
+                template.show_item_qty = show_item_qty
+                template.show_checkbox = show_checkbox
+                template.footer_line_1 = footer_line_1
+                template.footer_line_2 = footer_line_2
+                template.auto_cut = auto_cut
+                template.feed_lines = int(feed_lines)
+                template.updated_by = request.user
+                template.save()
+                messages.success(request, f'Checker template "{template_name}" updated successfully')
+                return redirect('management:checker_template_list')
+            except Exception as e:
+                messages.error(request, f'Error updating template: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'template': template,
+        'is_edit': True,
+    }
+
+    return render(request, 'management/checker_template_form.html', context)
+
+
+@manager_required
+@require_POST
+def checker_template_delete(request, template_id):
+    """Delete checker template"""
+    from apps.kitchen.models import CheckerTemplate
+
+    store_config = Store.get_current()
+    if not store_config:
+        messages.error(request, 'Store configuration not found')
+        return redirect('management:checker_template_list')
+
+    try:
+        template = get_object_or_404(CheckerTemplate, id=template_id, company=store_config.company)
+        template_name = template.template_name
+        template.delete()
+        messages.success(request, f'Checker template "{template_name}" deleted successfully')
+    except Exception as e:
+        messages.error(request, f'Error deleting template: {str(e)}')
+
+    return redirect('management:checker_template_list')
+
+
+@manager_required
+@require_POST
+def checker_template_toggle(request, template_id):
+    """Toggle checker template active status"""
+    from apps.kitchen.models import CheckerTemplate
+
+    store_config = Store.get_current()
+    if not store_config:
+        return JsonResponse({'success': False, 'error': 'Store not configured'}, status=400)
+
+    try:
+        template = get_object_or_404(CheckerTemplate, id=template_id, company=store_config.company)
+        template.is_active = not template.is_active
+        template.updated_by = request.user
+        template.save()
+
+        status = 'activated' if template.is_active else 'deactivated'
+        messages.success(request, f'Template "{template.template_name}" {status}!')
+
+        return JsonResponse({
+            'success': True,
+            'is_active': template.is_active,
+            'message': f'Template {status}'
+        })
+
+    except Exception as e:
+        logger.error(f"Error toggling checker template: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+# ==========================================
+# Kitchen Ticket Template CRUD
+# ==========================================
+
+@manager_required
+def kitchen_template_list(request):
+    """List all kitchen ticket templates"""
+    from apps.kitchen.models import KitchenTicketTemplate
+
+    store_config, error_response = check_store_config(request, 'management/kitchen_template_list.html')
+    if error_response:
+        return error_response
+
+    templates = KitchenTicketTemplate.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store').order_by('-created_at')
+
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        templates = templates.filter(
+            Q(brand_id=context_brand_id) | Q(brand__isnull=True)
+        )
+
+    context = {
+        'store_config': store_config,
+        'templates': templates,
+        'context_brand_id': context_brand_id,
+    }
+
+    return render(request, 'management/kitchen_template_list.html', context)
+
+
+@manager_required
+def kitchen_template_create(request):
+    """Create new kitchen ticket template"""
+    from apps.kitchen.models import KitchenTicketTemplate
+
+    store_config, error_response = check_store_config(request, 'management/kitchen_template_form.html')
+    if error_response:
+        return error_response
+
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+
+        show_bill_number = request.POST.get('show_bill_number') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_customer_name = request.POST.get('show_customer_name') == '1'
+        show_station_name = request.POST.get('show_station_name') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_item_qty = request.POST.get('show_item_qty') == '1'
+        show_item_notes = request.POST.get('show_item_notes') == '1'
+
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template = KitchenTicketTemplate(
+                    company=store_config.company,
+                    brand_id=brand_id if brand_id else None,
+                    store_id=store_id if store_id else None,
+                    template_name=template_name,
+                    is_active=is_active,
+                    header_line_1=header_line_1,
+                    header_line_2=header_line_2,
+                    show_bill_number=show_bill_number,
+                    show_table_number=show_table_number,
+                    show_customer_name=show_customer_name,
+                    show_station_name=show_station_name,
+                    show_date_time=show_date_time,
+                    show_item_qty=show_item_qty,
+                    show_item_notes=show_item_notes,
+                    footer_line_1=footer_line_1,
+                    footer_line_2=footer_line_2,
+                    auto_cut=auto_cut,
+                    feed_lines=int(feed_lines),
+                    created_by=request.user
+                )
+                template.save()
+                messages.success(request, f'Kitchen template "{template_name}" created successfully')
+                return redirect('management:kitchen_template_list')
+            except Exception as e:
+                messages.error(request, f'Error creating template: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'is_edit': False,
+    }
+
+    return render(request, 'management/kitchen_template_form.html', context)
+
+
+@manager_required
+def kitchen_template_edit(request, template_id):
+    """Edit kitchen ticket template"""
+    from apps.kitchen.models import KitchenTicketTemplate
+
+    store_config, error_response = check_store_config(request, 'management/kitchen_template_form.html')
+    if error_response:
+        return error_response
+
+    template = get_object_or_404(KitchenTicketTemplate, id=template_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        template_name = request.POST.get('template_name', '').strip()
+        brand_id = request.POST.get('brand')
+        store_id = request.POST.get('store')
+        is_active = request.POST.get('is_active') == '1'
+
+        header_line_1 = request.POST.get('header_line_1', '').strip()
+        header_line_2 = request.POST.get('header_line_2', '').strip()
+
+        show_bill_number = request.POST.get('show_bill_number') == '1'
+        show_table_number = request.POST.get('show_table_number') == '1'
+        show_customer_name = request.POST.get('show_customer_name') == '1'
+        show_station_name = request.POST.get('show_station_name') == '1'
+        show_date_time = request.POST.get('show_date_time') == '1'
+        show_item_qty = request.POST.get('show_item_qty') == '1'
+        show_item_notes = request.POST.get('show_item_notes') == '1'
+
+        footer_line_1 = request.POST.get('footer_line_1', '').strip()
+        footer_line_2 = request.POST.get('footer_line_2', '').strip()
+
+        auto_cut = request.POST.get('auto_cut') == '1'
+        feed_lines = request.POST.get('feed_lines', '3')
+
+        if not template_name:
+            messages.error(request, 'Template name is required')
+        else:
+            try:
+                template.brand_id = brand_id if brand_id else None
+                template.store_id = store_id if store_id else None
+                template.template_name = template_name
+                template.is_active = is_active
+                template.header_line_1 = header_line_1
+                template.header_line_2 = header_line_2
+                template.show_bill_number = show_bill_number
+                template.show_table_number = show_table_number
+                template.show_customer_name = show_customer_name
+                template.show_station_name = show_station_name
+                template.show_date_time = show_date_time
+                template.show_item_qty = show_item_qty
+                template.show_item_notes = show_item_notes
+                template.footer_line_1 = footer_line_1
+                template.footer_line_2 = footer_line_2
+                template.auto_cut = auto_cut
+                template.feed_lines = int(feed_lines)
+                template.updated_by = request.user
+                template.save()
+                messages.success(request, f'Kitchen template "{template_name}" updated successfully')
+                return redirect('management:kitchen_template_list')
+            except Exception as e:
+                messages.error(request, f'Error updating template: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'template': template,
+        'is_edit': True,
+    }
+
+    return render(request, 'management/kitchen_template_form.html', context)
+
+
+@manager_required
+@require_POST
+def kitchen_template_delete(request, template_id):
+    """Delete kitchen ticket template"""
+    from apps.kitchen.models import KitchenTicketTemplate
+
+    store_config = Store.get_current()
+    if not store_config:
+        messages.error(request, 'Store configuration not found')
+        return redirect('management:kitchen_template_list')
+
+    try:
+        template = get_object_or_404(KitchenTicketTemplate, id=template_id, company=store_config.company)
+        template_name = template.template_name
+        template.delete()
+        messages.success(request, f'Kitchen template "{template_name}" deleted successfully')
+    except Exception as e:
+        messages.error(request, f'Error deleting template: {str(e)}')
+
+    return redirect('management:kitchen_template_list')
+
+
+@manager_required
+@require_POST
+def kitchen_template_toggle(request, template_id):
+    """Toggle kitchen ticket template active status"""
+    from apps.kitchen.models import KitchenTicketTemplate
+
+    store_config = Store.get_current()
+    if not store_config:
+        return JsonResponse({'success': False, 'error': 'Store not configured'}, status=400)
+
+    try:
+        template = get_object_or_404(KitchenTicketTemplate, id=template_id, company=store_config.company)
+        template.is_active = not template.is_active
+        template.updated_by = request.user
+        template.save()
+
+        status = 'activated' if template.is_active else 'deactivated'
+        messages.success(request, f'Template "{template.template_name}" {status}!')
+
+        return JsonResponse({
+            'success': True,
+            'is_active': template.is_active,
+            'message': f'Template {status}'
+        })
+
+    except Exception as e:
+        logger.error(f"Error toggling kitchen template: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

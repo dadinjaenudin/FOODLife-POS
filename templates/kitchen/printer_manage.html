@@ -138,17 +138,17 @@
                                                 class="text-green-600 hover:text-green-900 px-3 py-1 rounded hover:bg-green-50 flex items-center space-x-1">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
-                                            <11svg>
+                                            </svg>
                                             <span>Test</span>
                                         </button>
                                         <a href="{% url 'kitchen:printer_edit' printer.id %}" 
                                            class="text-indigo-600 hover:text-indigo-900 px-3 py-1 rounded hover:bg-indigo-50">
                                             Edit
                                         </a>
-                                        <a href="{% url 'kitchen:printer_delete' printer.id %}" 
-                                           class="text-red-600 hover:text-red-900 px-3 py-1 rounded hover:bg-red-50">
+                                        <button onclick="deletePrinter({{ printer.id }}, '{{ printer.printer_name|escapejs }}', '{{ printer.station_code|upper }}')"
+                                                class="text-red-600 hover:text-red-900 px-3 py-1 rounded hover:bg-red-50">
                                             Delete
-                                        </a>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -274,8 +274,35 @@ function testPrint(printerId) {
     });
 }
 
+function deletePrinter(printerId, printerName, stationCode) {
+    if (!confirm(`Delete printer "${printerName}" (${stationCode})?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+
+    fetch(`/kitchen/printers/${printerId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.message, 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast(data.message || 'Failed to delete printer', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to delete printer', 'error');
+    });
+}
+
 function setupDefaultPrinters() {
-    if (!confirm('This will create 3 default station printers:\n\n• Kitchen (192.168.1.100:9100)\n• Bar (192.168.1.101:9100)\n• Dessert (192.168.1.102:9100)\n\nContinue?')) {
+    if (!confirm('This will create 4 default station printers:\n\n• Kitchen (192.168.1.100:9100)\n• Bar (192.168.1.101:9100)\n• Dessert (192.168.1.102:9100)\n• Checker (192.168.1.103:9100)\n\nContinue?')) {
         return;
     }
     

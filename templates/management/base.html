@@ -46,7 +46,7 @@
             
             // Auto-expand based on current path
             const path = window.location.pathname;
-            if (path.includes('terminals') || path.includes('display-configs') || path.includes('customer-display') || path.includes('receipt-templates') || path.includes('payment-profiles') || path.includes('media-groups') || path.includes('eft-terminals')) {
+            if (path.includes('terminals') || path.includes('display-configs') || path.includes('customer-display') || path.includes('receipt-templates') || path.includes('checker-templates') || path.includes('kitchen-templates') || path.includes('payment-profiles') || path.includes('media-groups') || path.includes('eft-terminals')) {
                 this.terminalManagementOpen = true;
             } else if (path.includes('master-data') || path.includes('users') || path.includes('settings') || path.includes('reports') || path.includes('stock')) {
                 this.dataManagementOpen = true;
@@ -162,6 +162,14 @@
                         <a href="{% url 'management:receipt_template_list' %}"
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'receipt-templates' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Receipt Templates
+                        </a>
+                        <a href="{% url 'management:checker_template_list' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'checker-templates' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            Checker Templates
+                        </a>
+                        <a href="{% url 'management:kitchen_template_list' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'kitchen-templates' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            Kitchen Templates
                         </a>
                     </div>
                 </div>

@@ -404,10 +404,11 @@ def get_receipt_template(request):
                     logo_url = '/media/' + row[4]
                 
                 # Build template dict
+                # paper_width comes from terminal (physical printer), not template (content/layout)
                 template = {
                     'id': row[0],
                     'template_name': row[1],
-                    'paper_width': row[2],
+                    'paper_width': terminal.receipt_paper_width,
                     'show_logo': row[3],
                     'logo_url': logo_url,
                     'header_line_1': row[5],

@@ -1104,3 +1104,34 @@ class EFTTerminal(models.Model):
     def __str__(self):
         return f"{self.code}: {self.name}"
 
+
+class CustomerReview(models.Model):
+    """Customer satisfaction review collected from second display after payment.
+    Shown automatically on customer display for ~15 seconds after payment success."""
+    RATING_CHOICES = [
+        (1, 'Very Bad'),
+        (2, 'Bad'),
+        (3, 'Average'),
+        (4, 'Good'),
+        (5, 'Excellent'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    store = models.ForeignKey('Store', on_delete=models.CASCADE, related_name='customer_reviews', null=True, blank=True)
+    terminal = models.ForeignKey('POSTerminal', on_delete=models.SET_NULL, null=True, blank=True, related_name='customer_reviews')
+    bill = models.ForeignKey('pos.Bill', on_delete=models.SET_NULL, null=True, blank=True, related_name='customer_reviews')
+
+    rating = models.IntegerField(choices=RATING_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'core_customer_review'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['store', 'created_at']),
+            models.Index(fields=['rating', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Review #{self.rating} - {self.store} - {self.created_at:%Y-%m-%d %H:%M}"
+

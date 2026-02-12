@@ -79,6 +79,8 @@ display_data = {
     'has_bill': False,
     'show_modal': False,
     'modal_html': None,
+    'show_review': False,
+    'review_bill_id': None,
     'updated_at': time.time()
 }
 display_lock = Lock()
@@ -1346,17 +1348,43 @@ def api_print():
 def update_customer_display():
     """Update customer display data"""
     global display_data
-    
+
     data = request.json
-    
+
     if not data:
         return jsonify({'success': False, 'error': 'No data provided'}), 400
-    
+
     with display_lock:
+        # Full display reset (single atomic clear — prevents flicker from multiple partial updates)
+        if data.get('clear_display'):
+            display_data.update({
+                'items': [],
+                'total': 0,
+                'subtotal': 0,
+                'customer_name': '',
+                'show_qr': False,
+                'qr_code': None,
+                'payment_method': None,
+                'bill_panel_html': None,
+                'has_bill': False,
+                'show_modal': False,
+                'modal_html': None,
+                'show_review': False,
+                'review_bill_id': None,
+                'updated_at': time.time()
+            })
+        # Check if we're triggering customer review
+        elif 'show_review' in data:
+            display_data['show_review'] = data.get('show_review', False)
+            display_data['review_bill_id'] = data.get('bill_id')
+            display_data['show_modal'] = False
+            display_data['modal_html'] = None
+            display_data['updated_at'] = time.time()
         # Check if we're receiving modal HTML
-        if 'show_modal' in data:
+        elif 'show_modal' in data:
             display_data['show_modal'] = data.get('show_modal', False)
             display_data['modal_html'] = data.get('modal_html', None)
+            display_data['show_review'] = False
             display_data['updated_at'] = time.time()
         # Check if we're receiving bill panel HTML (new format)
         elif 'bill_panel_html' in data:
@@ -1375,13 +1403,58 @@ def update_customer_display():
                 'bill_panel_html': None,
                 'show_modal': False,
                 'modal_html': None,
+                'show_review': False,
                 'updated_at': time.time()
             }
-    
+
     # Notify all SSE subscribers
     notify_subscribers(display_data)
-    
+
     return jsonify({'success': True})
+
+
+@app.route('/api/customer-display/review', methods=['POST'])
+def submit_review():
+    """Proxy customer review from customer display to Django API"""
+    data = request.json
+
+    if not data or 'rating' not in data:
+        return jsonify({'success': False, 'error': 'Rating is required'}), 400
+
+    # Read edge server URL from config
+    config_path = Path(os.getcwd()) / 'config.json'
+    edge_server = 'http://127.0.0.1:8001'
+    store_code = None
+    terminal_code = None
+
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            json_config = json.load(f)
+            edge_server = json_config.get('edge_server', edge_server)
+            store_code = json_config.get('store_code')
+            terminal_code = json_config.get('terminal_code')
+    except Exception:
+        pass
+
+    # Build payload for Django API
+    payload = {
+        'rating': data['rating'],
+        'bill_id': data.get('bill_id'),
+        'store_code': store_code,
+        'terminal_code': terminal_code,
+    }
+
+    try:
+        import requests as http_requests
+        resp = http_requests.post(
+            f"{edge_server}/api/customer-display/review/",
+            json=payload,
+            timeout=5
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        print(f"[Review] Failed to forward to Django: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 502
 
 
 @app.route('/api/customer-display/stream', methods=['GET'])
@@ -1594,7 +1667,13 @@ def fetch_receipt_template(edge_server, terminal_code, company_code=None, brand_
 def format_receipt_text(bill_data, template):
     """Generate formatted receipt text from bill data and template"""
     lines = []
-    paper_width = template.get('paper_width', 42)
+    # paper_width is in mm from terminal settings, convert to chars per line
+    paper_width_mm = template.get('paper_width', 80)
+    # Standard thermal printer: 58mm → 32 chars, 80mm → 42 chars
+    if paper_width_mm <= 58:
+        paper_width = 32
+    else:
+        paper_width = 42
     
     # Helper functions
     def center_text(text):
@@ -1889,204 +1968,6 @@ def api_print_receipt():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/print/checker', methods=['POST'])
-def api_print_checker():
-    """Print checker receipt for kitchen staff to mark completed items"""
-    try:
-        data = request.json
-        
-        if not data:
-            return jsonify({'success': False, 'error': 'No data provided'}), 400
-        
-        # Get connection config (use cwd for PyInstaller bundle compatibility)
-        config_path = Path(os.getcwd()) / 'config.json'
-        edge_server = 'http://127.0.0.1:8001'
-        terminal_code = None
-        company_code = None
-        brand_code = None
-        store_code = None
-        
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                json_config = json.load(f)
-                edge_server = json_config.get('edge_server', edge_server)
-                terminal_code = json_config.get('terminal_code')
-                company_code = json_config.get('company_code')
-                brand_code = json_config.get('brand_code')
-                store_code = json_config.get('store_code')
-        except Exception as e:
-            print(f"[Checker Receipt] Warning: Could not load config.json: {e}")
-        
-        # Fetch terminal config to get print_to setting
-        print_to_destination = 'printer'  # default
-        
-        try:
-            import requests
-            params = {'terminal_code': terminal_code}
-            if company_code:
-                params['company_code'] = company_code
-            if brand_code:
-                params['brand_code'] = brand_code
-            if store_code:
-                params['store_code'] = store_code
-            
-            response = requests.get(f"{edge_server}/api/terminal/config", params=params, timeout=5)
-            if response.status_code == 200:
-                config_data = response.json()
-                if config_data.get('success'):
-                    print_to_destination = config_data.get('terminal', {}).get('device_config', {}).get('print_to', 'printer')
-        except Exception as e:
-            print(f"[Checker Receipt] Warning: Could not fetch terminal config: {e}")
-
-        # Generate checker receipt text (simple format with checkboxes)
-        checker_text = format_checker_receipt_text(data)
-
-        # Check print destination
-        if print_to_destination == 'file':
-            # Save to file instead (separate folder from payment receipts)
-            from datetime import datetime
-            
-            checker_receipts_dir = Path(os.getcwd()) / 'checker_receipts_output'
-            
-            # Get business date from data
-            business_date_str = data.get('date', '')
-            try:
-                if business_date_str and '/' in business_date_str:
-                    day, month, year = business_date_str.split('/')
-                    business_date_folder = f"{year}{month}{day}"
-                else:
-                    business_date_folder = datetime.now().strftime('%Y%m%d')
-            except:
-                business_date_folder = datetime.now().strftime('%Y%m%d')
-            
-            date_receipts_dir = checker_receipts_dir / business_date_folder
-            date_receipts_dir.mkdir(parents=True, exist_ok=True)
-            
-            timestamp = datetime.now().strftime('%H%M%S')
-            bill_number = data.get('bill_number', 'UNKNOWN')
-            filename = f"checker_{bill_number}_{timestamp}.txt"
-            filepath = date_receipts_dir / filename
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(checker_text)
-            
-            print(f"[Checker Receipt] SUCCESS - Saved to: {filepath}")
-            return jsonify({
-                'success': True,
-                'print_to': 'file',
-                'file_path': str(filepath),
-                'business_date': business_date_folder
-            }), 200
-        else:
-            # Print to printer
-            printer_name = data.get('printer_name')
-            
-            print_data = {
-                'type': 'checker',
-                'text': checker_text,
-                'auto_cut': True,
-                'printer_name': printer_name
-            }
-            
-            result = print_to_local_printer(print_data)
-            
-            if result['success']:
-                print(f"[Checker Receipt] SUCCESS - Printed to {result.get('printer', 'default printer')}")
-                return jsonify({
-                    'success': True,
-                    'print_to': 'printer',
-                    'printer': result.get('printer')
-                }), 200
-            else:
-                print(f"[Checker Receipt] FAILED - {result.get('error')}")
-                return jsonify(result), 500
-    
-    except Exception as e:
-        print(f"[Checker Receipt] ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-def format_checker_receipt_text(data):
-    """Format checker receipt with checkboxes for kitchen staff
-    
-    Simple format:
-    - Header with bill/table info
-    - List of items with checkbox [ ] for marking completion
-    - Compact format for easy checking
-    """
-    lines = []
-    width = 42  # Standard receipt width
-    
-    # Header
-    lines.append("=" * width)
-    lines.append("CHECKER RECEIPT".center(width))
-    lines.append("(Mark completed items)".center(width))
-    lines.append("=" * width)
-    lines.append("")
-    
-    # Bill info
-    bill_number = data.get('bill_number', '')
-    table_number = data.get('table_number', '')
-    date_str = data.get('date', '')
-    time_str = data.get('time', '')
-    
-    if bill_number:
-        lines.append(f"Bill     : {bill_number}")
-    if table_number:
-        lines.append(f"Table    : {table_number}")
-    lines.append(f"Time     : {date_str} {time_str}")
-    lines.append("")
-    lines.append("-" * width)
-    lines.append("")
-    
-    # Items with checkboxes
-    items = data.get('items', [])
-    for idx, item in enumerate(items, 1):
-        qty = item.get('quantity', 1)
-        name = item.get('name', '')
-        notes = item.get('notes', '')
-        
-        # Item line with checkbox
-        lines.append(f"[ ]  {qty}x {name}")
-        
-        # Add notes if any (indented)
-        if notes:
-            # Wrap notes if too long
-            note_width = width - 5  # Account for indent
-            if len(notes) <= note_width:
-                lines.append(f"     {notes}")
-            else:
-                # Simple word wrap
-                words = notes.split()
-                current_line = "     "
-                for word in words:
-                    if len(current_line) + len(word) + 1 <= width:
-                        current_line += word + " "
-                    else:
-                        lines.append(current_line.rstrip())
-                        current_line = "     " + word + " "
-                if current_line.strip():
-                    lines.append(current_line.rstrip())
-        
-        lines.append("")  # Space between items
-    
-    # Footer
-    lines.append("-" * width)
-    lines.append(f"Total Items: {len(items)}".center(width))
-    lines.append("=" * width)
-    lines.append("")
-    lines.append("CHECK ALL ITEMS BEFORE SERVING".center(width))
-    lines.append("")
-    
-    # Add extra lines for cutting
-    lines.append("")
-    lines.append("")
-    
-    return "\n".join(lines)
 
 
 def run_server(host='127.0.0.1', port=5000):

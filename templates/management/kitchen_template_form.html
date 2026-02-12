@@ -1,0 +1,327 @@
+{% extends 'management/base.html' %}
+
+{% block title %}{% if is_edit %}Edit{% else %}Create{% endif %} Kitchen Ticket Template{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">{% if is_edit %}Edit{% else %}Create{% endif %} Kitchen Ticket Template</h1>
+    <p class="text-gray-500">Configure kitchen ticket layout for station printers</p>
+</div>
+
+<!-- Messages -->
+{% if messages %}
+<div class="mb-4 space-y-2">
+    {% for message in messages %}
+    <div class="px-4 py-3 rounded-lg border flex items-start gap-3
+        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+        {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        <span class="text-xl">
+            {% if message.tags == 'error' %}&#10060;
+            {% elif message.tags == 'success' %}&#9989;
+            {% else %}&#8505;&#65039;{% endif %}
+        </span>
+        <div>{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Two Column Layout: Form + Preview -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+<!-- Form (2/3 width) -->
+<div class="lg:col-span-2">
+<form method="post" class="bg-white rounded-lg shadow" id="kitchen-form">
+    {% csrf_token %}
+
+    <div class="p-6 space-y-6">
+        <!-- Info Banner -->
+        <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+            <strong>Info:</strong> Hanya 1 template aktif per brand yang digunakan oleh sistem.
+            Jika ada beberapa template aktif untuk brand yang sama, hanya satu yang akan dipakai.
+            Paper width mengikuti setting dari Station Printer (Printer Management).
+        </div>
+
+        <!-- Basic Info -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Basic Information</h3>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Template Name *</label>
+                <input type="text" name="template_name" required
+                       value="{% if is_edit %}{{ template.template_name }}{% endif %}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                       placeholder="e.g. Standard Kitchen">
+            </div>
+        </div>
+
+        <!-- Scope -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Scope</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Brand (Optional)</label>
+                    <select name="brand"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">-- Company-wide --</option>
+                        {% for sb in store_brands %}
+                        <option value="{{ sb.brand.id }}" {% if is_edit and template.brand_id == sb.brand.id %}selected{% endif %}>
+                            {{ sb.brand.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Kosongkan untuk berlaku ke semua brand</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Header</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Header Line 1</label>
+                    <input type="text" name="header_line_1" maxlength="100"
+                           value="{% if is_edit %}{{ template.header_line_1 }}{% else %}KITCHEN TICKET{% endif %}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                           placeholder="e.g. KITCHEN TICKET">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Header Line 2</label>
+                    <input type="text" name="header_line_2" maxlength="100"
+                           value="{% if is_edit %}{{ template.header_line_2 }}{% endif %}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                           placeholder="e.g. Siapkan pesanan berikut">
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Display -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Content Display</h3>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_bill_number" value="1"
+                           {% if not is_edit or template.show_bill_number %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Bill Number</span>
+                </label>
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_table_number" value="1"
+                           {% if not is_edit or template.show_table_number %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Table Number</span>
+                </label>
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_customer_name" value="1"
+                           {% if not is_edit or template.show_customer_name %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Customer Name</span>
+                </label>
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_station_name" value="1"
+                           {% if not is_edit or template.show_station_name %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Station Name</span>
+                </label>
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_date_time" value="1"
+                           {% if not is_edit or template.show_date_time %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Date/Time</span>
+                </label>
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_item_qty" value="1"
+                           {% if not is_edit or template.show_item_qty %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Item Quantity</span>
+                </label>
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="show_item_notes" value="1"
+                           {% if not is_edit or template.show_item_notes %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Item Notes</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Footer</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Footer Line 1</label>
+                    <input type="text" name="footer_line_1" maxlength="100"
+                           value="{% if is_edit %}{{ template.footer_line_1 }}{% endif %}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                           placeholder="e.g. Terima Kasih">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Footer Line 2</label>
+                    <input type="text" name="footer_line_2" maxlength="100"
+                           value="{% if is_edit %}{{ template.footer_line_2 }}{% endif %}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                           placeholder="Optional footer text">
+                </div>
+            </div>
+        </div>
+
+        <!-- Print Settings -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Print Settings</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                    <input type="checkbox" name="auto_cut" value="1"
+                           {% if not is_edit or template.auto_cut %}checked{% endif %}
+                           class="w-4 h-4 text-indigo-600 rounded">
+                    <span class="text-sm font-medium text-gray-700">Auto Cut Paper</span>
+                </label>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Feed Lines</label>
+                    <input type="number" name="feed_lines" min="0" max="10"
+                           value="{% if is_edit %}{{ template.feed_lines }}{% else %}3{% endif %}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 pb-2 border-b">Status</h3>
+            <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                <input type="checkbox" name="is_active" value="1"
+                       {% if not is_edit or template.is_active %}checked{% endif %}
+                       class="w-4 h-4 text-indigo-600 rounded">
+                <span class="text-sm font-medium text-gray-700">Active</span>
+                <span class="text-xs text-gray-500">(Template aktif akan digunakan oleh sistem)</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Form Actions -->
+    <div class="px-6 py-4 bg-gray-50 border-t flex items-center justify-between rounded-b-lg">
+        <a href="{% url 'management:kitchen_template_list' %}"
+           class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition">
+            Cancel
+        </a>
+        <button type="submit"
+                class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold transition">
+            {% if is_edit %}Update Template{% else %}Create Template{% endif %}
+        </button>
+    </div>
+</form>
+</div>
+
+<!-- Live Preview (1/3 width, sticky) -->
+<div class="lg:col-span-1">
+<div class="sticky top-4">
+    <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="text-sm font-bold text-gray-900 mb-3">Live Print Preview</h3>
+        <div id="preview-container" class="mx-auto bg-white border-2 border-gray-300 rounded-lg p-3 font-mono text-[10px] leading-tight" style="max-width: 280px;">
+            <div id="pv-header1" class="text-center font-bold text-xs"></div>
+            <div id="pv-header2" class="text-center text-gray-500 mb-1"></div>
+            <div id="pv-sep1" class="border-t-2 border-gray-400 my-1"></div>
+            <div id="pv-bill" class="text-gray-600">Bill: #001234</div>
+            <div id="pv-table" class="font-bold text-gray-700">Table: A5</div>
+            <div id="pv-customer" class="text-gray-600">Customer: Budi Santoso</div>
+            <div id="pv-station" class="text-gray-600">Station: KITCHEN</div>
+            <div id="pv-time" class="text-gray-600">Time: 12/02/2026 14:30</div>
+            <div id="pv-sep2" class="border-t border-dashed border-gray-400 my-1"></div>
+            <div id="pv-items" class="space-y-0.5 my-1"></div>
+            <div id="pv-sep3" class="border-t-2 border-gray-400 my-1"></div>
+            <div id="pv-footer1" class="text-center font-bold text-gray-600"></div>
+            <div id="pv-footer2" class="text-center text-gray-500"></div>
+        </div>
+        <p class="text-center text-[10px] text-gray-400 mt-2">Preview berubah sesuai setting</p>
+    </div>
+</div>
+</div>
+
+</div><!-- end grid -->
+
+<script>
+const sampleItems = [
+    { qty: 2, name: 'Nasi Goreng Spesial', notes: 'Pedas, no telur' },
+    { qty: 1, name: 'Ayam Bakar Madu', notes: '' },
+    { qty: 3, name: 'Soto Ayam', notes: 'Kuah extra' },
+];
+
+function getField(name) {
+    const el = document.querySelector(`#kitchen-form [name="${name}"]`);
+    if (!el) return '';
+    if (el.type === 'checkbox') return el.checked;
+    return el.value;
+}
+
+function updatePreview() {
+    // Header
+    const h1 = getField('header_line_1');
+    const h2 = getField('header_line_2');
+    const pvH1 = document.getElementById('pv-header1');
+    const pvH2 = document.getElementById('pv-header2');
+    pvH1.textContent = h1;
+    pvH1.style.display = h1 ? '' : 'none';
+    pvH2.textContent = h2;
+    pvH2.style.display = h2 ? '' : 'none';
+
+    // Info fields
+    const showBill = getField('show_bill_number');
+    const showTable = getField('show_table_number');
+    const showCustomer = getField('show_customer_name');
+    const showStation = getField('show_station_name');
+    const showTime = getField('show_date_time');
+
+    document.getElementById('pv-bill').style.display = showBill ? '' : 'none';
+    document.getElementById('pv-table').style.display = showTable ? '' : 'none';
+    document.getElementById('pv-customer').style.display = showCustomer ? '' : 'none';
+    document.getElementById('pv-station').style.display = showStation ? '' : 'none';
+    document.getElementById('pv-time').style.display = showTime ? '' : 'none';
+
+    // Items
+    const showQty = getField('show_item_qty');
+    const showNotes = getField('show_item_notes');
+
+    const pvItems = document.getElementById('pv-items');
+    pvItems.innerHTML = '';
+
+    sampleItems.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'py-0.5';
+
+        const nameLine = document.createElement('div');
+        nameLine.className = 'font-medium';
+        nameLine.textContent = showQty ? `${item.qty}x ${item.name}` : item.name;
+        row.appendChild(nameLine);
+
+        if (showNotes && item.notes) {
+            const note = document.createElement('div');
+            note.className = 'text-gray-500 pl-3 text-[9px]';
+            note.textContent = `Note: ${item.notes}`;
+            row.appendChild(note);
+        }
+
+        pvItems.appendChild(row);
+    });
+
+    // Footer
+    const f1 = getField('footer_line_1');
+    const f2 = getField('footer_line_2');
+    const pvF1 = document.getElementById('pv-footer1');
+    const pvF2 = document.getElementById('pv-footer2');
+    pvF1.textContent = f1;
+    pvF1.style.display = f1 ? '' : 'none';
+    pvF2.textContent = f2;
+    pvF2.style.display = f2 ? '' : 'none';
+}
+
+// Bind to all form inputs
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('kitchen-form');
+    form.querySelectorAll('input, select').forEach(el => {
+        el.addEventListener('input', updatePreview);
+        el.addEventListener('change', updatePreview);
+    });
+    updatePreview();
+});
+</script>
+{% endblock %}

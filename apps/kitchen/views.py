@@ -925,13 +925,19 @@ def printer_edit(request, printer_id):
 def printer_delete(request, printer_id):
     """Delete station printer"""
     printer = get_object_or_404(StationPrinter, id=printer_id)
-    
+
     if request.method == 'POST':
         printer_name = printer.printer_name
         printer.delete()
+        # AJAX request → return JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+            return JsonResponse({
+                'success': True,
+                'message': f'Printer "{printer_name}" berhasil dihapus!'
+            })
         messages.success(request, f'✓ Printer "{printer_name}" berhasil dihapus!')
         return redirect('kitchen:printer_manage')
-    
+
     context = {
         'printer': printer,
     }
@@ -1052,6 +1058,20 @@ def printer_setup_defaults(request):
                 'station_code': 'dessert',
                 'printer_name': 'Dessert Station Printer',
                 'printer_ip': '192.168.1.102',
+                'printer_port': 9100,
+                'priority': 1,
+                'is_active': True,
+                'paper_width_mm': 80,
+                'chars_per_line': 32,
+                'printer_brand': 'HRPT',
+                'printer_type': 'network',
+                'timeout_seconds': 5,
+            },
+            {
+                'brand': brand,
+                'station_code': 'checker',
+                'printer_name': 'Checker Printer',
+                'printer_ip': '192.168.1.103',
                 'printer_port': 9100,
                 'priority': 1,
                 'is_active': True,

@@ -1,46 +1,252 @@
 {% load humanize %}
-<!-- Payment Modal v11 - Server-side rendered methods (no x-for for non-empty arrays) -->
+<!--
+============================================================================
+PAYMENT MODAL (payment_modal.html) — v11
+============================================================================
+Modal pembayaran utama di POS. Dipanggil saat kasir klik tombol "Payment"
+(F2) pada bill yang aktif.
 
-<!-- Define paymentModal() BEFORE the HTML (HTMX executes scripts after DOM insert) -->
+DIPANGGIL DARI:
+  - Bill panel: tombol "Payment" → HTMX GET {% url 'pos:payment_modal' bill.id %}
+  - Keyboard shortcut F2 (keyboard_shortcuts.html)
+  - Inject ke #modal-container via hx-target="#modal-container" hx-swap="innerHTML"
+
+ARSITEKTUR: Django Template + Alpine.js + HTMX
+===============================================
+File ini adalah Django template yang di-render server-side, lalu di-inject
+ke halaman POS via HTMX. Setelah inject, Alpine.js mengelola semua state
+dan interaksi di client-side (tanpa reload).
+
+SERVER → CLIENT DATA FLOW:
+┌─────────────────────────────────────────────────────────┐
+│  Django View: payment_modal() (apps/pos/views.py)       │
+│  - Load PaymentMethodProfile dari terminal.payment_profiles │
+│  - Prefetch DataEntryPrompt per profil                  │
+│  - Serialize ke payment_methods_json (array of objects)  │
+│  - Load EFTTerminal master data                         │
+│  - Render template ini dengan context:                  │
+│    • bill, total_int, payment_methods_json               │
+│    • payment_methods_list (untuk server-side rendering)   │
+│    • use_profiles (bool), default_method                 │
+│    • eft_terminals (master data dropdown)                │
+└──────────┬──────────────────────────────────────────────┘
+           │ HTML response (HTMX swap ke #modal-container)
+           ▼
+┌─────────────────────────────────────────────────────────┐
+│  Browser: Alpine.js component paymentModal()            │
+│  - Parse payment_methods_json → array of payment methods │
+│  - Manage state: amount, method, payments[], promptValues │
+│  - Numpad routing: amount field ↔ prompt fields          │
+│  - syncDisplay() → kirim clone ke customer display (SSE) │
+└──────────┬──────────────────────────────────────────────┘
+           │ Form submit via HTMX POST
+           ▼
+┌─────────────────────────────────────────────────────────┐
+│  Django View: process_payment() (apps/pos/views.py)     │
+│  - Baca: method, amount, reference, profile_id,          │
+│    prompt_data, payments[] (split)                       │
+│  - Buat Payment record(s) di database                   │
+│  - Update Bill status → paid                            │
+│  - Return: payment_success.html (inject ke modal)        │
+└─────────────────────────────────────────────────────────┘
+
+LAYOUT VISUAL:
+┌────────────────────────────────────────────────────┐
+│  Header: "Payment" + Bill Number + Table           │
+├────────────────────────────────────────────────────┤
+│  Summary Cards:  [Total]  [Bayar]  [Kembalian/Sisa]│
+├────────────────────────────────────────────────────┤
+│  Applied Payments (jika split): Cash 50K  Card 50K │
+├──────────────┬─────────────────────────────────────┤
+│  LEFT (30%)  │  RIGHT (70%)                        │
+│              │                                     │
+│  Metode:     │  [Rp ____________] Amount Input     │
+│  ○ Cash      │                                     │
+│  ● Card  ←── │  [Account No: ____]  ← Prompt       │
+│  ○ QRIS      │  [EFT No: ▾ BCA ]  ← Dropdown      │
+│  ○ DANA      │  [Approval: _____]  ← Prompt        │
+│  ○ Voucher   │                                     │
+│              │  [Numpad → APPROVAL_CODE]  Indicator │
+│              │  ┌───┬───┬───┬───┐                  │
+│              │  │ 7 │ 8 │ 9 │DEL│  Numpad          │
+│              │  │ 4 │ 5 │ 6 │ C │                  │
+│              │  │ 1 │ 2 │ 3 │00 │                  │
+│              │  │ 0 │000│   │   │                  │
+│              │  ├───┼───┼───┼───┤                  │
+│              │  │Ext│50K│100│Rnd│  Quick Amount     │
+│              │  └───┴───┴───┴───┘                  │
+├──────────────┴─────────────────────────────────────┤
+│  [Cancel]  [+ Split]  [====== Bayar Rp XXX ======] │
+└────────────────────────────────────────────────────┘
+
+KONSEP UTAMA:
+=============
+
+1. DYNAMIC PAYMENT PROFILES (use_profiles=true)
+   Metode pembayaran dikonfigurasi dari backoffice (PaymentMethodProfile model).
+   Setiap profil bisa punya "Data Entry Prompts" — field input tambahan
+   seperti account_no, eft_no, approval_code, qrcontent.
+
+   Contoh: Credit Card punya 3 prompts:
+   - account_no (6 digit, numeric)
+   - eft_no (dropdown dari EFTTerminal master data)
+   - approval_code (4-6 digit, numeric)
+
+   Jika terminal belum dikonfigurasi profil → fallback ke mode legacy
+   (hardcoded methods tanpa dynamic prompts).
+
+2. NUMPAD ROUTING
+   Numpad on-screen bisa memasukkan angka ke 2 target berbeda:
+   - Amount field (default) → untuk input nominal pembayaran
+   - Prompt field (jika diklik) → untuk input data seperti approval code
+
+   State `activeField` menentukan target:
+   - 'amount' → numpad input ke amount
+   - 'prompt:account_no' → numpad input ke field account_no
+   - 'prompt:approval_code' → numpad input ke field approval_code
+
+   Visual indicator hijau muncul saat numpad diarahkan ke prompt field.
+   Tombol "← Amount" untuk kembali ke mode amount.
+
+3. SPLIT PAYMENT
+   Kasir bisa membagi pembayaran ke beberapa metode:
+   - Klik "+ Split" untuk menambahkan pembayaran parsial ke list
+   - Setiap split punya: method, amount, reference, profile_id, prompt_data
+   - Sisa (remaining) otomatis dihitung
+   - "Bayar" hanya aktif jika total payments >= total bill
+
+   Contoh: Bill Rp 200.000
+   → Cash Rp 100.000 (klik + Split)
+   → Card Rp 100.000 (klik Bayar)
+
+4. CUSTOMER DISPLAY SYNC
+   Setiap perubahan state (ketik angka, ganti metode, tambah split)
+   otomatis di-sync ke layar customer via:
+   syncDisplay() → 400ms debounce → sendModalToCustomerDisplay()
+   → Clone modal → Fix URL → Kirim ke Flask API → SSE → Customer Display
+
+5. ALPINE.JS + HTMX INITIALIZATION TRICK
+   Modal ini menggunakan x-ignore pada element utama agar Alpine.js
+   TIDAK auto-initialize saat HTMX inject HTML. Kemudian script di bawah
+   melakukan clone+replace tanpa x-ignore, sehingga Alpine init secara
+   natural. Ini menghindari bug "initTree" pada Alpine.js saat dipakai
+   dengan HTMX swap.
+
+6. FORM SUBMISSION
+   Form dikirim via HTMX POST ke process_payment endpoint.
+   Hidden inputs berisi semua data yang diperlukan:
+   - method, amount, reference (pembayaran saat ini)
+   - profile_id, prompt_data (untuk dynamic profiles)
+   - payments[0..N][method/amount/reference/profile_id/prompt_data] (split)
+
+CONTEXT VARIABLES (dari Django view):
+=====================================
+- bill                  : Object Bill aktif (id, bill_number, table, total)
+- total_int             : Integer total bill (tanpa desimal)
+- payment_methods_json  : JSON array metode pembayaran, contoh:
+                          [{"id":"cash","label":"Cash","color":"#16a34a",
+                            "profile_id":"uuid","method_id":"cash",
+                            "allow_change":true,"prompts":[...]}]
+- payment_methods_list  : QuerySet/list objek untuk server-side rendering
+                          (setiap objek punya: id, label, color, prompts[], ref, refPlaceholder)
+- use_profiles          : Boolean — true jika terminal punya payment profiles
+- default_method        : String ID metode default (biasanya 'cash')
+- eft_terminals         : QuerySet EFTTerminal untuk dropdown eft_no
+
+ALPINE.JS STATE (paymentModal()):
+==================================
+- method          : String ID metode terpilih (misal 'cash', 'credit_card')
+- amount          : Integer nominal input (misal 50000)
+- amountDisplay   : String formatted (misal '50,000')
+- reference       : String referensi legacy (non-profile mode)
+- promptValues    : Object {field_name: value} untuk dynamic prompts
+                    Contoh: {account_no: '123456', eft_no: '01', approval_code: 'ABC'}
+- payments[]      : Array split payments yang sudah di-add
+- activeField     : String target numpad ('amount' atau 'prompt:field_name')
+- total           : Integer total bill (read-only)
+
+COMPUTED PROPERTIES:
+- selectedMethod    → Object metode terpilih dari paymentMethods array
+- currentProfileId  → UUID profile_id (untuk hidden input)
+- currentMethodId   → String method_id legacy (cash/card/qris/dll)
+- currentAllowChange→ Boolean apakah metode ini boleh kembalian
+- promptDataJson    → JSON string dari promptValues (untuk hidden input)
+- paidTotal         → Sum semua payments[].amount
+- remaining         → total - paidTotal (minimum 0)
+- changeAmount      → Kembalian (hanya jika allow_change dan bayar > total)
+- canPay            → Boolean apakah tombol "Bayar" aktif
+
+FILE TERKAIT:
+- apps/pos/views.py → payment_modal() (line ~1699) dan process_payment() (line ~1901)
+- apps/core/models.py → PaymentMethodProfile, DataEntryPrompt, EFTTerminal
+- apps/pos/models.py → Payment (payment_profile, payment_metadata)
+- templates/pos/partials/payment_success.html → Halaman sukses setelah bayar
+- templates/pos/partials/main/js/launcher_integration.html → sendModalToCustomerDisplay()
+============================================================================
+-->
+
+<!--
+PENTING: Script paymentModal() harus di-define SEBELUM HTML-nya.
+Karena HTMX menjalankan <script> setelah DOM insert, Alpine.js butuh
+function ini sudah ada saat x-data="paymentModal()" di-evaluate.
+-->
 <script>
+/**
+ * paymentModal() — Alpine.js component untuk seluruh payment modal.
+ *
+ * CATATAN: Menggunakan `var` dan `function(){}` (bukan arrow function)
+ * agar kompatibel dengan Alpine.js proxy + touch device.
+ */
 function paymentModal() {
+    // ===== DATA DARI SERVER (Django template tags) =====
+    // payment_methods_json berisi array of objects, contoh:
+    // [{id:"cash", label:"Cash", color:"#16a34a", profile_id:"uuid-xxx",
+    //   method_id:"cash", allow_change:true, prompts:[{field_name:"...", label:"..."}]}]
     var _paymentMethods = [];
     try { _paymentMethods = {{ payment_methods_json|safe }}; } catch(e) {}
-    var _useProfiles = {{ use_profiles|yesno:"true,false" }};
-    var _defaultMethod = '{{ default_method|escapejs }}' || 'cash';
+    var _useProfiles = {{ use_profiles|yesno:"true,false" }};  // true jika terminal punya payment profiles
+    var _defaultMethod = '{{ default_method|escapejs }}' || 'cash';  // metode default saat modal dibuka
 
     return {
-        useProfiles: _useProfiles,
-        paymentMethods: _paymentMethods,
-        method: _defaultMethod,
-        amount: 0,
-        amountDisplay: '',
-        reference: '',
-        promptValues: {},
-        total: parseInt('{{ total_int|escapejs }}') || 0,
-        payments: [],
-        activeField: 'amount',
-        _syncTimer: null,
+        // ===== REACTIVE STATE =====
+        useProfiles: _useProfiles,        // Mode profil dinamis atau legacy
+        paymentMethods: _paymentMethods,  // Array semua metode pembayaran
+        method: _defaultMethod,           // ID metode terpilih saat ini
+        amount: 0,                        // Nominal input (integer, tanpa format)
+        amountDisplay: '',                // Nominal terformat untuk display ('50,000')
+        reference: '',                    // Referensi legacy (hanya non-profile mode)
+        promptValues: {},                 // Data entry prompts: {field_name: value}
+        total: parseInt('{{ total_int|escapejs }}') || 0,  // Total bill (read-only)
+        payments: [],                     // Array split payments yang sudah di-add
+        activeField: 'amount',            // Target numpad: 'amount' atau 'prompt:field_name'
+        _syncTimer: null,                 // Debounce timer untuk syncDisplay()
 
+        // ===== COMPUTED PROPERTIES =====
+
+        /** Object metode pembayaran yang sedang dipilih */
         get selectedMethod() {
             return this.paymentMethods.find(m => m.id === this.method) || null;
         },
 
+        /** UUID payment profile (untuk hidden input form) */
         get currentProfileId() {
             var sm = this.selectedMethod;
             return (sm && sm.profile_id) ? sm.profile_id : '';
         },
 
+        /** Legacy method ID: 'cash'/'card'/'qris'/dll (untuk backward compat) */
         get currentMethodId() {
             var sm = this.selectedMethod;
             return (sm && sm.method_id) ? sm.method_id : this.method;
         },
 
+        /** Apakah metode ini boleh kasih kembalian (true untuk cash) */
         get currentAllowChange() {
             var sm = this.selectedMethod;
             return sm ? (sm.allow_change !== false) : true;
         },
 
+        /** JSON string dari promptValues untuk dikirim ke server via hidden input */
         get promptDataJson() {
             if (!this.useProfiles) return '';
             var vals = this.promptValues;
@@ -49,21 +255,30 @@ function paymentModal() {
             return hasAny ? JSON.stringify(vals) : '';
         },
 
+        /** Total semua split payments yang sudah di-add */
         get paidTotal() {
             var sum = 0;
             for (var i = 0; i < this.payments.length; i++) sum += this.payments[i].amount;
             return sum;
         },
 
+        /** Sisa yang harus dibayar (total - sudah dibayar) */
         get remaining() {
             var r = this.total - this.paidTotal;
             return r > 0 ? r : 0;
         },
 
+        /** Angka "Bayar" yang ditampilkan di summary card */
         get displayPaying() {
             return this.payments.length > 0 ? this.paidTotal : this.amount;
         },
 
+        /**
+         * Kembalian — hanya muncul jika:
+         * - Single payment: amount > total DAN metode allow_change
+         * - Split payment: paidTotal > total DAN payment terakhir allow_change
+         * Non-cash (allow_change=false) TIDAK boleh bayar lebih dari sisa
+         */
         get changeAmount() {
             if (this.payments.length === 0 && this.currentAllowChange && this.amount > this.total) {
                 return this.amount - this.total;
@@ -76,6 +291,11 @@ function paymentModal() {
             return 0;
         },
 
+        /**
+         * HTML untuk menampilkan list split payments yang sudah di-add.
+         * Menggunakan x-html (bukan x-for) untuk menghindari bug Alpine.js initTree
+         * saat dipakai dengan HTMX swap.
+         */
         get paymentsListHtml() {
             var h = '';
             for (var i = 0; i < this.payments.length; i++) {
@@ -91,6 +311,11 @@ function paymentModal() {
             return h;
         },
 
+        /**
+         * Hidden inputs untuk split payments — dikirim ke server saat form submit.
+         * Format: payments[0][method], payments[0][amount], payments[0][reference], dll.
+         * Server-side process_payment() membaca array ini untuk membuat Payment records.
+         */
         get paymentsHiddenHtml() {
             var h = '';
             for (var i = 0; i < this.payments.length; i++) {
@@ -108,26 +333,37 @@ function paymentModal() {
             return h;
         },
 
+        /**
+         * Validasi: tombol "Bayar" aktif jika:
+         * - Single payment: amount >= total DAN amount > 0
+         * - Split payment: total semua payments >= total bill
+         */
         get canPay() {
             if (this.payments.length === 0) return this.amount >= this.total && this.amount > 0;
             return this.paidTotal >= this.total;
         },
 
+        // ===== METHODS =====
+
+        /** Format angka ke string dengan separator ribuan: 50000 → '50,000' */
         fmt(n) {
             if (!n && n !== 0) return '0';
             return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         },
 
+        /** Cari label metode berdasarkan ID (untuk display di split payments list) */
         getMethodLabel(id) {
             var m = this.paymentMethods.find(function(pm) { return pm.id === id; });
             return m ? m.label : id;
         },
 
+        /** Cari warna metode berdasarkan ID (untuk color dot di split payments list) */
         getMethodColor(id) {
             var m = this.paymentMethods.find(function(pm) { return pm.id === id; });
             return m ? m.color : '#6b7280';
         },
 
+        /** Handler saat user ketik langsung di input amount (bukan numpad) */
         onInput(val) {
             var clean = val.replace(/\D/g, '');
             this.amount = clean ? parseInt(clean) : 0;
@@ -135,10 +371,16 @@ function paymentModal() {
             this.syncDisplay();
         },
 
+        /**
+         * Handler numpad (0-9, 00, 000, DEL, C).
+         * Routing berdasarkan activeField:
+         * - 'prompt:xxx' → append/delete ke promptValues[xxx]
+         * - 'amount' (default) → append/delete ke amount
+         */
         numpad(key) {
-            // Route numpad to prompt field if active
+            // Route numpad ke prompt field jika activeField = 'prompt:xxx'
             if (this.activeField && this.activeField.startsWith('prompt:')) {
-                var fieldName = this.activeField.substring(7);
+                var fieldName = this.activeField.substring(7);  // 'prompt:account_no' → 'account_no'
                 var val = this.promptValues[fieldName] || '';
                 if (key === 'C') val = '';
                 else if (key === 'DEL') val = val.slice(0, -1);
@@ -147,7 +389,7 @@ function paymentModal() {
                 this.syncDisplay();
                 return;
             }
-            // Default: amount field
+            // Default: numpad ke amount field
             var raw = this.amount.toString();
             if (key === 'C') raw = '';
             else if (key === 'DEL') raw = raw.slice(0, -1);
@@ -157,6 +399,7 @@ function paymentModal() {
             this.syncDisplay();
         },
 
+        /** Set amount langsung (dari quick amount buttons: Exact, 50K, 100K, Round) */
         setAmount(val) {
             this.activeField = 'amount';
             this.amount = val;
@@ -164,6 +407,7 @@ function paymentModal() {
             this.syncDisplay();
         },
 
+        /** Ganti metode pembayaran — reset semua input prompt dan kembali ke amount */
         setMethod(id) {
             this.method = id;
             this.reference = '';
@@ -172,10 +416,16 @@ function paymentModal() {
             this.syncDisplay();
         },
 
+        /** Set activeField saat user klik/focus prompt field */
         focusField(fieldName) {
             this.activeField = fieldName;
         },
 
+        /**
+         * Sync state ke customer display (debounce 400ms).
+         * Memanggil sendModalToCustomerDisplay() di launcher_integration.html
+         * yang akan clone modal → fix URL → kirim via SSE ke layar customer.
+         */
         syncDisplay() {
             if (this._syncTimer) clearTimeout(this._syncTimer);
             this._syncTimer = setTimeout(function() {
@@ -183,6 +433,7 @@ function paymentModal() {
             }, 400);
         },
 
+        /** Focus ke input field barcode scanner (untuk prompt dengan use_scanner=true) */
         activateScanner(fieldName) {
             var self = this;
             this.$nextTick(function() {
@@ -191,6 +442,11 @@ function paymentModal() {
             });
         },
 
+        /**
+         * Tambahkan pembayaran ke split list.
+         * Validasi: amount > 0, dan jika non-cash (allow_change=false) tidak boleh > remaining.
+         * Setelah add: reset amount, reference, promptValues, kembali ke activeField='amount'.
+         */
         addPayment() {
             if (this.amount <= 0) return;
             if (!this.currentAllowChange && this.amount > this.remaining) return;
@@ -210,11 +466,18 @@ function paymentModal() {
             this.syncDisplay();
         },
 
+        /** Hapus split payment dari list berdasarkan index */
         removePayment(idx) {
             this.payments.splice(idx, 1);
             this.syncDisplay();
         },
 
+        /**
+         * Submit pembayaran — trigger HTMX POST ke process_payment endpoint.
+         * Form berisi: method, amount, reference, profile_id, prompt_data,
+         * + payments[0..N] untuk split payments.
+         * Server akan membuat Payment record(s) dan return payment_success.html.
+         */
         submitPayment() {
             console.log('[Payment] submitPayment called, canPay:', this.canPay, 'amount:', this.amount, 'total:', this.total, 'payments:', this.payments.length);
             if (!this.canPay) return;
@@ -228,7 +491,10 @@ function paymentModal() {
             }
         },
 
+        /** Init: set flag _paymentModalActive dan auto-focus ke input amount */
         init() {
+            // Flag ini digunakan oleh htmx_handlers.html untuk memblokir
+            // HTMX request lain ke #modal-container saat payment modal aktif
             window._paymentModalActive = true;
             this.$nextTick(() => {
                 var input = this.$el.querySelector('input[name=amount_display]');
@@ -238,6 +504,11 @@ function paymentModal() {
     };
 }
 
+/**
+ * Tutup modal pembayaran.
+ * Reset flag _paymentModalActive dan clear modal container.
+ * Juga clear modal di customer display via sendModalToCustomerDisplay().
+ */
 function closeModal() {
     window._paymentModalActive = false;
     document.getElementById('modal-container').innerHTML = '';
@@ -245,6 +516,14 @@ function closeModal() {
 }
 </script>
 
+<!--
+    MODAL CONTAINER
+    - data-payment-modal: Marker agar sendModalToCustomerDisplay() tahu ini payment modal (whitelist)
+    - x-data="paymentModal()": Alpine.js component (defined di <script> di atas)
+    - x-ignore: PENTING — mencegah Alpine auto-init saat HTMX inject.
+      Script di bawah akan clone element tanpa x-ignore untuk init yang benar.
+      Tanpa trick ini, Alpine.js bug "initTree" terjadi saat HTMX swap.
+-->
 <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2"
      data-payment-modal
      x-data="paymentModal()"
@@ -278,7 +557,12 @@ function closeModal() {
             </div>
         </div>
 
-        <!-- Summary Cards -->
+        <!--
+            SUMMARY CARDS — 3 kartu ringkasan di atas:
+            1. Total: total bill (read-only)
+            2. Bayar: jumlah yang sedang/sudah dibayar (hijau jika >= total, amber jika kurang)
+            3. Kembalian/Sisa: kembalian (hijau) atau sisa belum bayar (amber)
+        -->
         <div class="grid grid-cols-3 gap-2 p-2.5 bg-gray-50 border-b" style="flex-shrink:0;">
             <div class="bg-white rounded-lg p-2 border text-center">
                 <div class="text-[10px] font-semibold text-gray-500 uppercase">Total</div>
@@ -299,7 +583,13 @@ function closeModal() {
             </div>
         </div>
 
-        <!-- Applied Payments List (split payments) - x-html avoids x-for/initTree bug -->
+        <!--
+            APPLIED PAYMENTS LIST (Split Payments)
+            Tampil jika kasir sudah menambah 1+ split payment via tombol "+ Split".
+            Menggunakan x-html (bukan x-for) karena x-for dengan non-empty array
+            menyebabkan bug Alpine.js initTree saat HTMX swap.
+            Tombol X merah untuk hapus payment dari list.
+        -->
         <div x-show="payments.length > 0" x-cloak class="px-2.5 pt-2 pb-1 bg-gray-50 border-b" style="flex-shrink:0;">
             <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Pembayaran Tercatat</div>
             <div style="display:flex; flex-wrap:wrap; gap:4px;"
@@ -307,7 +597,15 @@ function closeModal() {
                  @click="var btn=$event.target.closest('[data-rm]'); if(btn) removePayment(parseInt(btn.dataset.rm))"></div>
         </div>
 
-        <!-- Content: 30/70 Split Layout -->
+        <!--
+            CONTENT AREA: 30/70 Split Layout
+            Kiri (30%): List metode pembayaran (server-rendered)
+            Kanan (70%): Input amount + prompts + numpad
+
+            FORM SUBMISSION:
+            Form ini dikirim via HTMX POST ke process_payment endpoint.
+            Response HTML (payment_success.html) di-inject ke #modal-container.
+        -->
         <div style="flex:1 1 0%; min-height:0; display:flex;">
             <form id="payment-form"
                   hx-post="{% url 'pos:process_payment' bill.id %}"
@@ -315,16 +613,34 @@ function closeModal() {
                   hx-swap="innerHTML"
                   style="display:flex; flex:1; min-height:0;">
                 {% csrf_token %}
-                <!-- Current payment hidden inputs -->
+                <!--
+                    HIDDEN INPUTS — Data pembayaran saat ini.
+                    Dibaca oleh process_payment() di server:
+                    - method: legacy method ID (cash/card/qris/dll)
+                    - amount: nominal pembayaran
+                    - reference: referensi legacy (non-profile mode)
+                    - profile_id: UUID PaymentMethodProfile
+                    - prompt_data: JSON string dari promptValues
+                -->
                 <input type="hidden" name="method" :value="currentMethodId">
                 <input type="hidden" name="amount" :value="amount">
                 <input type="hidden" name="reference" :value="reference">
                 <input type="hidden" name="profile_id" :value="currentProfileId">
                 <input type="hidden" name="prompt_data" :value="promptDataJson">
-                <!-- Applied payments hidden inputs (x-html, no x-for needed) -->
+                <!-- Hidden inputs untuk split payments (payments[0][method], payments[0][amount], dll) -->
                 <div x-html="paymentsHiddenHtml"></div>
 
-                <!-- LEFT PANEL: Payment Methods (30%) -->
+                <!--
+                    LEFT PANEL: Metode Pembayaran (30%)
+                    Server-side rendered dari payment_methods_list (Django for loop).
+                    Setiap tombol memanggil setMethod(id) yang:
+                    1. Ganti metode aktif
+                    2. Reset promptValues (karena setiap metode punya prompts berbeda)
+                    3. Kembali ke activeField='amount'
+                    4. Sync ke customer display
+
+                    Tombol aktif: border hijau + shadow (via Alpine :class binding)
+                -->
                 <div style="width:30%; flex-shrink:0; border-right:1px solid #e5e7eb; overflow-y:auto;"
                      class="bg-gray-50">
                     <div class="p-2.5">
@@ -350,9 +666,21 @@ function closeModal() {
                     </div>
                 </div>
 
-                <!-- RIGHT PANEL: Amount + Prompts + Numpad (70%) -->
+                <!--
+                    RIGHT PANEL: Amount + Prompts + Numpad (70%)
+                    Berisi 4 bagian dari atas ke bawah:
+                    1. Amount Input — input nominal pembayaran
+                    2. Dynamic Prompts — field tambahan per metode (account_no, eft_no, dll)
+                    3. Numpad — 0-9, 00, 000, DEL, C (routing ke amount atau prompt)
+                    4. Quick Amounts — tombol Exact, 50K, 100K, Round
+                -->
                 <div style="width:70%; overflow-y:auto;" class="p-3">
-                    <!-- Amount Input -->
+                    <!--
+                        AMOUNT INPUT
+                        Border hijau saat fokus (activeField='amount').
+                        Border merah jika non-cash dan amount > remaining (overpayment blocked).
+                        Klik area input → set activeField='amount' (numpad routing).
+                    -->
                     <div class="flex items-center border-2 rounded-xl mb-2.5 bg-white transition-all"
                          :class="!currentAllowChange && amount > remaining ? 'border-red-300' : (activeField === 'amount' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-gray-200')"
                          @click="activeField = 'amount'; $el.querySelector('input').focus()">
@@ -368,7 +696,24 @@ function closeModal() {
                                autocomplete="off">
                     </div>
 
-                    <!-- Dynamic Data Entry Prompts (server-side rendered per method, toggled with x-show) -->
+                    <!--
+                        DYNAMIC DATA ENTRY PROMPTS (Profile Mode)
+                        Server-side rendered: Django loop semua metode + prompts-nya.
+                        Client-side toggle: x-show="method === 'xxx'" — hanya tampil
+                        untuk metode yang sedang dipilih.
+
+                        Setiap prompt bisa berupa:
+                        - Text input biasa (account_no, approval_code)
+                        - Dropdown/select (eft_no → dari EFTTerminal master data)
+                        - Scanner button (qrcontent → tombol scan barcode/QR)
+
+                        Prompt fields punya data-prompt-field="xxx" attribute
+                        agar sendModalToCustomerDisplay() bisa capture nilainya
+                        saat clone modal ke customer display.
+
+                        @focus pada input → set activeField='prompt:field_name'
+                        → numpad akan route ke field ini (bukan amount).
+                    -->
                     {% if use_profiles %}
                     {% for pm in payment_methods_list %}
                     {% if pm.prompts %}
@@ -419,7 +764,12 @@ function closeModal() {
                     {% endfor %}
                     {% endif %}
 
-                    <!-- Legacy Reference Input (Non-profile mode) -->
+                    <!--
+                        LEGACY REFERENCE INPUT (Non-Profile Mode)
+                        Ditampilkan jika use_profiles=false (terminal belum punya payment profiles).
+                        Satu field "Reference" generic per metode yang punya ref=true.
+                        Akan di-phase out setelah semua terminal pakai dynamic profiles.
+                    -->
                     {% if not use_profiles %}
                     {% for pm in payment_methods_list %}
                     {% if pm.ref %}
@@ -433,7 +783,12 @@ function closeModal() {
                     {% endfor %}
                     {% endif %}
 
-                    <!-- Numpad target indicator -->
+                    <!--
+                        NUMPAD TARGET INDICATOR
+                        Muncul saat activeField = 'prompt:xxx' (numpad diarahkan ke prompt field).
+                        Menampilkan nama field yang sedang menerima input numpad.
+                        Tombol "← Amount" untuk kembali routing numpad ke amount.
+                    -->
                     <div x-show="activeField && activeField.startsWith('prompt:')" x-cloak
                          class="flex items-center gap-1.5 mb-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded-lg">
                         <svg class="w-3 h-3 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -445,7 +800,14 @@ function closeModal() {
                         </button>
                     </div>
 
-                    <!-- Numpad -->
+                    <!--
+                        NUMPAD — Grid 4 kolom, 4 baris.
+                        Setiap tombol memanggil numpad(key) yang route ke:
+                        - activeField='amount' → append angka ke amount
+                        - activeField='prompt:xxx' → append angka ke promptValues[xxx]
+                        Tombol spesial: DEL (hapus 1 digit), C (clear semua)
+                        Tombol 00 dan 000 untuk input cepat ribuan.
+                    -->
                     <div class="grid grid-cols-4 gap-1.5 mb-2">
                         <button type="button" @click="numpad('7')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">7</button>
                         <button type="button" @click="numpad('8')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">8</button>
@@ -463,7 +825,14 @@ function closeModal() {
                         <button type="button" @click="numpad('000')" class="rounded-lg font-bold text-base transition-all active:scale-95 bg-white border border-gray-200 text-gray-800 hover:bg-gray-50" style="height:44px;">000</button>
                     </div>
 
-                    <!-- Quick Amounts -->
+                    <!--
+                        QUICK AMOUNT BUTTONS
+                        - Exact: set amount = remaining (bayar pas)
+                        - 50K: set amount = 50.000
+                        - 100K: set amount = 100.000
+                        - Round: pembulatan ke atas kelipatan 50.000
+                        Semua memanggil setAmount() yang juga reset activeField ke 'amount'.
+                    -->
                     <div class="grid grid-cols-4 gap-1.5">
                         <button type="button" @click="setAmount(remaining)"
                                 class="py-2 rounded-lg bg-green-600 text-white font-bold text-xs hover:bg-green-700 active:scale-95 transition-all">
@@ -486,12 +855,18 @@ function closeModal() {
             </form>
         </div>
 
-        <!-- Footer -->
+        <!--
+            FOOTER — 3 tombol aksi:
+            1. Cancel: tutup modal tanpa bayar
+            2. + Split: tambah pembayaran parsial ke list (tampil jika amount > 0 DAN belum cukup)
+            3. Bayar: submit pembayaran (aktif jika canPay=true, disabled jika belum cukup)
+        -->
         <div class="p-2.5 border-t bg-gray-50 flex gap-2" style="flex-shrink:0;">
             <button type="button" onclick="closeModal()"
                     class="px-5 py-2.5 rounded-lg font-bold text-xs bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-all">
                 Cancel
             </button>
+            <!-- Tombol + Split: tampil jika ada amount DAN (sudah ada split ATAU amount < total) -->
             <button type="button"
                     x-show="amount > 0 && (payments.length > 0 || amount < total)"
                     x-cloak
@@ -520,9 +895,14 @@ function closeModal() {
     </div>
 </div>
 
+<!--
+    STYLES
+    - x-cloak: Hide elemen Alpine.js yang belum di-init (mencegah flash of unstyled content)
+    - touch-action: manipulation: Hilangkan 300ms tap delay di touchscreen POS
+    - -webkit-tap-highlight-color: transparent: Hilangkan highlight biru saat tap
+-->
 <style>
 [x-cloak] { display: none !important; }
-/* Touch screen fixes: eliminate 300ms tap delay + improve responsiveness */
 [data-payment-modal] { touch-action: manipulation; }
 [data-payment-modal] button,
 [data-payment-modal] select,
@@ -533,23 +913,38 @@ function closeModal() {
 }
 </style>
 
-<!-- Init Alpine: clone element without x-ignore so Alpine's MO handles it naturally.
-     No x-for with non-empty arrays remains, so the initTree marker bug is avoided.
-     Touch fix: use rAF to ensure DOM is settled before clone+replace. -->
+<!--
+    ALPINE.JS INITIALIZATION TRICK
+    ================================
+    Masalah: HTMX inject HTML ke #modal-container → Alpine.js MutationObserver
+    mendeteksi element baru dengan x-data → auto-init. Tapi pada Alpine.js
+    tertentu, ini menyebabkan bug "initTree" jika ada x-for dengan array
+    yang sudah berisi data (non-empty).
+
+    Solusi:
+    1. Element utama diberi x-ignore → Alpine SKIP init saat HTMX inject
+    2. Script ini (berjalan setelah inject) → clone element tanpa x-ignore
+    3. Replace element asli dengan clone → Alpine MO detect element baru → init natural
+    4. requestAnimationFrame + setTimeout(0) → pastikan DOM settled sebelum clone
+
+    Ini juga fix masalah touch device dimana Alpine init terlalu cepat
+    sebelum DOM siap, menyebabkan event handler tidak terpasang.
+
+    Setelah clone+replace, htmx.process() dipanggil agar HTMX attributes
+    (hx-post, hx-target, dll) pada form tetap berfungsi.
+-->
 <script>
 (function() {
     var el = document.querySelector('[data-payment-modal]');
     if (!el || typeof Alpine === 'undefined') return;
 
-    // Use requestAnimationFrame for more reliable timing on touch devices
     requestAnimationFrame(function() {
         setTimeout(function() {
-            if (el._x_dataStack) return;
+            if (el._x_dataStack) return;  // Sudah di-init Alpine, skip
             var clone = el.cloneNode(true);
-            clone.removeAttribute('x-ignore');
+            clone.removeAttribute('x-ignore');  // Hapus x-ignore → Alpine akan init
             el.parentNode.replaceChild(clone, el);
-            // Tell HTMX to process hx-* attributes on the cloned elements
-            if (typeof htmx !== 'undefined') htmx.process(clone);
+            if (typeof htmx !== 'undefined') htmx.process(clone);  // Re-bind HTMX
             console.log('[Payment Modal] Alpine clone+replace done, touch ready');
         }, 0);
     });

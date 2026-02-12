@@ -182,8 +182,59 @@ def create_kitchen_tickets(bill, item_ids=None):
         tickets.append(ticket)
         logger.info(f"✓ Created ticket #{ticket.id} for {station_code.upper()}")
     
+    # === CHECKER TICKET ===
+    # Create a checker ticket containing ALL items from ALL stations
+    # Only if a checker printer is configured for this brand
+    from .models import StationPrinter
+    has_checker_printer = StationPrinter.objects.filter(
+        brand=bill.brand,
+        station_code='checker',
+        is_active=True
+    ).exists()
+
+    if has_checker_printer:
+        # Collect ALL items from all stations for checker
+        all_items = []
+        for items in items_by_station.values():
+            all_items.extend(items)
+
+        logger.info(f"Creating CHECKER ticket with ALL {len(all_items)} items")
+
+        checker_ticket = KitchenTicket.objects.create(
+            bill=bill,
+            brand=bill.brand,
+            printer_target='checker',
+            status='new'
+        )
+
+        for item in all_items:
+            KitchenTicketItem.objects.create(
+                kitchen_ticket=checker_ticket,
+                bill_item=item,
+                quantity=item.quantity
+            )
+
+        KitchenTicketLog.log_action(
+            ticket=checker_ticket,
+            action='created',
+            actor='system',
+            old_status='',
+            new_status='new',
+            metadata={
+                'items_count': len(all_items),
+                'bill_number': bill.bill_number,
+                'bill_type': bill.bill_type,
+                'table': str(bill.table) if bill.table else None,
+                'is_checker': True,
+                'stations_included': list(items_by_station.keys()),
+            }
+        )
+
+        tickets.append(checker_ticket)
+        logger.info(f"✓ Created CHECKER ticket #{checker_ticket.id} with {len(all_items)} items from {list(items_by_station.keys())}")
+
     logger.info(f"Successfully created {len(tickets)} ticket(s) for bill #{bill.bill_number}")
-    
+
     return tickets
 
 
