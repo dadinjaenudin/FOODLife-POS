@@ -1,0 +1,566 @@
+{% extends 'management/base.html' %}
+
+{% block title %}{% if is_edit %}Edit{% else %}Create{% endif %} Display Promo{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="flex items-center gap-3 mb-2">
+        <a href="{% url 'management:display_promo_list' %}"
+           class="text-gray-600 hover:text-gray-900 transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </a>
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">
+                {% if is_edit %}Edit Promo Card{% else %}Create Promo Card{% endif %}
+            </h1>
+            <p class="text-gray-500">Configure a promo card for customer display "Promo Hari Ini" section</p>
+        </div>
+    </div>
+</div>
+
+<!-- Messages -->
+{% if messages %}
+<div class="mb-4 space-y-2">
+    {% for message in messages %}
+    <div class="px-4 py-3 rounded-lg border flex items-start gap-3 shadow-sm
+        {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+        {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+        {% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800
+        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        <span class="text-xl">
+            {% if message.tags == 'error' %}&#10060;
+            {% elif message.tags == 'success' %}&#9989;
+            {% elif message.tags == 'warning' %}&#9888;&#65039;
+            {% else %}&#8505;&#65039;{% endif %}
+        </span>
+        <div class="flex-1">{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Form -->
+<form method="POST" enctype="multipart/form-data" class="bg-white rounded-lg shadow p-6">
+    {% csrf_token %}
+
+    <div class="space-y-6">
+        <!-- Content Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Content</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Title -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Promo Title <span class="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        name="title"
+                        value="{% if promo %}{{ promo.title }}{% endif %}"
+                        required
+                        maxlength="200"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., Paket Hemat Nasi">
+                    <p class="mt-1 text-sm text-gray-500">Main title of the promo card</p>
+                </div>
+
+                <!-- Description -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Description (Optional)
+                    </label>
+                    <textarea
+                        name="description"
+                        rows="2"
+                        maxlength="500"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., Nasi + Lauk Pilihan + Es Teh. Hemat sampai 30%!">{% if promo %}{{ promo.description }}{% endif %}</textarea>
+                    <p class="mt-1 text-sm text-gray-500">Short description shown below the title</p>
+                </div>
+
+                <!-- Badge Text -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Badge Text <span class="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        name="badge_text"
+                        value="{% if promo %}{{ promo.badge_text }}{% else %}HOT DEAL{% endif %}"
+                        required
+                        maxlength="30"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., HOT DEAL, LIMITED, WEEKEND">
+                    <p class="mt-1 text-sm text-gray-500">Short label displayed as badge on card</p>
+                </div>
+
+                <!-- Badge Color -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Badge Color <span class="text-red-500">*</span>
+                    </label>
+                    <select
+                        name="badge_color"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                        <option value="red" {% if promo and promo.badge_color == 'red' %}selected{% endif %}>Red (Hot Deal)</option>
+                        <option value="orange" {% if promo and promo.badge_color == 'orange' %}selected{% endif %}>Orange (Limited)</option>
+                        <option value="purple" {% if promo and promo.badge_color == 'purple' %}selected{% endif %}>Purple (Weekend/Special)</option>
+                        <option value="green" {% if promo and promo.badge_color == 'green' %}selected{% endif %}>Green (Everyday)</option>
+                        <option value="blue" {% if promo and promo.badge_color == 'blue' %}selected{% endif %}>Blue (New)</option>
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Color theme for the badge label</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Image</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Image Upload + URL -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Promo Image (Optional)
+                    </label>
+
+                    <!-- Current Image Preview -->
+                    {% if promo and promo.image_url %}
+                    <div class="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200" id="current-image-preview">
+                        <div class="flex items-center gap-3">
+                            <img src="{{ promo.image_url }}" alt="Current image" class="h-16 w-16 object-cover border border-gray-300 rounded" onerror="this.style.display='none'">
+                            <div class="flex-1">
+                                <p class="text-sm font-medium text-gray-700">Current Image</p>
+                                <p class="text-xs text-gray-500 mt-1 break-all">{{ promo.image_url }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Upload Button -->
+                    <div class="mb-3">
+                        <label class="block cursor-pointer">
+                            <div class="flex items-center gap-2 px-4 py-2.5 bg-green-50 border-2 border-dashed border-green-300 rounded-lg hover:bg-green-100 transition">
+                                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                <span class="text-sm font-medium text-green-700">Upload Image</span>
+                                <span class="text-xs text-green-500">(JPG, PNG, WebP - Max 5MB)</span>
+                            </div>
+                            <input
+                                type="file"
+                                id="promo_image_input"
+                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                class="hidden"
+                                onchange="handleImageUpload(this)">
+                        </label>
+                        <!-- Upload Preview -->
+                        <div id="upload-preview" class="mt-2 hidden">
+                            <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                                <div class="flex items-center gap-3">
+                                    <img id="upload-preview-img" class="h-16 w-16 object-cover border border-emerald-300 rounded">
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium text-emerald-700" id="upload-status">Uploading...</p>
+                                        <p id="upload-preview-name" class="text-xs text-emerald-600 mt-1"></p>
+                                    </div>
+                                    <button type="button" onclick="clearUpload()" class="text-red-500 hover:text-red-700">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OR Divider -->
+                    <div class="flex items-center gap-3 my-3">
+                        <div class="flex-1 border-t border-gray-300"></div>
+                        <span class="text-sm text-gray-500 font-medium">OR paste URL</span>
+                        <div class="flex-1 border-t border-gray-300"></div>
+                    </div>
+
+                    <!-- Manual URL input -->
+                    <input
+                        type="url"
+                        name="image_url"
+                        id="image_url_input"
+                        value="{% if promo %}{{ promo.image_url }}{% endif %}"
+                        maxlength="500"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                        placeholder="https://minio.example.com/promos/image.jpg">
+                    <input type="hidden" name="image_path" id="image_path_input" value="{% if promo %}{{ promo.image_path }}{% endif %}">
+                </div>
+
+                <!-- Emoji Fallback -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Emoji Fallback
+                    </label>
+                    <input
+                        type="text"
+                        name="emoji_fallback"
+                        value="{% if promo %}{{ promo.emoji_fallback }}{% else %}🍽️{% endif %}"
+                        maxlength="10"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-2xl text-center"
+                        style="font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;">
+                    <p class="mt-1 text-sm text-gray-500">Shown when image is not available</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Pricing</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Original Price -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Original Price (Rp) <span class="text-red-500">*</span>
+                    </label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">Rp</span>
+                        <input
+                            type="text"
+                            id="original_price_display"
+                            value="{% if promo %}{{ promo.original_price|floatformat:0 }}{% else %}0{% endif %}"
+                            required
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-right font-semibold"
+                            placeholder="35,000"
+                            inputmode="numeric"
+                            oninput="formatPriceInput(this, 'original_price')"
+                            onfocus="this.select()">
+                        <input type="hidden" name="original_price" id="original_price_hidden" value="{% if promo %}{{ promo.original_price|floatformat:0 }}{% else %}0{% endif %}">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Harga coret / harga normal (sebelum promo)</p>
+                </div>
+
+                <!-- Promo Price -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Promo Price (Rp) <span class="text-red-500">*</span>
+                    </label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">Rp</span>
+                        <input
+                            type="text"
+                            id="promo_price_display"
+                            value="{% if promo %}{{ promo.promo_price|floatformat:0 }}{% else %}0{% endif %}"
+                            required
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-right font-semibold"
+                            placeholder="25,000"
+                            inputmode="numeric"
+                            oninput="formatPriceInput(this, 'promo_price')"
+                            onfocus="this.select()">
+                        <input type="hidden" name="promo_price" id="promo_price_hidden" value="{% if promo %}{{ promo.promo_price|floatformat:0 }}{% else %}0{% endif %}">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Harga promo yang ditampilkan (hijau, besar)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Display Settings Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Display Settings</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Order -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Display Order
+                    </label>
+                    <input
+                        type="number"
+                        name="order"
+                        value="{% if promo %}{{ promo.order }}{% else %}0{% endif %}"
+                        min="0"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="0">
+                    <p class="mt-1 text-sm text-gray-500">Lower number = shown first</p>
+                </div>
+
+                <!-- Start Date -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Start Date (Optional)
+                    </label>
+                    <input
+                        type="date"
+                        name="start_date"
+                        value="{% if promo and promo.start_date %}{{ promo.start_date|date:'Y-m-d' }}{% endif %}"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    <p class="mt-1 text-sm text-gray-500">Leave empty for immediate display</p>
+                </div>
+
+                <!-- End Date -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        End Date (Optional)
+                    </label>
+                    <input
+                        type="date"
+                        name="end_date"
+                        value="{% if promo and promo.end_date %}{{ promo.end_date|date:'Y-m-d' }}{% endif %}"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    <p class="mt-1 text-sm text-gray-500">Leave empty for no expiration</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scope Section -->
+        <div class="pb-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Configuration Scope</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Brand -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Brand (Optional)
+                    </label>
+                    <select
+                        name="brand"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                        <option value="">All Brands (Company-wide)</option>
+                        {% for store_brand in store_brands %}
+                        <option value="{{ store_brand.brand.id }}" {% if promo and promo.brand_id == store_brand.brand.id %}selected{% endif %}>
+                            {{ store_brand.brand.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Leave empty for company-wide promo</p>
+                </div>
+
+                <!-- Store -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Store (Optional)
+                    </label>
+                    <select
+                        name="store"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                        <option value="">All Stores</option>
+                        <option value="{{ store_config.id }}" {% if promo and promo.store_id == store_config.id %}selected{% endif %}>
+                            {{ store_config.store_name }} ({{ store_config.store_code }})
+                        </option>
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Leave empty for brand/company-wide</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Section -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Status</h3>
+
+            <div class="flex items-center">
+                <input
+                    type="checkbox"
+                    id="is_active"
+                    name="is_active"
+                    value="1"
+                    {% if not promo or promo.is_active %}checked{% endif %}
+                    class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                <label for="is_active" class="ml-2 text-sm text-gray-700">Active (Promo is shown on customer displays)</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex gap-3 mt-8 pt-6 border-t">
+        <button
+            type="submit"
+            class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition">
+            {% if is_edit %}Save Changes{% else %}Create Promo{% endif %}
+        </button>
+        <a href="{% url 'management:display_promo_list' %}"
+           class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">
+            Cancel
+        </a>
+    </div>
+</form>
+
+<!-- Live Preview -->
+<div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+    <h3 class="font-bold text-gray-900 mb-3">Card Preview</h3>
+    <div class="max-w-sm">
+        <div class="bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
+            <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center" id="preview-image">
+                <div class="w-full h-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center text-3xl" id="preview-emoji">🍽️</div>
+            </div>
+            <div class="flex flex-col justify-center flex-1 min-w-0">
+                <span class="bg-red-100 text-red-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1" id="preview-badge">HOT DEAL</span>
+                <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate" id="preview-title">Promo Title</h4>
+                <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5" id="preview-desc">Description will appear here</p>
+                <div>
+                    <span class="text-[10px] text-gray-400 line-through" id="preview-original">Rp 0</span>
+                    <div class="font-bold text-green-600 text-sm" id="preview-price">Rp 0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ========== PRICE FORMATTING ==========
+function formatNumberWithComma(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function parsePriceValue(str) {
+    return parseInt(String(str).replace(/[^0-9]/g, '') || '0', 10);
+}
+
+function formatPriceInput(el, hiddenName) {
+    const raw = parsePriceValue(el.value);
+    const hidden = document.getElementById(hiddenName + '_hidden');
+    hidden.value = raw;
+    // Reformat display with commas
+    const cursorPos = el.selectionStart;
+    const oldLen = el.value.length;
+    el.value = formatNumberWithComma(raw);
+    // Try to keep cursor in reasonable position
+    const newLen = el.value.length;
+    el.setSelectionRange(cursorPos + (newLen - oldLen), cursorPos + (newLen - oldLen));
+    updatePreview();
+}
+
+function initPriceFields() {
+    ['original_price', 'promo_price'].forEach(name => {
+        const display = document.getElementById(name + '_display');
+        const hidden = document.getElementById(name + '_hidden');
+        if (display && hidden) {
+            const raw = parsePriceValue(display.value);
+            hidden.value = raw;
+            display.value = formatNumberWithComma(raw);
+        }
+    });
+}
+
+// ========== IMAGE UPLOAD ==========
+function handleImageUpload(input) {
+    if (!input.files || !input.files[0]) return;
+
+    const file = input.files[0];
+
+    // Validate size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        input.value = '';
+        return;
+    }
+
+    // Validate type
+    if (!file.type.match('image/(png|jpeg|jpg|webp)')) {
+        alert('Only JPG, PNG, and WebP files are allowed');
+        input.value = '';
+        return;
+    }
+
+    // Show local preview
+    const preview = document.getElementById('upload-preview');
+    const previewImg = document.getElementById('upload-preview-img');
+    const previewName = document.getElementById('upload-preview-name');
+    const statusEl = document.getElementById('upload-status');
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        previewImg.src = e.target.result;
+        previewName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        statusEl.textContent = 'Uploading to MinIO...';
+        statusEl.className = 'text-sm font-medium text-amber-700';
+        preview.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to server via AJAX
+    const formData = new FormData();
+    formData.append('image', file);
+
+    fetch('{% url "management:display_promo_upload_image" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Fill in URL and path fields
+            document.getElementById('image_url_input').value = data.image_url;
+            document.getElementById('image_path_input').value = data.image_path || '';
+            statusEl.textContent = 'Uploaded successfully!';
+            statusEl.className = 'text-sm font-medium text-emerald-700';
+        } else {
+            statusEl.textContent = 'Upload failed: ' + (data.error || 'Unknown error');
+            statusEl.className = 'text-sm font-medium text-red-700';
+        }
+    })
+    .catch(err => {
+        statusEl.textContent = 'Upload error: ' + err.message;
+        statusEl.className = 'text-sm font-medium text-red-700';
+    });
+}
+
+function clearUpload() {
+    document.getElementById('promo_image_input').value = '';
+    document.getElementById('upload-preview').classList.add('hidden');
+    document.getElementById('image_url_input').value = '';
+    document.getElementById('image_path_input').value = '';
+}
+
+// ========== LIVE PREVIEW ==========
+const badgeColorMap = {
+    red: ['bg-red-100', 'text-red-600'],
+    orange: ['bg-orange-100', 'text-orange-600'],
+    purple: ['bg-purple-100', 'text-purple-600'],
+    green: ['bg-green-100', 'text-green-600'],
+    blue: ['bg-blue-100', 'text-blue-600']
+};
+
+function formatRupiah(num) {
+    return 'Rp ' + formatNumberWithComma(Number(num || 0));
+}
+
+function updatePreview() {
+    const title = document.querySelector('input[name="title"]').value || 'Promo Title';
+    const desc = document.querySelector('textarea[name="description"]').value || 'Description will appear here';
+    const badgeText = document.querySelector('input[name="badge_text"]').value || 'HOT DEAL';
+    const badgeColor = document.querySelector('select[name="badge_color"]').value || 'red';
+    const emoji = document.querySelector('input[name="emoji_fallback"]').value || '🍽️';
+    const originalPrice = document.getElementById('original_price_hidden').value || 0;
+    const promoPrice = document.getElementById('promo_price_hidden').value || 0;
+
+    document.getElementById('preview-title').textContent = title;
+    document.getElementById('preview-desc').textContent = desc;
+    document.getElementById('preview-badge').textContent = badgeText;
+    document.getElementById('preview-emoji').textContent = emoji;
+    document.getElementById('preview-original').textContent = formatRupiah(originalPrice);
+    document.getElementById('preview-price').textContent = formatRupiah(promoPrice);
+
+    // Update badge colors
+    const badge = document.getElementById('preview-badge');
+    Object.values(badgeColorMap).forEach(classes => {
+        classes.forEach(cls => badge.classList.remove(cls));
+    });
+    const colors = badgeColorMap[badgeColor] || badgeColorMap.red;
+    colors.forEach(cls => badge.classList.add(cls));
+}
+
+// ========== INIT ==========
+document.addEventListener('DOMContentLoaded', function() {
+    initPriceFields();
+
+    const inputs = document.querySelectorAll('input[name="title"], textarea[name="description"], input[name="badge_text"], select[name="badge_color"], input[name="emoji_fallback"]');
+    inputs.forEach(input => {
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
+    });
+    updatePreview();
+});
+</script>
+{% endblock %}

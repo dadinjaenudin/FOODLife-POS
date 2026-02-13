@@ -76,6 +76,14 @@ urlpatterns = [
     path('settings/', views.settings, name='settings'),
     path('settings/update/', views.settings_update, name='settings_update'),
     
+    # Customer Display Promos
+    path('display-promos/', views.display_promo_list, name='display_promo_list'),
+    path('display-promos/create/', views.display_promo_create, name='display_promo_create'),
+    path('display-promos/<int:promo_id>/edit/', views.display_promo_edit, name='display_promo_edit'),
+    path('display-promos/<int:promo_id>/delete/', views.display_promo_delete, name='display_promo_delete'),
+    path('display-promos/<int:promo_id>/toggle/', views.display_promo_toggle, name='display_promo_toggle'),
+    path('display-promos/upload-image/', views.display_promo_upload_image, name='display_promo_upload_image'),
+
     # Customer Display Slideshow
     path('customer-display/slides/', views.customer_display_slides, name='customer_display_slides'),
     path('customer-display/slides/upload/', views.customer_display_slide_upload, name='customer_display_slide_upload'),

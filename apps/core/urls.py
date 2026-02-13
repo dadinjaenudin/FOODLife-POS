@@ -42,5 +42,6 @@ urlpatterns = [
     path('api/customer-display/slide/<int:slide_id>/', api_customer_display.update_slide, name='api_update_slide'),
     path('api/customer-display/slide/<int:slide_id>/delete/', api_customer_display.delete_slide, name='api_delete_slide'),
     path('api/customer-display/review/', api_customer_display.submit_customer_review, name='api_customer_review'),
+    path('api/customer-display/promos/', api_customer_display.get_promo_config, name='api_promo_config'),
 
 ]

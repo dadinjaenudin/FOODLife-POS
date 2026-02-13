@@ -7251,3 +7251,286 @@ def qris_audit_log(request):
         'event_choices': QRISAuditLog.EVENT_CHOICES,
     }
     return render(request, 'management/qris_audit_log.html', context)
+
+
+# ==========================================
+# CUSTOMER DISPLAY PROMO MANAGEMENT
+# ==========================================
+
+@manager_required
+def display_promo_list(request):
+    """List all customer display promos"""
+    from apps.core.models import CustomerDisplayPromo
+    from datetime import date
+
+    store_config, error_response = check_store_config(request, 'management/display_promo_list.html')
+    if error_response:
+        return error_response
+
+    promos = CustomerDisplayPromo.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store').order_by('order', '-created_at')
+
+    # Apply brand context filter
+    context_brand_id = request.session.get('context_brand_id')
+    if context_brand_id:
+        promos = promos.filter(
+            Q(brand_id=context_brand_id) | Q(brand__isnull=True)
+        )
+
+    today = date.today()
+    active_count = promos.filter(is_active=True).count()
+    inactive_count = promos.filter(is_active=False).count()
+    scheduled_count = promos.filter(
+        is_active=True, start_date__gt=today
+    ).count()
+
+    context = {
+        'store_config': store_config,
+        'promos': promos,
+        'active_count': active_count,
+        'inactive_count': inactive_count,
+        'scheduled_count': scheduled_count,
+    }
+
+    return render(request, 'management/display_promo_list.html', context)
+
+
+@manager_required
+def display_promo_create(request):
+    """Create a new customer display promo"""
+    from apps.core.models import CustomerDisplayPromo
+    from datetime import date
+
+    store_config, error_response = check_store_config(request, 'management/display_promo_form.html')
+    if error_response:
+        return error_response
+
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        badge_text = request.POST.get('badge_text', 'HOT DEAL').strip()
+        badge_color = request.POST.get('badge_color', 'red').strip()
+        image_url = request.POST.get('image_url', '').strip()
+        image_path = request.POST.get('image_path', '').strip()
+        emoji_fallback = request.POST.get('emoji_fallback', '🍽️').strip()
+        original_price = request.POST.get('original_price', '0')
+        promo_price = request.POST.get('promo_price', '0')
+        order = request.POST.get('order', '0')
+        start_date = request.POST.get('start_date', '').strip() or None
+        end_date = request.POST.get('end_date', '').strip() or None
+        brand_id = request.POST.get('brand') or None
+        store_id = request.POST.get('store') or None
+        is_active = request.POST.get('is_active') == '1'
+
+        if not title:
+            messages.error(request, 'Promo title is required')
+        elif not badge_text:
+            messages.error(request, 'Badge text is required')
+        else:
+            try:
+                promo = CustomerDisplayPromo(
+                    company=store_config.company,
+                    brand_id=brand_id,
+                    store_id=store_id,
+                    title=title,
+                    description=description,
+                    badge_text=badge_text,
+                    badge_color=badge_color,
+                    image_url=image_url,
+                    image_path=image_path,
+                    emoji_fallback=emoji_fallback or '🍽️',
+                    original_price=int(original_price or 0),
+                    promo_price=int(promo_price or 0),
+                    order=int(order or 0),
+                    start_date=start_date,
+                    end_date=end_date,
+                    is_active=is_active,
+                )
+                promo.save()
+                messages.success(request, f'Promo "{title}" created successfully')
+                return redirect('management:display_promo_list')
+            except Exception as e:
+                messages.error(request, f'Error creating promo: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'is_edit': False,
+    }
+
+    return render(request, 'management/display_promo_form.html', context)
+
+
+@manager_required
+def display_promo_edit(request, promo_id):
+    """Edit a customer display promo"""
+    from apps.core.models import CustomerDisplayPromo
+
+    store_config, error_response = check_store_config(request, 'management/display_promo_form.html')
+    if error_response:
+        return error_response
+
+    promo = get_object_or_404(CustomerDisplayPromo, id=promo_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
+
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        badge_text = request.POST.get('badge_text', 'HOT DEAL').strip()
+        badge_color = request.POST.get('badge_color', 'red').strip()
+        image_url = request.POST.get('image_url', '').strip()
+        image_path = request.POST.get('image_path', '').strip()
+        emoji_fallback = request.POST.get('emoji_fallback', '🍽️').strip()
+        original_price = request.POST.get('original_price', '0')
+        promo_price = request.POST.get('promo_price', '0')
+        order = request.POST.get('order', '0')
+        start_date = request.POST.get('start_date', '').strip() or None
+        end_date = request.POST.get('end_date', '').strip() or None
+        brand_id = request.POST.get('brand') or None
+        store_id = request.POST.get('store') or None
+        is_active = request.POST.get('is_active') == '1'
+
+        if not title:
+            messages.error(request, 'Promo title is required')
+        elif not badge_text:
+            messages.error(request, 'Badge text is required')
+        else:
+            try:
+                promo.title = title
+                promo.description = description
+                promo.badge_text = badge_text
+                promo.badge_color = badge_color
+                promo.image_url = image_url
+                promo.image_path = image_path
+                promo.emoji_fallback = emoji_fallback or '🍽️'
+                promo.original_price = int(original_price or 0)
+                promo.promo_price = int(promo_price or 0)
+                promo.order = int(order or 0)
+                promo.start_date = start_date
+                promo.end_date = end_date
+                promo.brand_id = brand_id
+                promo.store_id = store_id
+                promo.is_active = is_active
+                promo.save()
+                messages.success(request, f'Promo "{title}" updated successfully')
+                return redirect('management:display_promo_list')
+            except Exception as e:
+                messages.error(request, f'Error updating promo: {str(e)}')
+
+    context = {
+        'store_config': store_config,
+        'store_brands': store_brands,
+        'promo': promo,
+        'is_edit': True,
+    }
+
+    return render(request, 'management/display_promo_form.html', context)
+
+
+@manager_required
+@require_POST
+def display_promo_delete(request, promo_id):
+    """Delete a customer display promo"""
+    from apps.core.models import CustomerDisplayPromo
+
+    store_config = Store.get_current()
+    if not store_config:
+        messages.error(request, 'Store configuration not found')
+        return redirect('management:display_promo_list')
+
+    try:
+        promo = get_object_or_404(CustomerDisplayPromo, id=promo_id, company=store_config.company)
+        promo_title = promo.title
+        promo.delete()
+        messages.success(request, f'Promo "{promo_title}" deleted successfully')
+    except Exception as e:
+        messages.error(request, f'Error deleting promo: {str(e)}')
+
+    return redirect('management:display_promo_list')
+
+
+@manager_required
+@require_POST
+def display_promo_toggle(request, promo_id):
+    """Toggle customer display promo active status"""
+    from apps.core.models import CustomerDisplayPromo
+
+    store_config = Store.get_current()
+    if not store_config:
+        return JsonResponse({'success': False, 'error': 'Store not configured'}, status=400)
+
+    try:
+        promo = get_object_or_404(CustomerDisplayPromo, id=promo_id, company=store_config.company)
+        promo.is_active = not promo.is_active
+        promo.save()
+
+        status = 'activated' if promo.is_active else 'deactivated'
+        messages.success(request, f'Promo "{promo.title}" {status}!')
+
+        return JsonResponse({
+            'success': True,
+            'is_active': promo.is_active,
+            'message': f'Promo {status}'
+        })
+
+    except Exception as e:
+        logger.error(f"Error toggling promo: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@manager_required
+@require_POST
+def display_promo_upload_image(request):
+    """Upload promo image to MinIO and return URL"""
+    try:
+        store_config = Store.get_current()
+        if not store_config:
+            return JsonResponse({'success': False, 'error': 'Store not configured'}, status=400)
+
+        image = request.FILES.get('image')
+        if not image:
+            return JsonResponse({'success': False, 'error': 'No image file provided'}, status=400)
+
+        # Validate file size (5MB max)
+        if image.size > 5 * 1024 * 1024:
+            return JsonResponse({'success': False, 'error': 'File size must be less than 5MB'}, status=400)
+
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+        if image.content_type not in allowed_types:
+            return JsonResponse({'success': False, 'error': 'Only JPG, PNG, and WebP files are allowed'}, status=400)
+
+        # Upload to MinIO
+        from apps.core.minio_client import upload_to_minio
+        import uuid
+
+        file_ext = image.name.split('.')[-1].lower()
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"promo_{unique_id}.{file_ext}"
+
+        bucket_name = 'customer-display'
+        company_code = store_config.company.code
+        object_path = f"{company_code}/promos/{filename}"
+
+        image_url = upload_to_minio(
+            bucket_name=bucket_name,
+            object_name=object_path,
+            file_data=image.read(),
+            content_type=image.content_type
+        )
+
+        return JsonResponse({
+            'success': True,
+            'image_url': image_url,
+            'image_path': object_path,
+        })
+
+    except Exception as e:
+        logger.error(f"Error uploading promo image: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

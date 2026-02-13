@@ -168,7 +168,8 @@ Data source: Flask local_api.py SSE stream + config API
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(12px);
             display: none;
             align-items: center;
             justify-content: center;
@@ -177,22 +178,112 @@ Data source: Flask local_api.py SSE stream + config API
         .qr-modal.active { display: flex; }
         .qr-content {
             background: white;
-            padding: 3rem;
-            border-radius: 30px;
+            padding: 2.5rem 3rem;
+            border-radius: 2rem;
             text-align: center;
-            animation: scaleIn 0.3s ease-out;
+            animation: scaleIn 0.35s ease-out;
+            max-width: 480px;
+            width: 90%;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+        }
+        .qr-header-icon {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, #047857, #10b981);
+            border-radius: 1rem;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1.25rem;
+            box-shadow: 0 4px 14px rgba(4, 120, 87, 0.3);
         }
         .qr-code-container {
-            background: #f8f9fa;
-            padding: 2rem;
-            border-radius: 20px;
-            margin-bottom: 2rem;
+            background: #f0fdf4;
+            border: 2px solid #bbf7d0;
+            padding: 1.5rem;
+            border-radius: 1.25rem;
+            margin: 1.5rem 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 280px;
         }
         .qr-code-container img {
-            width: 300px; height: 300px;
-            border: 5px solid #047857;
-            border-radius: 15px;
+            width: 240px; height: 240px;
+            border-radius: 12px;
         }
+        .qr-amount {
+            font-size: 2.25rem;
+            font-weight: 800;
+            color: #047857;
+            margin: 0.75rem 0 0.5rem;
+        }
+        .qr-method-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #047857;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 0.35rem 1rem;
+            border-radius: 2rem;
+            margin-bottom: 1rem;
+        }
+        .qr-timer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-top: 0.75rem;
+        }
+        .qr-timer.warning { color: #f59e0b; }
+        .qr-timer.danger { color: #ef4444; font-weight: 600; }
+        .qr-timer-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+        .qr-timer.warning .qr-timer-dot { background: #f59e0b; }
+        .qr-timer.danger .qr-timer-dot { background: #ef4444; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+        /* QR Error State */
+        .qr-error-state {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 240px;
+            padding: 1.5rem;
+        }
+        .qr-error-icon {
+            width: 64px; height: 64px;
+            background: #fef2f2;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 1rem;
+        }
+        /* QR Loading State */
+        .qr-loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 240px;
+            gap: 1rem;
+        }
+        .qr-spinner {
+            width: 48px; height: 48px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #047857;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="h-screen w-full p-4 flex gap-4">
@@ -240,64 +331,15 @@ Data source: Flask local_api.py SSE stream + config API
             <div class="absolute bottom-5 right-6 flex gap-2" id="slide-indicators"></div>
         </div>
 
-        <!-- Promo Section (Hardcoded) -->
-        <div class="h-44 flex flex-col gap-2.5">
+        <!-- Promo Section (Dynamic) -->
+        <div class="h-44 flex flex-col gap-2.5" id="promo-section">
             <div class="flex justify-between items-end px-2">
                 <div class="flex items-center gap-2 border-l-4 border-green-600 pl-3 h-6">
                     <h3 class="text-base font-bold text-gray-800">Promo Hari Ini</h3>
                 </div>
                 <span class="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">NEW</span>
             </div>
-
-            <div class="flex gap-3 h-full">
-                <!-- Promo Card 1 -->
-                <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
-                    <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
-                        <img src="assets/promo1.jpg" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center text-3xl\'>🍜</div>'" class="w-full h-full object-cover">
-                    </div>
-                    <div class="flex flex-col justify-center flex-1 min-w-0">
-                        <span class="bg-red-100 text-red-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">HOT DEAL</span>
-                        <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">Paket Hemat Nasi</h4>
-                        <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">Nasi + Lauk Pilihan + Es Teh. Hemat sampai 30%!</p>
-                        <div>
-                            <span class="text-[10px] text-gray-400 line-through">Rp 35.000</span>
-                            <div class="font-bold text-green-600 text-sm">Rp 25.000</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Promo Card 2 -->
-                <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
-                    <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
-                        <img src="assets/promo2.jpg" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-amber-100 to-yellow-200 flex items-center justify-center text-3xl\'>🥤</div>'" class="w-full h-full object-cover">
-                    </div>
-                    <div class="flex flex-col justify-center flex-1 min-w-0">
-                        <span class="bg-orange-100 text-orange-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">LIMITED</span>
-                        <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">Beli 2 Gratis 1</h4>
-                        <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">Semua minuman dingin, berlaku s/d jam 2 siang.</p>
-                        <div>
-                            <span class="text-[10px] text-gray-400 line-through">Rp 45.000</span>
-                            <div class="font-bold text-green-600 text-sm">Rp 30.000</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Promo Card 3 -->
-                <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
-                    <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
-                        <img src="assets/promo3.jpg" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-pink-100 to-rose-200 flex items-center justify-center text-3xl\'>🍰</div>'" class="w-full h-full object-cover">
-                    </div>
-                    <div class="flex flex-col justify-center flex-1 min-w-0">
-                        <span class="bg-purple-100 text-purple-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">WEEKEND</span>
-                        <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">Dessert Special</h4>
-                        <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">Diskon 20% semua dessert setiap weekend.</p>
-                        <div>
-                            <span class="text-[10px] text-gray-400 line-through">Rp 28.000</span>
-                            <div class="font-bold text-green-600 text-sm">Rp 22.000</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="flex gap-3 h-full" id="promo-cards"></div>
         </div>
 
         <!-- Footer Running Text -->
@@ -377,14 +419,47 @@ Data source: Flask local_api.py SSE stream + config API
     <!-- QR Code Modal -->
     <div class="qr-modal" id="qr-modal">
         <div class="qr-content">
-            <h2 style="color: #333; font-size: 2.5rem; margin-bottom: 1rem;">💳 Scan to Pay</h2>
-            <p style="color: #666; font-size: 1.4rem; margin-bottom: 2rem;">Scan QR code dengan aplikasi pembayaran Anda</p>
-            <div class="qr-code-container">
-                <img id="qr-code-image" src="" alt="QR Code" style="display: none;">
-                <div id="qr-loading" style="font-size: 3rem; color: #047857;">⏳ Generating...</div>
+            <!-- Header Icon -->
+            <div class="qr-header-icon">
+                <svg width="32" height="32" fill="none" stroke="white" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                </svg>
             </div>
-            <div id="qr-amount" style="font-size: 3rem; font-weight: bold; color: #047857; margin-top: 1.5rem;">Rp 0</div>
-            <div id="qr-timer" style="font-size: 1.2rem; color: #999; margin-top: 1rem;">Expires in 5:00</div>
+            <!-- Title -->
+            <h2 style="color: #111827; font-size: 1.5rem; font-weight: 800; margin-bottom: 0.25rem;">Scan untuk Bayar</h2>
+            <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 0.25rem;">Gunakan aplikasi e-wallet atau mobile banking</p>
+            <!-- Payment Method Badge -->
+            <div class="qr-method-badge" id="qr-method-badge">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                <span id="qr-method-text">QRIS</span>
+            </div>
+            <!-- QR Code Container -->
+            <div class="qr-code-container" id="qr-code-container">
+                <!-- Loading State -->
+                <div class="qr-loading-state" id="qr-loading">
+                    <div class="qr-spinner"></div>
+                    <div style="font-size: 0.9rem; color: #6b7280; font-weight: 500;">Memuat QR Code...</div>
+                </div>
+                <!-- QR Image (hidden until loaded) -->
+                <img id="qr-code-image" src="" alt="QR Code" style="display: none;">
+                <!-- Error State -->
+                <div class="qr-error-state" id="qr-error">
+                    <div class="qr-error-icon">
+                        <svg width="32" height="32" fill="none" stroke="#ef4444" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                        </svg>
+                    </div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #991b1b; margin-bottom: 0.25rem;" id="qr-error-title">QR Code Gagal</div>
+                    <div style="font-size: 0.85rem; color: #6b7280;" id="qr-error-message">Terjadi kesalahan saat memuat QR code</div>
+                </div>
+            </div>
+            <!-- Amount -->
+            <div class="qr-amount" id="qr-amount">Rp 0</div>
+            <!-- Timer -->
+            <div class="qr-timer" id="qr-timer">
+                <div class="qr-timer-dot"></div>
+                <span id="qr-timer-text">Berlaku 5:00</span>
+            </div>
         </div>
     </div>
 
@@ -487,6 +562,7 @@ Data source: Flask local_api.py SSE stream + config API
 
                     applyBrandConfig();
                     initSlideshow();
+                    initPromos();
                     initRunningText();
                     return;
                 } catch (error) {
@@ -578,6 +654,72 @@ Data source: Flask local_api.py SSE stream + config API
             slideInterval = setTimeout(nextSlide, firstDuration);
         }
 
+        // ========== PROMOS ==========
+        function initPromos() {
+            const container = document.getElementById('promo-cards');
+            if (!container) return;
+
+            const promos = (config && Array.isArray(config.promos)) ? config.promos : [];
+
+            // Badge color mapping
+            const badgeColors = {
+                red: 'bg-red-100 text-red-600',
+                orange: 'bg-orange-100 text-orange-600',
+                purple: 'bg-purple-100 text-purple-600',
+                green: 'bg-green-100 text-green-600',
+                blue: 'bg-blue-100 text-blue-600'
+            };
+
+            // Emoji gradient mapping for fallback
+            const emojiGradients = [
+                'from-orange-100 to-orange-200',
+                'from-amber-100 to-yellow-200',
+                'from-pink-100 to-rose-200'
+            ];
+
+            // Default promos as fallback
+            const defaultPromos = [
+                { title: 'Paket Hemat Nasi', description: 'Nasi + Lauk Pilihan + Es Teh. Hemat sampai 30%!', badge_text: 'HOT DEAL', badge_color: 'red', emoji_fallback: '\u{1F35C}', original_price: 35000, promo_price: 25000 },
+                { title: 'Beli 2 Gratis 1', description: 'Semua minuman dingin, berlaku s/d jam 2 siang.', badge_text: 'LIMITED', badge_color: 'orange', emoji_fallback: '\u{1F964}', original_price: 45000, promo_price: 30000 },
+                { title: 'Dessert Special', description: 'Diskon 20% semua dessert setiap weekend.', badge_text: 'WEEKEND', badge_color: 'purple', emoji_fallback: '\u{1F370}', original_price: 28000, promo_price: 22000 }
+            ];
+
+            const displayPromos = promos.length > 0 ? promos.slice(0, 3) : defaultPromos;
+
+            function formatPrice(price) {
+                return 'Rp ' + Number(price || 0).toLocaleString('id-ID');
+            }
+
+            container.innerHTML = displayPromos.map((promo, index) => {
+                const colorClass = badgeColors[promo.badge_color] || badgeColors.red;
+                const gradient = emojiGradients[index % emojiGradients.length];
+                const emoji = promo.emoji_fallback || '\u{1F37D}\u{FE0F}';
+                const hasImage = promo.image_url && promo.image_url.trim() !== '';
+
+                return `
+                    <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
+                        <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
+                            ${hasImage
+                                ? `<img src="${promo.image_url}" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center text-3xl\\'>${emoji}</div>'" class="w-full h-full object-cover">`
+                                : `<div class="w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center text-3xl">${emoji}</div>`
+                            }
+                        </div>
+                        <div class="flex flex-col justify-center flex-1 min-w-0">
+                            <span class="${colorClass} text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">${promo.badge_text || 'PROMO'}</span>
+                            <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">${promo.title}</h4>
+                            ${promo.description ? `<p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">${promo.description}</p>` : ''}
+                            <div>
+                                ${promo.original_price ? `<span class="text-[10px] text-gray-400 line-through">${formatPrice(promo.original_price)}</span>` : ''}
+                                <div class="font-bold text-green-600 text-sm">${formatPrice(promo.promo_price)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            console.log('[Promos] Rendered', displayPromos.length, 'promo cards', promos.length > 0 ? '(from DB)' : '(defaults)');
+        }
+
         // ========== RUNNING TEXT ==========
         function initRunningText() {
             const el = document.getElementById('running-text');
@@ -607,17 +749,17 @@ Data source: Flask local_api.py SSE stream + config API
                 // If already dismissed, fall through to handle modal etc.
             }
 
-            // Handle modal
-            if (data.show_modal !== undefined) {
-                handleModalDisplay(data.show_modal, data.modal_html);
-            }
-
-            // Handle QR code payment
+            // Handle QR code payment (check BEFORE modal — QR takes priority)
             if (data.show_qr && data.qr_code) {
                 showQRCode(data);
                 return;
-            } else {
+            } else if (data.show_qr === false) {
                 hideQRCode();
+            }
+
+            // Handle modal
+            if (data.show_modal !== undefined) {
+                handleModalDisplay(data.show_modal, data.modal_html);
             }
 
             const container = document.getElementById('bill-panel-container');
@@ -698,8 +840,7 @@ Data source: Flask local_api.py SSE stream + config API
             if (showModal && modalHTML) {
                 // Only re-render if content changed (prevents flicker)
                 if (modalHTML !== lastModalHTML) {
-                    content.innerHTML = '';
-                    setTimeout(() => { content.innerHTML = modalHTML; }, 10);
+                    content.innerHTML = modalHTML;
                     lastModalHTML = modalHTML;
                 }
                 overlay.style.display = 'flex';
@@ -720,19 +861,56 @@ Data source: Flask local_api.py SSE stream + config API
             const modal = document.getElementById('qr-modal');
             const qrImage = document.getElementById('qr-code-image');
             const qrLoading = document.getElementById('qr-loading');
+            const qrError = document.getElementById('qr-error');
             const qrAmount = document.getElementById('qr-amount');
+            const qrMethodText = document.getElementById('qr-method-text');
+
+            // Hide modal overlay so QR modal is visible on top
+            document.getElementById('customer-modal-overlay').style.display = 'none';
 
             modal.classList.add('active');
             qrAmount.textContent = formatCurrency(data.total || 0);
 
+            // Set payment method label
+            if (data.payment_method) {
+                qrMethodText.textContent = data.payment_method;
+            }
+
+            // Reset states
+            qrLoading.style.display = 'none';
+            qrError.style.display = 'none';
+            qrImage.style.display = 'none';
+
             if (data.qr_code) {
-                qrImage.src = data.qr_code;
-                qrImage.style.display = 'block';
-                qrLoading.style.display = 'none';
+                // Show loading first while image loads
+                qrLoading.style.display = 'flex';
+
+                const img = new Image();
+                img.onload = function() {
+                    qrImage.src = data.qr_code;
+                    qrImage.style.display = 'block';
+                    qrLoading.style.display = 'none';
+                    qrError.style.display = 'none';
+                };
+                img.onerror = function() {
+                    showQRError('QR Code Gagal Dimuat', 'Gambar QR code tidak dapat ditampilkan');
+                };
+                img.src = data.qr_code;
+            } else {
+                showQRError('QR Code Tidak Tersedia', 'Data QR code tidak diterima dari server');
             }
 
             qrTimeRemaining = 300;
             startQRTimer();
+        }
+
+        function showQRError(title, message) {
+            document.getElementById('qr-loading').style.display = 'none';
+            document.getElementById('qr-code-image').style.display = 'none';
+            const errorEl = document.getElementById('qr-error');
+            document.getElementById('qr-error-title').textContent = title;
+            document.getElementById('qr-error-message').textContent = message;
+            errorEl.style.display = 'flex';
         }
 
         function hideQRCode() {
@@ -742,12 +920,34 @@ Data source: Flask local_api.py SSE stream + config API
 
         function startQRTimer() {
             if (qrTimer) clearInterval(qrTimer);
+            const timerContainer = document.getElementById('qr-timer');
+            const timerText = document.getElementById('qr-timer-text');
+
+            timerContainer.className = 'qr-timer';
             qrTimer = setInterval(() => {
                 qrTimeRemaining--;
                 const m = Math.floor(qrTimeRemaining / 60);
                 const s = qrTimeRemaining % 60;
-                document.getElementById('qr-timer').textContent = `Expires in ${m}:${s.toString().padStart(2, '0')}`;
-                if (qrTimeRemaining <= 0) { clearInterval(qrTimer); hideQRCode(); }
+                timerText.textContent = `Berlaku ${m}:${s.toString().padStart(2, '0')}`;
+
+                // Visual warning states
+                if (qrTimeRemaining <= 30) {
+                    timerContainer.className = 'qr-timer danger';
+                    timerText.textContent = `Segera berakhir ${m}:${s.toString().padStart(2, '0')}`;
+                } else if (qrTimeRemaining <= 60) {
+                    timerContainer.className = 'qr-timer warning';
+                }
+
+                if (qrTimeRemaining <= 0) {
+                    clearInterval(qrTimer);
+                    qrTimer = null;
+                    // Show expired state instead of immediately hiding
+                    showQRError('QR Code Kedaluwarsa', 'Waktu pembayaran telah habis. Silakan minta kasir untuk generate ulang.');
+                    timerText.textContent = 'Kedaluwarsa';
+                    timerContainer.className = 'qr-timer danger';
+                    // Auto-hide after 5 seconds
+                    setTimeout(() => hideQRCode(), 5000);
+                }
             }, 1000);
         }
 
@@ -791,12 +991,15 @@ Data source: Flask local_api.py SSE stream + config API
             overlay.style.display = 'none';
             // Mark as dismissed so SSE won't re-show it
             if (reviewBillId) reviewDismissedForBill = reviewBillId;
+            // Also clear the payment success modal underneath so we return to idle screen
+            handleModalDisplay(false, '');
+            hideQRCode();
             // Only notify server if review was actually visible (prevents loop)
             if (wasVisible) {
                 fetch(API_URL + '/api/customer-display/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ show_review: false })
+                    body: JSON.stringify({ show_review: false, show_modal: false })
                 }).catch(() => {});
             }
         }

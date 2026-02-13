@@ -156,9 +156,13 @@
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'display-configs' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Display Configs
                         </a>
-                        <a href="{% url 'management:customer_display_slides' %}" 
+                        <a href="{% url 'management:customer_display_slides' %}"
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'customer-display/slides' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Display Slides
+                        </a>
+                        <a href="{% url 'management:display_promo_list' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'display-promos' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            Display Promos
                         </a>
                         <a href="{% url 'management:receipt_template_list' %}"
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'receipt-templates' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">

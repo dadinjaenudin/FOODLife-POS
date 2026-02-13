@@ -5,6 +5,7 @@ from .models import (
     Category, Product, Modifier, ModifierOption, ProductPhoto,
     Member, MemberTransaction,
     MediaGroup, PaymentMethodProfile, DataEntryPrompt,
+    CustomerDisplaySlide, CustomerDisplayConfig, CustomerDisplayPromo, CustomerReview,
 )
 from .models_session import CashierShift, CashDrop
 
@@ -249,3 +250,43 @@ class PaymentMethodProfileAdmin(admin.ModelAdmin):
     search_fields = ['name', 'code']
     readonly_fields = ['id', 'created_at', 'updated_at']
     inlines = [DataEntryPromptInline]
+
+
+@admin.register(CustomerDisplaySlide)
+class CustomerDisplaySlideAdmin(admin.ModelAdmin):
+    list_display = ['title', 'order', 'duration_seconds', 'is_active', 'store', 'brand', 'start_date', 'end_date']
+    list_filter = ['is_active', 'brand', 'store']
+    search_fields = ['title', 'description']
+    list_editable = ['order', 'is_active']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(CustomerDisplayConfig)
+class CustomerDisplayConfigAdmin(admin.ModelAdmin):
+    list_display = ['brand_name', 'brand_tagline', 'is_active', 'store', 'brand', 'company']
+    list_filter = ['is_active', 'brand', 'store']
+    search_fields = ['brand_name', 'brand_tagline']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(CustomerDisplayPromo)
+class CustomerDisplayPromoAdmin(admin.ModelAdmin):
+    list_display = ['title', 'badge_text', 'promo_price', 'original_price', 'order', 'is_active', 'store', 'brand']
+    list_filter = ['is_active', 'badge_color', 'brand', 'store']
+    search_fields = ['title', 'description', 'badge_text']
+    list_editable = ['order', 'is_active']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        (None, {'fields': ('company', 'brand', 'store')}),
+        ('Content', {'fields': ('title', 'description', 'badge_text', 'badge_color')}),
+        ('Image', {'fields': ('image_url', 'image_path', 'emoji_fallback')}),
+        ('Pricing', {'fields': ('original_price', 'promo_price')}),
+        ('Display', {'fields': ('order', 'is_active', 'start_date', 'end_date')}),
+    )
+
+
+@admin.register(CustomerReview)
+class CustomerReviewAdmin(admin.ModelAdmin):
+    list_display = ['rating', 'store', 'terminal', 'bill', 'created_at']
+    list_filter = ['rating', 'store', 'created_at']
+    readonly_fields = ['id', 'rating', 'store', 'terminal', 'bill', 'created_at']

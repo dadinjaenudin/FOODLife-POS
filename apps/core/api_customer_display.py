@@ -16,7 +16,7 @@ import uuid
 from datetime import date
 from functools import wraps
 
-from .models import CustomerDisplaySlide, Brand, Store, Company, CustomerReview, POSTerminal
+from .models import CustomerDisplaySlide, CustomerDisplayPromo, Brand, Store, Company, CustomerReview, POSTerminal
 from .minio_client import upload_to_minio, delete_from_minio, get_minio_url
 from apps.pos.models import Bill
 
@@ -669,5 +669,88 @@ def submit_customer_review(request):
 
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@cors_allow_all
+@require_http_methods(['GET', 'OPTIONS'])
+def get_promo_config(request):
+    """
+    Get active promos for customer display 'Promo Hari Ini' section.
+    Same scope-based filtering as slideshow (company > brand > store).
+
+    GET /api/customer-display/promos/?company=YOGYA&brand=BOE&store=KPT
+    """
+    try:
+        company_code = request.GET.get('company')
+        brand_code = request.GET.get('brand')
+        store_code = request.GET.get('store')
+
+        query = CustomerDisplayPromo.objects.filter(
+            is_active=True
+        ).select_related('company', 'brand', 'store')
+
+        # Date filtering
+        today = date.today()
+        query = query.filter(
+            models.Q(start_date__isnull=True) | models.Q(start_date__lte=today)
+        ).filter(
+            models.Q(end_date__isnull=True) | models.Q(end_date__gte=today)
+        )
+
+        # Scope filtering
+        if company_code:
+            try:
+                company = Company.objects.get(code=company_code)
+                query = query.filter(company=company)
+            except Company.DoesNotExist:
+                pass
+
+        brand = None
+        if brand_code:
+            try:
+                brand = Brand.objects.get(code=brand_code)
+                query = query.filter(
+                    models.Q(brand=brand) |
+                    models.Q(brand__isnull=True, store__isnull=True)
+                )
+            except Brand.DoesNotExist:
+                pass
+
+        if store_code:
+            try:
+                store = Store.objects.get(store_code=store_code)
+                query = query.filter(
+                    models.Q(store=store) |
+                    models.Q(brand=brand, store__isnull=True) if brand else models.Q(store=store) |
+                    models.Q(brand__isnull=True, store__isnull=True)
+                )
+            except Store.DoesNotExist:
+                pass
+
+        promos = query.order_by('order', '-created_at')[:6]
+
+        promos_data = []
+        for promo in promos:
+            promos_data.append({
+                'id': promo.id,
+                'title': promo.title,
+                'description': promo.description or '',
+                'badge_text': promo.badge_text,
+                'badge_color': promo.badge_color,
+                'image_url': promo.image_url or '',
+                'emoji_fallback': promo.emoji_fallback or '🍽️',
+                'original_price': int(promo.original_price),
+                'promo_price': int(promo.promo_price),
+            })
+
+        return JsonResponse({
+            'success': True,
+            'promos': promos_data,
+            'total': len(promos_data),
+        })
+
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

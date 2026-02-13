@@ -1109,6 +1109,64 @@ class EFTTerminal(models.Model):
         return f"{self.code}: {self.name}"
 
 
+class CustomerDisplayPromo(models.Model):
+    """Promo cards displayed on customer display 'Promo Hari Ini' section"""
+    BADGE_COLORS = [
+        ('red', 'Red'),
+        ('orange', 'Orange'),
+        ('purple', 'Purple'),
+        ('green', 'Green'),
+        ('blue', 'Blue'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='customer_promos')
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name='customer_promos', null=True, blank=True)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='customer_promos', null=True, blank=True)
+
+    # Content
+    title = models.CharField(max_length=200, help_text="Promo title shown on card")
+    description = models.TextField(blank=True, max_length=500, help_text="Short description (max 2 lines)")
+    badge_text = models.CharField(max_length=30, help_text="Badge label e.g. HOT DEAL, LIMITED, WEEKEND")
+    badge_color = models.CharField(max_length=20, choices=BADGE_COLORS, default='red')
+
+    # Image (MinIO URL like CustomerDisplaySlide)
+    image_url = models.URLField(max_length=500, blank=True, help_text="Full MinIO URL to promo image")
+    image_path = models.CharField(max_length=500, blank=True, help_text="MinIO object path (bucket/key)")
+    emoji_fallback = models.CharField(max_length=10, default='🍽️', help_text="Fallback emoji if image fails to load")
+
+    # Pricing
+    original_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, help_text="Original price (strikethrough)")
+    promo_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, help_text="Discounted price")
+
+    # Display settings
+    order = models.IntegerField(default=0, help_text="Display order (lower = first)")
+    is_active = models.BooleanField(default=True)
+    start_date = models.DateField(null=True, blank=True, help_text="Start showing from this date")
+    end_date = models.DateField(null=True, blank=True, help_text="Stop showing after this date")
+
+    # Audit
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'is_active', 'order']),
+            models.Index(fields=['brand', 'is_active', 'order']),
+            models.Index(fields=['store', 'is_active', 'order']),
+        ]
+        verbose_name = 'Customer Display Promo'
+        verbose_name_plural = 'Customer Display Promos'
+
+    def __str__(self):
+        scope = "All"
+        if self.store:
+            scope = f"Store: {self.store.code}"
+        elif self.brand:
+            scope = f"Brand: {self.brand.code}"
+        return f"{self.title} ({scope}) - {self.badge_text}"
+
+
 class CustomerReview(models.Model):
     """Customer satisfaction review collected from second display after payment.
     Shown automatically on customer display for ~15 seconds after payment success."""

@@ -146,7 +146,26 @@ def load_display_config():
                 slideshow_data = slideshow_json.get('slides', [])
     except Exception as e:
         print(f"[Config] Slideshow API error: {e}")
-    
+
+    # Fetch promos from Edge Server
+    promos_data = []
+    try:
+        import requests
+        promos_api_url = f"{edge_server}/api/customer-display/promos"
+        promos_params = {
+            'company': company_code,
+            'brand': brand_code,
+            'store': store_code
+        }
+
+        promos_response = requests.get(promos_api_url, params=promos_params, timeout=5)
+        if promos_response.status_code == 200:
+            promos_json = promos_response.json()
+            if promos_json.get('success'):
+                promos_data = promos_json.get('promos', [])
+    except Exception as e:
+        print(f"[Config] Promos API error: {e}")
+
     # Helper: Convert relative URLs to absolute URLs
     def make_absolute_url(url, base_server):
         """
@@ -197,7 +216,12 @@ def load_display_config():
         for slide in slideshow_data:
             if 'image_url' in slide:
                 slide['image_url'] = make_absolute_url(slide['image_url'], edge_server)
-        
+
+        # Fix promo image URLs
+        for promo in promos_data:
+            if promo.get('image_url'):
+                promo['image_url'] = make_absolute_url(promo['image_url'], edge_server)
+
         result = {
             'edge_server': edge_server,
             'company_code': company_code,
@@ -210,6 +234,7 @@ def load_display_config():
             },
             'store_image_url': store_image,
             'slideshow': slideshow_data,
+            'promos': promos_data,
             'running_text': display_config.get('running_text', 'Welcome!'),
             'running_text_speed': display_config.get('running_text_speed', 50),
             'theme': display_config.get('theme', {
@@ -220,7 +245,7 @@ def load_display_config():
                 'billing_text': '#333333'
             })
         }
-        
+
         return result
     
     # Fallback to default config
@@ -231,6 +256,7 @@ def load_display_config():
         'store_code': store_code,
         'brand': {'name': 'POS System', 'logo_url': None, 'tagline': ''},
         'slideshow': slideshow_data if slideshow_data else [],
+        'promos': promos_data,
         'running_text': 'Welcome!',
         'running_text_speed': 50,
         'theme': {
@@ -1381,6 +1407,10 @@ def update_customer_display():
         elif 'show_review' in data:
             display_data['show_review'] = data.get('show_review', False)
             display_data['review_bill_id'] = data.get('bill_id')
+            # When review is dismissed, also clear the modal if requested
+            if 'show_modal' in data and not data.get('show_modal', True):
+                display_data['show_modal'] = False
+                display_data['modal_html'] = None
             display_data['updated_at'] = time.time()
         # Check if we're receiving modal HTML
         elif 'show_modal' in data:
