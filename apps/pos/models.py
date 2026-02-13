@@ -207,6 +207,7 @@ class BillItem(models.Model):
     split_group = models.IntegerField(default=0)
     
     class Meta:
+        ordering = ['id']
         indexes = [
             models.Index(fields=['bill', 'is_void', 'status']),
             models.Index(fields=['created_by', 'created_at']),  # For cashier item reports

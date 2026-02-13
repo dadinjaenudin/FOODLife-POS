@@ -490,77 +490,54 @@ def start_local_api_server():
     
     launcher_dir = get_launcher_dir()
     
-    print("[API Server] Starting Flask server as background thread...")
-    
     try:
         # Import Flask app from local_api module
-        # Add launcher_dir to sys.path so we can import local_api
         if str(launcher_dir) not in sys.path:
             sys.path.insert(0, str(launcher_dir))
-        
-        # Import the Flask app and run function from local_api
+
         try:
             from local_api import app as flask_app, run_server
-            print("[API Server] Flask app imported successfully")
         except ImportError as e:
-            print(f"[API Server] Failed to import local_api: {e}")
+            print(f"[ERROR] Failed to import local_api: {e}")
             return False
-        
-        # Start Flask server in daemon thread (will shut down when main app exits)
+
+        # Start Flask server in daemon thread
         def run_flask():
             try:
-                print("[API Server] Flask thread starting...")
-                run_server()  # This is the Flask app.run() wrapper
+                run_server()
             except Exception as e:
-                print(f"[API Server] Flask thread error: {e}")
-        
+                print(f"[ERROR] Flask thread error: {e}")
+
         api_server_thread = Thread(target=run_flask, daemon=True)
         api_server_thread.start()
-        
-        # Wait for server to be ready (check multiple times)
-        print("[API Server] Waiting for startup...")
-        for i in range(15):  # Increased to 15 attempts
+
+        # Wait for server to be ready
+        for i in range(15):
             time.sleep(1)
             try:
                 response = requests.get('http://127.0.0.1:5000/health', timeout=1)
                 if response.status_code == 200:
-                    print(f"[API Server] Health check passed")
-                    
-                    # Extra verification: Check customer-display endpoint
-                    print("[API Server] Verifying customer-display HTML endpoint...")
-                    time.sleep(1)  # Brief delay
+                    time.sleep(1)
                     try:
                         cd_response = requests.get('http://127.0.0.1:5000/customer-display', timeout=2)
                         if cd_response.status_code == 200:
-                            print("[API Server] ✓ Customer display HTML endpoint ready")
-                            
-                            # CRITICAL: Also test the config API endpoint that JavaScript will fetch
-                            print("[API Server] Verifying customer-display config API endpoint...")
                             time.sleep(1)
                             try:
                                 config_response = requests.get('http://127.0.0.1:5000/api/customer-display/config', timeout=2)
                                 if config_response.status_code == 200:
-                                    print("[API Server] ✓ Customer display config API endpoint ready")
-                                    print(f"[API Server] ✓ All endpoints verified - server is FULLY ready")
                                     return True
-                                else:
-                                    print(f"[API Server] Config API returned {config_response.status_code}, retrying...")
-                            except Exception as e:
-                                print(f"[API Server] Config API not ready yet: {e}")
+                            except:
                                 continue
-                        else:
-                            print(f"[API Server] Customer display HTML returned {cd_response.status_code}, retrying...")
-                    except Exception as e:
-                        print(f"[API Server] Customer display HTML not ready yet: {e}")
+                    except:
                         continue
             except:
-                print(f"[API Server] Attempt {i+1}/15...")
-        
-        print("[API Server] Failed to start after 15 seconds")
+                pass
+
+        print("[ERROR] API server failed to start after 15 seconds")
         return False
-        
+
     except Exception as e:
-        print(f"[API Server] Error: {e}")
+        print(f"[ERROR] API server: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -575,17 +552,9 @@ def cleanup():
         return
     
     cleanup_done = True
-    print("\n[Launcher] Shutting down...")
-    
-    # Flask server thread is daemon, so it will automatically shut down with main process
-    if api_server_thread and api_server_thread.is_alive():
-        print("[API Server] Flask server will shut down with main process (daemon thread)")
-    
+
     # Ensure port 5000 is released
-    print("[Cleanup] Releasing port 5000...")
     kill_process_on_port(5000)
-    
-    print("[Launcher] Goodbye!")
 
 
 class POSWindow(QWebEngineView):
@@ -752,7 +721,6 @@ class CustomerDisplayWindow(QWebEngineView):
         self.profile = QWebEngineProfile("customer_display", self)
         self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
-        print("[Customer Display] Using separate in-memory profile (no cache conflicts)")
         
         # Set custom page with separate profile to capture console messages
         custom_page = CustomerDisplayPage(self.profile, self)
@@ -767,42 +735,28 @@ class CustomerDisplayWindow(QWebEngineView):
         settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.AllowGeolocationOnInsecureOrigins, True)
         
-        # Enable console message output for debugging
-        print("[Customer Display] JavaScript enabled with full permissions")
-        
         # DO NOT load URL here - will be loaded after API server is confirmed ready
-        print("[Customer Display] Window initialized, waiting for API server...")
     
     def load_display(self):
         """Load customer display URL after API server is ready"""
-        print(f"[Customer Display] Loading: {self.api_url}")
         self.load(QUrl(self.api_url))
-        
+
         # Move to secondary monitor if available
         screens = QApplication.screens()
         if len(screens) > 1:
-            # Place on second monitor FULLSCREEN
-            print(f"[Customer Display] Detected {len(screens)} monitors")
             geometry = screens[1].geometry()
-            print(f"[Customer Display] Monitor 2 geometry: {geometry.width()}x{geometry.height()} at ({geometry.left()}, {geometry.top()})")
             self.setGeometry(geometry)
             self.showFullScreen()
-            print("[Customer Display] Running in FULLSCREEN mode on secondary monitor")
         else:
-            # No second monitor - show fullscreen on primary
-            print("[Customer Display] Only 1 monitor detected - using primary monitor")
             self.showFullScreen()
-            print("[Customer Display] Running in FULLSCREEN mode on primary monitor")
     
     def keyPressEvent(self, event):
         """Handle keyboard events - Press ESC to exit fullscreen"""
         if event.key() == Qt.Key.Key_Escape:
             if self.isFullScreen():
-                print("[Customer Display] ESC pressed - Exiting fullscreen mode")
                 self.showNormal()
                 self.resize(1024, 768)
             else:
-                print("[Customer Display] ESC pressed - Entering fullscreen mode")
                 self.showFullScreen()
         else:
             super().keyPressEvent(event)
@@ -921,20 +875,15 @@ def main():
         customer_window = CustomerDisplayWindow()
         
         # Give extra time for API server to fully stabilize
-        print("[Customer Display] Waiting 3 seconds for API server to stabilize...")
         time.sleep(3)
-        
+
         # Final verification: Test the config endpoint one more time before loading
-        print("[Customer Display] Final verification of config endpoint...")
         try:
             test_response = requests.get('http://127.0.0.1:5000/api/customer-display/config', timeout=2)
-            if test_response.status_code == 200:
-                print("[Customer Display] ✓ Config endpoint confirmed working")
-                print(f"[Customer Display] Config data length: {len(test_response.content)} bytes")
-            else:
-                print(f"[Customer Display] ⚠️ Config endpoint returned status {test_response.status_code}")
+            if test_response.status_code != 200:
+                print(f"[WARN] Customer display config endpoint returned status {test_response.status_code}")
         except Exception as e:
-            print(f"[Customer Display] ⚠️ Config endpoint test failed: {e}")
+            print(f"[WARN] Customer display config endpoint test failed: {e}")
         
         # Load display URL after window is created and API is ready
         customer_window.load_display()

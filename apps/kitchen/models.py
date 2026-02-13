@@ -51,23 +51,24 @@ class KitchenOrder(models.Model):
     station = models.CharField(max_length=20)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='normal')
-    
+
+    # Batch tracking: which specific BillItem IDs belong to this KDS order
+    item_ids = models.JSONField(default=list, blank=True)
+
     # Timer tracking
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
-    
+
     # Performance targets (in minutes)
     target_prep_time = models.IntegerField(default=15, help_text="Target preparation time in minutes")
-    
+
     # Notification flags
     notified_10min = models.BooleanField(default=False)
     notified_overdue = models.BooleanField(default=False)
-    
+
     class Meta:
         ordering = ['-priority', 'created_at']
-        # CRITICAL: Prevent duplicate orders for same bill+station
-        unique_together = [['bill', 'station']]
         indexes = [
             models.Index(fields=['bill', 'station']),
             models.Index(fields=['status', 'created_at']),
@@ -77,6 +78,16 @@ class KitchenOrder(models.Model):
     def __str__(self):
         return f"{self.bill.bill_number} - {self.station}"
     
+    def get_batch_items(self):
+        """Get BillItems for this batch, filtered by item_ids.
+        Handles type comparison safely (JSONField int vs model id)."""
+        items = self.bill.items.all()
+        if self.item_ids:
+            id_set = set(int(i) for i in self.item_ids)
+            return [item for item in items if item.id in id_set and not item.is_void]
+        # Fallback for orders without item_ids: filter by station
+        return [item for item in items if not item.is_void and (item.printer_target or 'kitchen') == self.station]
+
     def get_elapsed_time(self):
         """Get elapsed time since order created (in seconds)"""
         if self.status in ['ready', 'served'] and self.completed_at:
@@ -162,7 +173,7 @@ class KitchenPerformance(models.Model):
     # Metrics
     total_orders = models.IntegerField(default=0)
     completed_orders = models.IntegerField(default=0)
-    avg_prep_time = models.DecimalField(max_digits=6, decimal_places=2, default=0)  # in seconds
+    avg_prep_time = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # in seconds
     overdue_orders = models.IntegerField(default=0)
     
     # Time tracking

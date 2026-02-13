@@ -1,14 +1,31 @@
 {% for order in orders %}
 {% include 'kitchen/partials/kds_order_card.html' %}
 {% empty %}
-<div class="text-center text-gray-500 py-8">
-    <div class="text-4xl mb-2">✓</div>
-    <div class="text-sm">No orders</div>
+
+{# Empty State - informative based on column #}
+<div class="text-center py-10 text-gray-500">
+    {% if status_filter == 'new' %}
+        <div class="text-5xl mb-3">✅</div>
+        <div class="text-lg font-bold text-gray-400">Kitchen is Clear</div>
+        <div class="text-sm text-gray-500 mt-1">No new orders waiting</div>
+    {% elif status_filter == 'preparing' %}
+        <div class="text-5xl mb-3">⏸️</div>
+        <div class="text-lg font-bold text-gray-400">No Active Orders</div>
+        <div class="text-sm text-gray-500 mt-1">Start an order from NEW column</div>
+    {% elif status_filter == 'ready' %}
+        <div class="text-5xl mb-3">🍽️</div>
+        <div class="text-lg font-bold text-gray-400">All Served</div>
+        <div class="text-sm text-gray-500 mt-1">No orders waiting to be picked up</div>
+    {% else %}
+        <div class="text-5xl mb-3">✅</div>
+        <div class="text-lg font-bold text-gray-400">No Orders</div>
+    {% endif %}
 </div>
+
 {% endfor %}
 
 <script>
-// Update counter badge (use IIFE to avoid const re-declaration error)
+// Update counter badge
 (function() {
     {% if status_filter == 'new' %}
         document.getElementById('new-count').textContent = {{ orders.count }};

@@ -3,129 +3,134 @@
 {% block title %}KDS - {{ station|title }}{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-900 p-4" x-data="{ showNotifications: false, notifications: [] }">
+<div class="min-h-screen bg-gray-900 p-3" x-data="{ showNotifications: false, notifications: [], audioEnabled: true }">
     <!-- Header -->
-    <div class="flex justify-between items-center mb-4">
-        <div class="flex items-center gap-4">
-            <h1 class="text-2xl font-bold text-white">Kitchen Display - {{ station|title }}</h1>
-            
+    <div class="flex justify-between items-center mb-3">
+        <div class="flex items-center gap-3">
+            <h1 class="text-xl font-bold text-white">KDS - {{ station|title }}</h1>
+
             <!-- Performance Metrics Badge -->
             {% if today_performance %}
-            <div class="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-2 text-white">
+            <div class="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-1.5 text-white text-sm">
                 <div class="text-center border-r border-gray-700 pr-3">
-                    <p class="text-xs text-gray-400">Today's Orders</p>
-                    <p class="text-lg font-bold">{{ today_performance.completed_orders }}/{{ today_performance.total_orders }}</p>
+                    <p class="text-[10px] text-gray-400">Orders</p>
+                    <p class="text-base font-bold">{{ today_performance.completed_orders }}/{{ today_performance.total_orders }}</p>
                 </div>
                 <div class="text-center border-r border-gray-700 pr-3">
-                    <p class="text-xs text-gray-400">Avg Time</p>
-                    <p class="text-lg font-bold">{{ today_performance.get_avg_prep_minutes|floatformat:1 }}m</p>
+                    <p class="text-[10px] text-gray-400">Avg</p>
+                    <p class="text-base font-bold">{{ today_performance.get_avg_prep_minutes|floatformat:1 }}m</p>
                 </div>
                 <div class="text-center">
-                    <p class="text-xs text-gray-400">Overdue</p>
-                    <p class="text-lg font-bold text-red-400">{{ today_performance.overdue_orders }}</p>
+                    <p class="text-[10px] text-gray-400">Overdue</p>
+                    <p class="text-base font-bold text-red-400">{{ today_performance.overdue_orders }}</p>
                 </div>
             </div>
             {% endif %}
         </div>
-        
+
         <div class="flex gap-2">
             <!-- Station Buttons -->
-            <a href="{% url 'kitchen:kds_station' 'kitchen' %}" 
-               class="px-4 py-2 rounded {% if station == 'kitchen' %}bg-blue-600{% else %}bg-gray-700{% endif %} text-white">
+            <a href="{% url 'kitchen:kds_station' 'kitchen' %}"
+               class="px-4 py-2 rounded-lg text-sm font-bold {% if station == 'kitchen' %}bg-blue-600 ring-2 ring-blue-400{% else %}bg-gray-700 hover:bg-gray-600{% endif %} text-white transition-all">
                 🍳 Kitchen
             </a>
-            <a href="{% url 'kitchen:kds_station' 'bar' %}" 
-               class="px-4 py-2 rounded {% if station == 'bar' %}bg-blue-600{% else %}bg-gray-700{% endif %} text-white">
+            <a href="{% url 'kitchen:kds_station' 'bar' %}"
+               class="px-4 py-2 rounded-lg text-sm font-bold {% if station == 'bar' %}bg-blue-600 ring-2 ring-blue-400{% else %}bg-gray-700 hover:bg-gray-600{% endif %} text-white transition-all">
                 🍹 Bar
             </a>
-            
+
+            <!-- Audio Toggle -->
+            <button @click="audioEnabled = !audioEnabled"
+                    :class="audioEnabled ? 'bg-green-700 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'"
+                    class="px-3 py-2 rounded-lg text-white text-sm transition-all"
+                    :title="audioEnabled ? 'Sound ON' : 'Sound OFF'">
+                <span x-text="audioEnabled ? '🔊' : '🔇'"></span>
+            </button>
+
             <!-- Notification Bell -->
-            <button @click="showNotifications = !showNotifications" 
-                    class="relative px-4 py-2 rounded bg-gray-700 text-white hover:bg-gray-600">
+            <button @click="showNotifications = !showNotifications"
+                    class="relative px-3 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 text-sm transition-all">
                 🔔
-                <span x-show="notifications.length > 0" 
+                <span x-show="notifications.length > 0"
                       class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
                       x-text="notifications.length"></span>
             </button>
-            
-            <a href="{% url 'pos:main' %}" class="px-4 py-2 rounded bg-gray-700 text-white hover:bg-gray-600">
+
+            <a href="{% url 'pos:main' %}" class="px-3 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 text-sm transition-all">
                 ← POS
             </a>
         </div>
     </div>
-    
+
     <!-- Notification Panel -->
-    <div x-show="showNotifications" 
+    <div x-show="showNotifications"
          x-transition
-         class="mb-4 bg-yellow-900 border-l-4 border-yellow-500 text-yellow-100 p-4 rounded"
+         class="mb-3 bg-yellow-900 border-l-4 border-yellow-500 text-yellow-100 p-3 rounded-lg"
          x-cloak>
         <div class="flex justify-between items-center mb-2">
-            <h3 class="font-bold">⚠️ Alerts</h3>
-            <button @click="showNotifications = false" class="text-yellow-300 hover:text-white">✕</button>
+            <h3 class="font-bold text-sm">⚠️ Alerts</h3>
+            <button @click="showNotifications = false" class="text-yellow-300 hover:text-white text-lg">✕</button>
         </div>
         <template x-for="notification in notifications" :key="notification.message">
-            <div class="text-sm py-1" 
+            <div class="text-sm py-1"
                  :class="notification.type === 'overdue' ? 'text-red-300 font-bold' : 'text-yellow-200'"
                  x-text="notification.message"></div>
         </template>
     </div>
-    
+
     <!-- Orders Grid - 3 Column Layout -->
-    <div class="grid grid-cols-3 gap-4 h-[calc(100vh-180px)]">
+    <div class="grid grid-cols-3 gap-3 h-[calc(100vh-120px)]">
         <!-- NEW ORDERS Column -->
-        <div class="bg-gray-800 rounded-lg overflow-hidden flex flex-col">
-            <div class="bg-red-600 px-4 py-3 flex items-center justify-between">
+        <div class="bg-gray-800 rounded-xl overflow-hidden flex flex-col">
+            <div class="bg-red-600 px-4 py-2.5 flex items-center justify-between flex-shrink-0">
                 <div class="flex items-center gap-2">
                     <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    <h2 class="text-lg font-bold text-white">NEW ORDERS</h2>
+                    <h2 class="text-base font-bold text-white">NEW</h2>
                 </div>
-                <span class="bg-red-800 text-white px-3 py-1 rounded-full text-sm font-bold" id="new-count">0</span>
+                <span class="bg-red-800 text-white px-3 py-0.5 rounded-full text-sm font-bold" id="new-count">0</span>
             </div>
-            <div id="new-orders" class="flex-1 overflow-y-auto p-3 space-y-3"
+            <div id="new-orders" class="flex-1 overflow-y-auto p-2.5 space-y-2.5"
                  hx-get="{% url 'kitchen:kds_orders' station %}?status=new"
                  hx-trigger="every 5s"
                  hx-swap="innerHTML">
-                <!-- New orders will load here -->
             </div>
         </div>
 
         <!-- PREPARING Column -->
-        <div class="bg-gray-800 rounded-lg overflow-hidden flex flex-col">
-            <div class="bg-yellow-600 px-4 py-3 flex items-center justify-between">
+        <div class="bg-gray-800 rounded-xl overflow-hidden flex flex-col">
+            <div class="bg-amber-600 px-4 py-2.5 flex items-center justify-between flex-shrink-0">
                 <div class="flex items-center gap-2">
-                    <svg class="w-5 h-5 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
-                    <h2 class="text-lg font-bold text-white">PREPARING</h2>
+                    <h2 class="text-base font-bold text-white">PREPARING</h2>
                 </div>
-                <span class="bg-yellow-800 text-white px-3 py-1 rounded-full text-sm font-bold" id="preparing-count">0</span>
+                <span class="bg-amber-800 text-white px-3 py-0.5 rounded-full text-sm font-bold" id="preparing-count">0</span>
             </div>
-            <div id="preparing-orders" class="flex-1 overflow-y-auto p-3 space-y-3"
+            <div id="preparing-orders" class="flex-1 overflow-y-auto p-2.5 space-y-2.5"
                  hx-get="{% url 'kitchen:kds_orders' station %}?status=preparing"
                  hx-trigger="every 5s"
                  hx-swap="innerHTML">
-                <!-- Preparing orders will load here -->
             </div>
         </div>
 
         <!-- READY Column -->
-        <div class="bg-gray-800 rounded-lg overflow-hidden flex flex-col">
-            <div class="bg-green-600 px-4 py-3 flex items-center justify-between">
+        <div class="bg-gray-800 rounded-xl overflow-hidden flex flex-col">
+            <div class="bg-green-600 px-4 py-2.5 flex items-center justify-between flex-shrink-0">
                 <div class="flex items-center gap-2">
                     <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    <h2 class="text-lg font-bold text-white">READY</h2>
+                    <h2 class="text-base font-bold text-white">READY</h2>
                 </div>
-                <span class="bg-green-800 text-white px-3 py-1 rounded-full text-sm font-bold" id="ready-count">0</span>
+                <span class="bg-green-800 text-white px-3 py-0.5 rounded-full text-sm font-bold" id="ready-count">0</span>
             </div>
-            <div id="ready-orders" class="flex-1 overflow-y-auto p-3 space-y-3"
+            <div id="ready-orders" class="flex-1 overflow-y-auto p-2.5 space-y-2.5"
                  hx-get="{% url 'kitchen:kds_orders' station %}?status=ready"
                  hx-trigger="every 5s"
                  hx-swap="innerHTML">
-                <!-- Ready orders will load here -->
             </div>
         </div>
     </div>
@@ -135,19 +140,51 @@
 <div hx-get="{% url 'kitchen:check_overdue' station %}"
      hx-trigger="every 30s"
      hx-swap="none"
-     @htmx:after-request="if($event.detail.xhr.response) { 
+     @htmx:after-request="if($event.detail.xhr.response) {
          const data = JSON.parse($event.detail.xhr.response);
          if(data.notifications && data.notifications.length > 0) {
              notifications = data.notifications;
              showNotifications = true;
-             // Play sound alert
-             const audio = new Audio('/static/alert.mp3');
-             audio.play().catch(e => console.log('Audio play failed'));
+             if(audioEnabled) { kdsPlayAlert('overdue'); }
          }
      }">
 </div>
 
 <script>
+    // === KDS Audio Alert System (no external files needed) ===
+    function kdsPlayAlert(type) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            if (type === 'new_order') {
+                // Two quick high beeps
+                osc.frequency.value = 880;
+                gain.gain.value = 0.3;
+                osc.start(ctx.currentTime);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.setValueAtTime(0, ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime + 0.25);
+                gain.gain.setValueAtTime(0, ctx.currentTime + 0.4);
+                osc.stop(ctx.currentTime + 0.5);
+            } else if (type === 'overdue') {
+                // Long low warning tone
+                osc.frequency.value = 440;
+                osc.type = 'sawtooth';
+                gain.gain.value = 0.25;
+                osc.start(ctx.currentTime);
+                gain.gain.setValueAtTime(0.25, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.0);
+                osc.stop(ctx.currentTime + 1.0);
+            }
+        } catch(e) {
+            console.log('[KDS] Audio alert failed:', e);
+        }
+    }
+
     // Auto-hide notifications after 10 seconds
     document.addEventListener('alpine:init', () => {
         Alpine.effect(() => {
@@ -158,5 +195,54 @@
             }
         });
     });
+
+    // WebSocket for instant KDS refresh
+    (function() {
+        const brandId = '{{ request.user.brand.id }}';
+        const station = '{{ station }}';
+        const wsUrl = (location.protocol === 'https:' ? 'wss:' : 'ws:')
+                    + '//' + location.host + '/ws/kds/' + brandId + '/';
+        let ws;
+        let reconnectTimer = null;
+
+        function connect() {
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                console.log('[KDS] WebSocket connected');
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
+            };
+
+            ws.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                if (data.type === 'new_order' && data.station === station) {
+                    console.log('[KDS] New order received, refreshing...');
+                    htmx.trigger('#new-orders', 'htmx:trigger');
+                    htmx.trigger('#preparing-orders', 'htmx:trigger');
+                    // Play new order beep if audio enabled
+                    try {
+                        const root = document.querySelector('[x-data]');
+                        if (root && root._x_dataStack && root._x_dataStack[0].audioEnabled) {
+                            kdsPlayAlert('new_order');
+                        }
+                    } catch(e) {}
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('[KDS] WebSocket disconnected, reconnecting in 3s...');
+                reconnectTimer = setTimeout(connect, 3000);
+            };
+
+            ws.onerror = function() {
+                ws.close();
+            };
+        }
+
+        connect();
+    })();
 </script>
 {% endblock %}

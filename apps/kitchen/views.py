@@ -10,7 +10,7 @@ from datetime import timedelta
 from decimal import Decimal
 import json
 
-from .models import KitchenOrder, PrinterConfig, KitchenPerformance, KitchenStation, StationPrinter
+from .models import KitchenOrder, KitchenPerformance, KitchenStation, StationPrinter
 
 
 def trigger_client_event(response, event_name, data=None):
@@ -92,7 +92,11 @@ def kds_orders(request, station='kitchen'):
         '-priority',  # urgent/rush first
         'created_at'  # oldest first
     )
-    
+
+    # Limit Ready column to most recent 5 to prevent scroll overload
+    if status_filter == 'ready':
+        orders = orders[:5]
+
     return render(request, 'kitchen/partials/kds_orders.html', {
         'orders': orders,
         'station': station,
@@ -108,11 +112,12 @@ def kds_start(request, order_id):
     order.status = 'preparing'
     order.started_at = timezone.now()
     order.save()
-    
-    order.bill.items.filter(
-        product__printer_target=order.station,
-        status='sent'
-    ).update(status='preparing')
+
+    # Update only this batch's items
+    if order.item_ids:
+        order.bill.items.filter(id__in=order.item_ids, status='sent').update(status='preparing')
+    else:
+        order.bill.items.filter(product__printer_target=order.station, status='sent').update(status='preparing')
     
     response = render(request, 'kitchen/partials/kds_order_card.html', {'order': order})
     return trigger_client_event(response, 'orderStarted')
@@ -126,11 +131,12 @@ def kds_ready(request, order_id):
     order.status = 'ready'
     order.completed_at = timezone.now()
     order.save()
-    
-    order.bill.items.filter(
-        product__printer_target=order.station,
-        status='preparing'
-    ).update(status='ready')
+
+    # Update only this batch's items
+    if order.item_ids:
+        order.bill.items.filter(id__in=order.item_ids, status='preparing').update(status='ready')
+    else:
+        order.bill.items.filter(product__printer_target=order.station, status='preparing').update(status='ready')
     
     # Update performance metrics
     update_kitchen_performance(order)
@@ -142,7 +148,7 @@ def kds_ready(request, order_id):
         
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            f"pos_{order.bill.Brand.id}",
+            f"pos_{order.bill.brand.id}",
             {
                 'type': 'order_ready',
                 'order_id': order.id,
@@ -160,50 +166,21 @@ def kds_ready(request, order_id):
 @login_required
 @require_http_methods(["POST"])
 def kds_bump(request, order_id):
-    """Bump/serve order - HTMX"""
+    """Bump/serve order - HTMX (runner picked up food)"""
     order = get_object_or_404(KitchenOrder, id=order_id)
     order.status = 'served'
     order.save()
-    
-    order.bill.items.filter(
-        product__printer_target=order.station,
-        status='ready'
-    ).update(status='served')
-    
+
+    # Update only this batch's items
+    if order.item_ids:
+        order.bill.items.filter(id__in=order.item_ids, status='ready').update(status='served')
+    else:
+        order.bill.items.filter(product__printer_target=order.station, status='ready').update(status='served')
+
     response = HttpResponse()
     response['HX-Trigger'] = 'orderBumped'
     return response
 
-
-@login_required
-def printer_list(request):
-    """Printer configuration list"""
-    printers = PrinterConfig.objects.filter(brand=request.user.brand)
-    return render(request, 'kitchen/printers.html', {'printers': printers})
-
-
-@login_required
-@require_http_methods(["POST"])
-def test_printer(request, printer_id):
-    """Test printer connection - HTMX"""
-    printer = get_object_or_404(PrinterConfig, id=printer_id)
-    
-    try:
-        from .services import get_printer
-        p = get_printer(printer)
-        if p:
-            p.text("=== TEST PRINT ===\n")
-            p.text(f"Printer: {printer.name}\n")
-            p.text(f"Station: {printer.station}\n")
-            p.text(f"Time: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            p.text("=================\n")
-            p.cut()
-            p.close()
-            return HttpResponse('<div class="p-3 bg-green-100 text-green-700 rounded">Test print berhasil!</div>')
-        else:
-            return HttpResponse('<div class="p-3 bg-red-100 text-red-700 rounded">Printer tidak ditemukan</div>')
-    except Exception as e:
-        return HttpResponse(f'<div class="p-3 bg-red-100 text-red-700 rounded">Error: {e}</div>')
 
 
 @login_required

@@ -14,8 +14,8 @@ application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AuthMiddlewareStack(
         URLRouter([
-            path("ws/kds/<int:outlet_id>/", KDSConsumer.as_asgi()),
-            path("ws/pos/<int:outlet_id>/", POSConsumer.as_asgi()),
+            path("ws/kds/<str:brand_id>/", KDSConsumer.as_asgi()),
+            path("ws/pos/<str:brand_id>/", POSConsumer.as_asgi()),
         ])
     ),
 })

@@ -270,7 +270,13 @@ CATATAN:
                 paidTotal: alpineData.paidTotal,
                 canPay: alpineData.canPay,
                 method: alpineData.method,
-                payments: alpineData.payments
+                payments: alpineData.payments,
+                qrisState: alpineData.qrisState || 'idle',
+                qrisQrImage: alpineData.qrisQrImage || '',
+                qrisAmount: alpineData.qrisAmount || 0,
+                qrisTransactionId: alpineData.qrisTransactionId || '',
+                qrisError: alpineData.qrisError || '',
+                activeField: alpineData.activeField || 'amount'
             };
 
             {# Process x-show (visibility) #}

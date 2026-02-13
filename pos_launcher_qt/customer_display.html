@@ -1,13 +1,12 @@
 <!--
 ============================================================================
-CUSTOMER DISPLAY (customer_display.html) - Revamp v2
+CUSTOMER DISPLAY (customer_display.html) - Modern Corporate Theme
 ============================================================================
-Refactored layout based on "Comic" theme reference:
-1. Left Column: Logos & Staff Profile
-2. Middle Column: Slideshow, Tenant Info, Promo, Running Text
-3. Right Column: Order Summary (Bill Panel)
+Layout: Left (65%) Hero Slideshow + Promos + Running Text
+        Right (35%) Order Summary Sidebar (Green Theme)
 
-Maintains original SSE logic for real-time updates.
+Data source: Flask local_api.py SSE stream + config API
+============================================================================
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -15,43 +14,42 @@ Maintains original SSE logic for real-time updates.
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Customer Display</title>
-    
+
     <!-- Disable caching -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    
+
     <!-- Tailwind CSS (Local) -->
     <script src="assets/tailwind.js"></script>
-    
-    <!-- Google Fonts for "Comic" look -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
-    
+
     <style>
-        /* Base Reset & Fonts */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Comic Neue', 'Comic Sans MS', sans-serif;
-            overflow: hidden; 
-            background: white;
-            color: #333;
+        /* Inter Font (Local - Offline) */
+        @font-face {
+            font-family: 'Inter';
+            font-style: normal;
+            font-weight: 400 800;
+            font-display: swap;
+            src: url(assets/fonts/inter-latin-ext.woff2) format('woff2');
+            unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+        }
+        @font-face {
+            font-family: 'Inter';
+            font-style: normal;
+            font-weight: 400 800;
+            font-display: swap;
+            src: url(assets/fonts/inter-latin.woff2) format('woff2');
+            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
         }
 
-        /* Comic Style Borders */
-        .comic-border {
-            border: 3px solid #000;
-            border-radius: 24px;
-            box-shadow: 4px 4px 0px #000;
-        }
-        
-        .comic-panel {
-            background: white;
-            border: 2px solid #000;
-            border-radius: 16px;
+        /* Base Reset & Fonts */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
+            background: #f0fdf4;
+            color: #1f2937;
         }
 
         /* Animation Keyframes */
@@ -59,35 +57,15 @@ Maintains original SSE logic for real-time updates.
             from { transform: translateX(0); }
             to { transform: translateX(-100%); }
         }
-        
+
         @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Slideshow Styles */
-        .slide {
-            display: none;
-            position: absolute;
-            inset: 0;
-            animation: fadeIn 0.5s ease-in-out;
-        }
-        .slide.active { display: flex; }
-        .slide img { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* Bill Panel Overrides */
-        #bill-panel-container {
-            height: 100%;
-            overflow-y: auto;
-            border: none !important; /* Remove default border from injected HTML */
-        }
-        
-        /* Hide POS-only controls in injected bill panel */
-        #bill-panel-container button,
-        #bill-panel-container kbd,
-        #bill-panel-container .inline-flex,
-        #bill-panel-container [class*="grid-cols"] {
-            display: none !important;
+        @keyframes scaleIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
         }
 
         /* Running Text */
@@ -98,290 +76,505 @@ Maintains original SSE logic for real-time updates.
         .running-text {
             display: inline-block;
             padding-left: 100%;
-            animation: marquee 20s linear infinite;
+            animation: marquee 30s linear infinite;
         }
 
         /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+        /* Slideshow Styles */
+        .slide {
+            display: none;
+            position: absolute;
+            inset: 0;
+            animation: fadeIn 0.5s ease-out;
+        }
+        .slide.active { display: block; }
+        .slide img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Brand Colors */
+        .bg-brand-green { background-color: #047857; }
+        .text-brand-green { color: #047857; }
+        .bg-brand-orange { background: linear-gradient(90deg, #f59e0b 0%, #ea580c 100%); }
+
+        /* Hide POS-only controls in injected bill panel */
+        #bill-panel-container button,
+        #bill-panel-container kbd,
+        #bill-panel-container .inline-flex,
+        #bill-panel-container [class*="grid-cols"] {
+            display: none !important;
+        }
+
+        /* Override bill panel styles */
+        #bill-panel-container {
+            height: 100%;
+            overflow-y: auto;
+            padding: 0 !important;
+        }
+
+        /* Force injected POS bill panel to fill full width */
+        #bill-panel-container > #bill-panel,
+        #bill-panel-container > aside {
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            height: 100% !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        /* Make bill items area fill available space */
+        #bill-panel-container #bill-items {
+            padding: 0.5rem !important;
+        }
+
+        /* Hide bill header in customer display (sidebar has its own) */
+        #bill-panel-container .bill-header-active {
+            display: none !important;
+        }
+
+        /* Hide debug scripts output */
+        #bill-panel-container > script,
+        #bill-panel-container > style {
+            display: none !important;
+        }
+
+        /* Style item rows in injected HTML */
+        #bill-panel-container .item-row {
+            padding: 12px;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        /* Hide entire POS footer (totals + action buttons) — sidebar has its own */
+        #bill-panel-container #bill-panel > .flex-shrink-0,
+        #bill-panel-container > aside > .flex-shrink-0 {
+            display: none !important;
+        }
+
+        /* Hide cancel-bill modal and shift-required elements from POS */
+        #bill-panel-container #cancel-bill-modal {
+            display: none !important;
+        }
+
+        /* QR Code Modal */
+        .qr-modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .qr-modal.active { display: flex; }
+        .qr-content {
+            background: white;
+            padding: 3rem;
+            border-radius: 30px;
+            text-align: center;
+            animation: scaleIn 0.3s ease-out;
+        }
+        .qr-code-container {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+        }
+        .qr-code-container img {
+            width: 300px; height: 300px;
+            border: 5px solid #047857;
+            border-radius: 15px;
+        }
     </style>
 </head>
-<body class="h-screen w-full bg-white p-2">
+<body class="h-screen w-full p-4 flex gap-4">
 
-    <!-- MAIN GRID LAYOUT -->
-    <div class="grid grid-cols-12 gap-3 h-full w-full">
-        
-        <!-- LEFT COLUMN (Branding & Staff) - 20% -->
-        <div class="col-span-3 flex flex-col gap-3 h-full">
-            <!-- Top: Main Logo Area -->
-            <div class="comic-border h-1/3 flex items-center justify-center p-4 bg-white">
-                <div class="text-center">
-                    <!-- Placeholder Logo -->
-                    <div class="w-24 h-24 mx-auto mb-2 relative">
-                        <!-- YOGYA Logo Placeholder -->
-                        <svg class="w-full h-full text-green-600" viewBox="0 0 24 24" fill="currentColor">
-                           <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z"/>
-                        </svg>
-                    </div>
-                    <h1 class="text-2xl font-bold text-red-600 tracking-tighter hover:scale-105 transition-transform">YOGYA</h1>
-                    <div class="bg-green-600 text-white text-xs px-3 py-1 rounded-full font-bold mt-1 inline-block">LEMBANG</div>
-                </div>
-            </div>
+    <!-- ==================== LEFT COLUMN (65%) ==================== -->
+    <div class="flex-1 flex flex-col gap-4 h-full min-w-0">
 
-            <!-- Middle: Staff Profile -->
-            <div class="comic-border h-1/3 p-2 bg-white relative overflow-hidden group">
-                <img src="assets/staff_placeholder.jpg" 
-                     onerror="this.src='https://ui-avatars.com/api/?name=Neneng+Sureneng&background=random&size=200'" 
-                     class="w-full h-full object-cover rounded-xl"
-                     alt="Staff Photo">
-                
-                <!-- Name Badge -->
-                <div class="absolute bottom-4 left-0 right-0 text-center">
-                    <div class="bg-white border-2 border-black inline-block px-4 py-1.5 rounded-full shadow-md transform -rotate-2 group-hover:rotate-0 transition-transform">
-                        <span class="font-bold text-lg">Neneng Sureneng</span>
-                    </div>
+        <!-- Header: Brand & Clock -->
+        <div class="flex justify-between items-center px-2">
+            <div class="flex items-center gap-4">
+                <div id="header-logo" class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl text-green-700 border border-green-200 overflow-hidden">
+                    🏪
                 </div>
-            </div>
-
-            <!-- Bottom: Secondary Logo -->
-            <div class="comic-border h-1/3 flex items-center justify-center p-4 bg-white">
-                <div class="flex items-center gap-2">
-                     <div class="text-center">
-                        <div class="text-xs font-bold text-gray-400 mb-1">POWERED BY</div>
-                        <h2 class="text-xl font-bold text-red-600 border-2 border-red-600 px-2 py-1 rounded">TOSERBA YOGYA</h2>
-                        <div class="text-xs font-bold text-green-700 bg-green-100 rounded px-1 mt-1">PONDOK BAMBU</div>
-                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- CENTER COLUMN (Content) - 50% -->
-        <div class="col-span-6 flex flex-col gap-3 h-full">
-            <!-- Top: Tenant Header -->
-            <div class="comic-border h-24 flex items-center px-6 bg-white gap-4 shadow-sm">
-                <div class="w-14 h-14 bg-amber-100 rounded-full border-2 border-amber-300 flex items-center justify-center text-2xl overflow-hidden">
-                    ☕
-                </div>
-                <div class="flex flex-col">
-                    <span class="text-xs font-bold text-amber-600 bg-amber-50 px-2 rounded w-fit">KOPITIAM</span>
-                    <h1 class="text-3xl font-bold text-gray-800" style="text-shadow: 2px 2px 0px #eee;">BOE KOPITIAM</h1>
-                </div>
-            </div>
-
-            <!-- Middle: Main Slideshow/Ad -->
-            <div class="comic-border flex-1 relative overflow-hidden bg-gray-100 group">
-                <!-- Slideshow Container -->
-                <div id="slideshow-slides" class="absolute inset-0 w-full h-full">
-                    <!-- Default Slide -->
-                    <div class="slide active flex flex-col items-center justify-center bg-teal-50 text-center p-8">
-                         <div class="text-6xl mb-4 animate-bounce">🎬</div>
-                         <h2 class="text-4xl font-bold text-teal-800 mb-2">SEGERA HADIR!</h2>
-                         <p class="text-xl text-teal-600 font-bold">Menu Spesial Hari Ini</p>
-                    </div>
-                </div>
-                
-                <!-- Badge Overlay -->
-                <div class="absolute top-4 right-4 bg-red-500 text-white font-bold px-4 py-2 rounded-full border-2 border-white shadow-lg transform rotate-6">
-                    NEW!
-                </div>
-            </div>
-
-            <!-- Bottom 1: Promo Info -->
-            <div class="comic-border h-48 bg-white p-3 flex flex-col">
-                <h3 class="font-bold text-lg mb-2 flex items-center gap-2">
-                    <span class="bg-yellow-400 text-black px-2 rounded text-sm border border-black">PROMO</span>
-                    HARI INI
-                </h3>
-                <div class="flex-1 bg-yellow-50 rounded-xl border-2 border-yellow-200 border-dashed flex items-center justify-center">
-                    <span class="text-yellow-700 font-bold text-xl opacity-50">Space Iklan / Promo Text</span>
-                </div>
-            </div>
-
-            <!-- Bottom 2: Running Text -->
-            <div class="comic-border h-16 bg-white flex items-center overflow-hidden relative px-4">
-                 <div class="absolute left-0 top-0 bottom-0 bg-white z-10 px-4 flex items-center font-bold text-gray-400 border-r-2 border-gray-100">
-                    📢 INFO
-                 </div>
-                 <div class="running-text-container w-full ml-16">
-                     <div class="running-text text-xl font-bold text-gray-700" id="running-text">
-                         Selamat datang di BOE KOPITIAM • Silakan pesan menu favorit Anda • Promo diskon 20% untuk member •
-                     </div>
-                 </div>
-            </div>
-        </div>
-
-        <!-- RIGHT COLUMN (Bill Panel) - 30% -->
-        <div class="col-span-3 comic-border bg-white h-full flex flex-col overflow-hidden relative">
-            <!-- Header -->
-            <div class="bg-green-500 p-4 border-b-2 border-black text-white flex justify-between items-center">
                 <div>
-                     <h2 class="text-xl font-bold">Order Summary</h2>
-                     <div class="text-xs opacity-90 font-bold">Table A1 • #TXN-001</div>
-                </div>
-                <div class="bg-white/20 p-2 rounded-lg">
-                    🛒
-                </div>
-            </div>
-            
-            <!-- Items List Container -->
-            <div id="bill-panel-container" class="flex-1 p-2">
-                <!-- Empty State -->
-                <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                    <svg class="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                    <span class="font-bold">Belum ada pesanan</span>
+                    <h1 id="brand-name" class="text-xl font-bold text-gray-900 leading-tight">YOGYA FOOD LIFE</h1>
+                    <p id="brand-tagline" class="text-xs text-gray-500 font-medium">Nikmati Menu Pilihan Terbaik</p>
                 </div>
             </div>
 
-            <!-- Total Section (Fallback if not in bill panel) -->
-            <div id="fallback-total" class="bg-gray-50 p-4 border-t-2 border-black">
-                <div class="flex justify-between items-center mb-1 text-sm font-bold text-gray-500">
-                    <span>Subtotal</span>
-                    <span id="subtotal-display">Rp 0</span>
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <div class="text-sm font-semibold text-gray-800" id="current-date">Loading...</div>
+                    <div class="text-xs font-bold bg-green-50 text-green-600 px-2 py-0.5 rounded-full inline-block" id="current-time">--:--</div>
                 </div>
-                <div class="flex justify-between items-center mb-1 text-sm font-bold text-gray-500">
-                    <span>Tax & Service</span>
-                    <span>-</span>
+                <span id="connection-status" class="w-3 h-3 rounded-full bg-gray-400 border-2 border-white shadow-sm" title="Connecting..."></span>
+            </div>
+        </div>
+
+        <!-- Hero Section (Slideshow) -->
+        <div class="relative flex-1 rounded-[28px] overflow-hidden shadow-lg">
+            <div id="slideshow-slides" class="absolute inset-0 w-full h-full bg-gray-900">
+                <!-- Default slide (replaced by config slides) -->
+                <div class="slide active w-full h-full relative">
+                    <div class="absolute inset-0 bg-gradient-to-br from-green-800 via-green-700 to-emerald-600"></div>
+                    <div class="absolute inset-0 bg-gradient-to-r from-black/50 via-transparent to-transparent"></div>
+                    <div class="absolute top-1/2 left-12 transform -translate-y-1/2 max-w-lg text-white">
+                        <span class="bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-4 inline-block">Welcome</span>
+                        <h2 class="text-5xl font-extrabold mb-4 leading-tight" id="hero-title">SELAMAT<br><span class="text-green-300">DATANG!</span></h2>
+                        <p class="text-lg text-gray-200 leading-relaxed max-w-sm" id="hero-subtitle">Nikmati berbagai menu pilihan terbaik di YOGYA Food Life.</p>
+                    </div>
                 </div>
-                <div class="border-t-2 border-dashed border-gray-300 my-2"></div>
-                <div class="flex justify-between items-center text-2xl font-bold text-gray-800">
-                    <span>Total</span>
-                    <span id="total-display">Rp 0</span>
+            </div>
+
+            <!-- Slide Indicators -->
+            <div class="absolute bottom-5 right-6 flex gap-2" id="slide-indicators"></div>
+        </div>
+
+        <!-- Promo Section (Hardcoded) -->
+        <div class="h-44 flex flex-col gap-2.5">
+            <div class="flex justify-between items-end px-2">
+                <div class="flex items-center gap-2 border-l-4 border-green-600 pl-3 h-6">
+                    <h3 class="text-base font-bold text-gray-800">Promo Hari Ini</h3>
+                </div>
+                <span class="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">NEW</span>
+            </div>
+
+            <div class="flex gap-3 h-full">
+                <!-- Promo Card 1 -->
+                <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
+                    <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
+                        <img src="assets/promo1.jpg" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center text-3xl\'>🍜</div>'" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex flex-col justify-center flex-1 min-w-0">
+                        <span class="bg-red-100 text-red-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">HOT DEAL</span>
+                        <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">Paket Hemat Nasi</h4>
+                        <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">Nasi + Lauk Pilihan + Es Teh. Hemat sampai 30%!</p>
+                        <div>
+                            <span class="text-[10px] text-gray-400 line-through">Rp 35.000</span>
+                            <div class="font-bold text-green-600 text-sm">Rp 25.000</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Promo Card 2 -->
+                <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
+                    <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
+                        <img src="assets/promo2.jpg" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-amber-100 to-yellow-200 flex items-center justify-center text-3xl\'>🥤</div>'" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex flex-col justify-center flex-1 min-w-0">
+                        <span class="bg-orange-100 text-orange-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">LIMITED</span>
+                        <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">Beli 2 Gratis 1</h4>
+                        <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">Semua minuman dingin, berlaku s/d jam 2 siang.</p>
+                        <div>
+                            <span class="text-[10px] text-gray-400 line-through">Rp 45.000</span>
+                            <div class="font-bold text-green-600 text-sm">Rp 30.000</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Promo Card 3 -->
+                <div class="flex-1 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex gap-3 relative overflow-hidden">
+                    <div class="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 self-center">
+                        <img src="assets/promo3.jpg" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'w-full h-full bg-gradient-to-br from-pink-100 to-rose-200 flex items-center justify-center text-3xl\'>🍰</div>'" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex flex-col justify-center flex-1 min-w-0">
+                        <span class="bg-purple-100 text-purple-600 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit mb-1">WEEKEND</span>
+                        <h4 class="font-bold text-gray-800 text-sm mb-0.5 truncate">Dessert Special</h4>
+                        <p class="text-[10px] text-gray-500 line-clamp-2 mb-1.5">Diskon 20% semua dessert setiap weekend.</p>
+                        <div>
+                            <span class="text-[10px] text-gray-400 line-through">Rp 28.000</span>
+                            <div class="font-bold text-green-600 text-sm">Rp 22.000</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+
+        <!-- Footer Running Text -->
+        <div class="h-10 bg-brand-orange text-white rounded-xl flex items-center px-4 relative overflow-hidden shadow-md">
+            <div class="absolute left-0 top-0 bottom-0 bg-brand-orange z-10 px-3 flex items-center gap-2 pr-6">
+                <div class="bg-white text-orange-600 rounded-full w-6 h-6 flex items-center justify-center shadow-sm">
+                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/></svg>
+                </div>
+            </div>
+
+            <div class="running-text-container w-full ml-10">
+                <div class="running-text text-sm font-bold" id="running-text">
+                    Selamat datang di YOGYA Food Life! ⭐ Nikmati berbagai menu pilihan terbaik ⭐ Terima kasih atas kunjungan Anda
+                </div>
+            </div>
+
+            <div class="absolute right-3 top-1/2 -translate-y-1/2 bg-red-600 text-[9px] font-bold px-2 py-0.5 rounded animate-pulse shadow-sm">
+                ● LIVE
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ==================== RIGHT COLUMN: Order Summary (35%) ==================== -->
+    <div class="w-[360px] bg-white rounded-[28px] flex flex-col overflow-hidden shadow-2xl border border-gray-100 flex-shrink-0 relative">
+
+        <!-- Sidebar Header (Green Theme) -->
+        <div class="bg-brand-green p-4 text-white relative overflow-hidden flex-shrink-0">
+            <div class="absolute right-0 top-0 bottom-0 w-32 bg-white/5 skew-x-12 transform translate-x-8"></div>
+
+            <div class="relative z-10">
+                <div class="text-[10px] font-medium tracking-wider text-green-200 mb-1">CURRENT ORDER</div>
+                <div class="text-base font-bold" id="sidebar-title">Your Order</div>
+                <div class="text-xs font-medium text-green-200 mt-0.5" id="sidebar-table" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Items List Container -->
+        <div id="bill-panel-container" class="flex-1 bg-gray-50 p-3 overflow-y-auto relative">
+            <!-- Empty State -->
+            <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60" id="empty-state">
+                <svg class="w-16 h-16 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                <span class="font-bold text-gray-500">Belum ada pesanan</span>
+                <span class="text-xs text-gray-400 mt-1">Silakan pilih menu favorit Anda</span>
+            </div>
+        </div>
+
+
+        <!-- Total Section -->
+        <div id="fallback-total" class="bg-white p-5 border-t border-gray-100 flex-shrink-0">
+            <div class="space-y-1.5 mb-3">
+                <div class="flex justify-between items-center text-xs font-medium text-gray-500">
+                    <span>Subtotal</span>
+                    <span id="subtotal-display" class="text-gray-900">Rp 0</span>
+                </div>
+                <div class="flex justify-between items-center text-xs font-medium text-gray-500">
+                    <span>Tax</span>
+                    <span id="tax-display" class="text-gray-900">Rp 0</span>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-end border-t border-gray-200 pt-3">
+                <span class="text-sm font-bold text-gray-800">Total</span>
+                <span id="total-display" class="text-2xl font-extrabold text-brand-green">Rp 0</span>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ==================== MODAL OVERLAYS ==================== -->
+
+    <!-- Customer Modal (payment success, etc.) -->
+    <div id="customer-modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99999; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); align-items: center; justify-content: center; padding: 2rem;">
+        <div id="customer-modal-content" style="background: white; border-radius: 1.5rem; max-width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);"></div>
     </div>
 
     <!-- QR Code Modal -->
-    <div id="qr-modal" class="fixed inset-0 bg-black/80 z-[999] hidden items-center justify-center backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-3xl max-w-md w-full text-center border-4 border-black shadow-[8px_8px_0px_#000]">
-            <h2 class="text-3xl font-bold mb-2">💳 Scan to Pay</h2>
-            <p class="text-gray-600 font-bold mb-6">Scan QR code dengan aplikasi pembayaran Anda</p>
-            
-            <div class="bg-gray-100 p-4 rounded-xl border-2 border-gray-300 inline-block mb-4">
-                <img id="qr-code-image" src="" alt="QR Code" class="w-64 h-64 object-contain rounded-lg hidden">
-                <div id="qr-loading" class="w-64 h-64 flex items-center justify-center text-4xl text-gray-400 font-bold">
-                    ⏳ Generating...
-                </div>
+    <div class="qr-modal" id="qr-modal">
+        <div class="qr-content">
+            <h2 style="color: #333; font-size: 2.5rem; margin-bottom: 1rem;">💳 Scan to Pay</h2>
+            <p style="color: #666; font-size: 1.4rem; margin-bottom: 2rem;">Scan QR code dengan aplikasi pembayaran Anda</p>
+            <div class="qr-code-container">
+                <img id="qr-code-image" src="" alt="QR Code" style="display: none;">
+                <div id="qr-loading" style="font-size: 3rem; color: #047857;">⏳ Generating...</div>
             </div>
-            
-            <div class="text-4xl font-bold text-green-600 mb-2" id="qr-amount">Rp 0</div>
-            <div class="text-gray-500 font-bold" id="qr-timer">Expires in 5:00</div>
+            <div id="qr-amount" style="font-size: 3rem; font-weight: bold; color: #047857; margin-top: 1.5rem;">Rp 0</div>
+            <div id="qr-timer" style="font-size: 1.2rem; color: #999; margin-top: 1rem;">Expires in 5:00</div>
         </div>
     </div>
 
-    <!-- Review Overlay -->
-    <div id="review-overlay" class="fixed inset-0 bg-black/80 z-[1000] hidden items-center justify-center backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-3xl max-w-2xl w-full text-center border-4 border-black shadow-[8px_8px_0px_#000]">
-            <div id="review-form">
-                <h2 class="text-3xl font-bold mb-2">Bagaimana pelayanan kami?</h2>
-                <p class="text-gray-600 font-bold mb-8">Sentuh untuk memberikan penilaian Anda</p>
 
-                <div class="flex justify-center gap-4 mb-8">
-                    <button onclick="submitReview(1)" class="group hover:-translate-y-2 transition-transform">
-                        <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😡</div>
-                        <span class="font-bold text-sm text-gray-500">Sangat Buruk</span>
-                    </button>
-                    <button onclick="submitReview(2)" class="group hover:-translate-y-2 transition-transform">
-                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😟</div>
-                         <span class="font-bold text-sm text-gray-500">Buruk</span>
-                    </button>
-                    <button onclick="submitReview(3)" class="group hover:-translate-y-2 transition-transform">
-                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😐</div>
-                         <span class="font-bold text-sm text-gray-500">Biasa</span>
-                    </button>
-                    <button onclick="submitReview(4)" class="group hover:-translate-y-2 transition-transform">
-                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😊</div>
-                         <span class="font-bold text-sm text-gray-500">Baik</span>
-                    </button>
-                    <button onclick="submitReview(5)" class="group hover:-translate-y-2 transition-transform">
-                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">🤩</div>
-                         <span class="font-bold text-sm text-gray-500">Sangat Baik</span>
-                    </button>
-                </div>
-                
-                <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                    <div id="review-timer-bar" class="h-full bg-green-500 w-full transition-all duration-1000 ease-linear"></div>
-                </div>
-                <div class="text-xs text-gray-400 font-bold mt-2" id="review-timer-text">Otomatis tertutup dalam 15 detik</div>
+    <!-- Customer Review Overlay -->
+    <div id="review-overlay" style="display:none; position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.88); backdrop-filter:blur(12px); align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:2rem; max-width:560px; width:90%; padding:3rem 2.5rem; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.4);">
+            <div style="font-size:3rem; margin-bottom:0.5rem;">😊</div>
+            <h2 style="font-size:1.75rem; font-weight:800; color:#111827; margin-bottom:0.25rem;">Bagaimana Pengalaman Anda?</h2>
+            <p style="font-size:0.95rem; color:#6b7280; margin-bottom:2rem;">Sentuh salah satu untuk memberi penilaian</p>
+
+            <div id="review-buttons" style="display:flex; gap:0.75rem; justify-content:center; margin-bottom:2rem;">
+                <button onclick="submitReview(1)" style="flex:1; max-width:90px; padding:1rem 0; border:2px solid #e5e7eb; border-radius:1rem; background:white; cursor:pointer; transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="font-size:2.5rem;">😡</div>
+                    <div style="font-size:0.7rem; font-weight:700; color:#6b7280; margin-top:0.25rem;">Buruk</div>
+                </button>
+                <button onclick="submitReview(2)" style="flex:1; max-width:90px; padding:1rem 0; border:2px solid #e5e7eb; border-radius:1rem; background:white; cursor:pointer; transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="font-size:2.5rem;">😕</div>
+                    <div style="font-size:0.7rem; font-weight:700; color:#6b7280; margin-top:0.25rem;">Kurang</div>
+                </button>
+                <button onclick="submitReview(3)" style="flex:1; max-width:90px; padding:1rem 0; border:2px solid #e5e7eb; border-radius:1rem; background:white; cursor:pointer; transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="font-size:2.5rem;">😐</div>
+                    <div style="font-size:0.7rem; font-weight:700; color:#6b7280; margin-top:0.25rem;">Biasa</div>
+                </button>
+                <button onclick="submitReview(4)" style="flex:1; max-width:90px; padding:1rem 0; border:2px solid #e5e7eb; border-radius:1rem; background:white; cursor:pointer; transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="font-size:2.5rem;">😊</div>
+                    <div style="font-size:0.7rem; font-weight:700; color:#6b7280; margin-top:0.25rem;">Baik</div>
+                </button>
+                <button onclick="submitReview(5)" style="flex:1; max-width:90px; padding:1rem 0; border:2px solid #e5e7eb; border-radius:1rem; background:white; cursor:pointer; transition:all 0.2s;" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="font-size:2.5rem;">🤩</div>
+                    <div style="font-size:0.7rem; font-weight:700; color:#6b7280; margin-top:0.25rem;">Sangat Baik</div>
+                </button>
             </div>
-            
-            <div id="review-thankyou" class="hidden">
-                 <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-green-500">
-                     <svg class="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
-                     </svg>
-                 </div>
-                 <h3 class="text-3xl font-bold text-green-600 mb-2">Terima Kasih!</h3>
-                 <p class="text-gray-600 font-bold">Penilaian Anda sangat berarti bagi kami</p>
+
+            <!-- Thank you state (hidden initially) -->
+            <div id="review-thankyou" style="display:none;">
+                <div style="font-size:4rem; margin-bottom:0.5rem;">🙏</div>
+                <h3 style="font-size:1.5rem; font-weight:800; color:#047857;">Terima Kasih!</h3>
+                <p style="font-size:0.9rem; color:#6b7280; margin-top:0.25rem;">Penilaian Anda sangat berarti bagi kami</p>
             </div>
+
+            <div style="font-size:0.8rem; color:#9ca3af;" id="review-timer-text">Otomatis kembali dalam <span id="review-countdown">3</span> detik</div>
         </div>
     </div>
 
-    <!-- SSE & LOGIC SCRIPT -->
+
+    <!-- ==================== SCRIPT ==================== -->
     <script>
         const API_URL = 'http://127.0.0.1:5000';
         let eventSource = null;
         let config = null;
         let currentSlide = 0;
         let slideInterval = null;
+        let reviewBillId = null;
+        let reviewTimer = null;
+        let reviewDismissedForBill = null; // Track dismissed review to prevent re-show from SSE
 
-        // Anti-flicker hashes
+        // Anti-flicker
         let lastBillHash = '';
         let lastUpdatedAt = 0;
-        
-        // ========== UTILITY FUNCTIONS ==========
+
+        // ========== UTILITY ==========
         function formatCurrency(amount) {
-            return 'Rp ' + Math.floor(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            return 'Rp ' + Math.floor(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
         }
-        
-        // ========== LOAD CONFIGURATION ==========
+
+        function updateClock() {
+            const now = new Date();
+            const dateOpts = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('id-ID', dateOpts);
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        }
+        setInterval(updateClock, 30000);
+        updateClock();
+
+        // ========== CONFIG LOADING (with retry) ==========
         async function loadConfig(retries = 10, delay = 2000) {
-            try {
-                const response = await fetch(`${API_URL}/api/customer-display/config`);
-                if (!response.ok) throw new Error('Network response was not ok');
-                config = await response.json();
-                console.log('[Config] Loaded:', config);
-                
-                initSlideshow();
-                initRunningText();
-            } catch (error) {
-                console.warn('[Config] Failed to load config:', error);
-                // Fail gracefully, use defaults
+            console.log('[Config] Loading...');
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                    const response = await fetch(`${API_URL}/api/customer-display/config`, {
+                        signal: controller.signal,
+                        cache: 'no-cache',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    clearTimeout(timeoutId);
+
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw new Error(`Expected JSON, got ${contentType}`);
+                    }
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                    config = await response.json();
+                    console.log('[Config] Loaded:', config.brand?.name || 'N/A', '| Slides:', config.slideshow?.length || 0);
+
+                    applyBrandConfig();
+                    initSlideshow();
+                    initRunningText();
+                    return;
+                } catch (error) {
+                    console.warn(`[Config] Attempt ${i + 1} failed:`, error.message);
+                    if (i < retries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        console.error('[Config] All retries failed, using defaults.');
+                    }
+                }
             }
+        }
+
+        function applyBrandConfig() {
+            if (!config || !config.brand) return;
+
+            const brand = config.brand;
+            document.getElementById('brand-name').textContent = brand.name || 'YOGYA FOOD LIFE';
+            if (brand.tagline) {
+                document.getElementById('brand-tagline').textContent = brand.tagline;
+            }
+
+            // Logo
+            if (brand.logo_url) {
+                const logoEl = document.getElementById('header-logo');
+                logoEl.innerHTML = `<img src="${brand.logo_url}" alt="Logo" class="w-full h-full object-contain" onerror="this.style.display='none'; this.parentElement.textContent='🏪';">`;
+            }
+
+            // Update hero default text
+            const heroTitle = document.getElementById('hero-title');
+            const heroSubtitle = document.getElementById('hero-subtitle');
+            if (heroTitle) heroTitle.innerHTML = `SELAMAT<br><span class="text-green-300">DATANG!</span>`;
+            if (heroSubtitle) heroSubtitle.textContent = `Nikmati berbagai menu pilihan terbaik di ${brand.name || 'YOGYA Food Life'}.`;
         }
 
         // ========== SLIDESHOW ==========
         function initSlideshow() {
-            const slides = (config && config.slideshow) ? config.slideshow : [];
+            const slides = (config && Array.isArray(config.slideshow)) ? config.slideshow : [];
             const container = document.getElementById('slideshow-slides');
-            
+            const indicators = document.getElementById('slide-indicators');
+
             if (slides.length > 0 && container) {
                 container.innerHTML = slides.map((slide, index) => `
-                    <div class="slide ${index === 0 ? 'active' : ''}">
-                        <img src="${slide.image_url}" onerror="this.src='/static/placeholder.jpg'" alt="Slide">
+                    <div class="slide ${index === 0 ? 'active' : ''} w-full h-full relative">
+                        <img src="${slide.image_url}"
+                             onerror="this.style.display='none'"
+                             alt="${slide.title || 'Slide'}"
+                             loading="${index === 0 ? 'eager' : 'lazy'}">
+                        <div class="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent"></div>
+                        ${(slide.title || slide.description) ? `
+                        <div class="absolute top-1/2 left-12 transform -translate-y-1/2 max-w-lg text-white">
+                            ${slide.title ? `<h2 class="text-4xl font-extrabold mb-3 leading-tight drop-shadow-lg">${slide.title}</h2>` : ''}
+                            ${slide.description ? `<p class="text-base text-gray-200 leading-relaxed max-w-sm drop-shadow italic">${slide.description}</p>` : ''}
+                        </div>` : ''}
                     </div>
                 `).join('');
+
+                // Indicators
+                indicators.innerHTML = slides.map((_, index) =>
+                    `<div class="w-8 h-1 rounded-full transition-all duration-300 ${index === 0 ? 'bg-white opacity-100' : 'bg-white opacity-30'}" data-index="${index}"></div>`
+                ).join('');
+
                 startSlideshow(slides);
             }
+            // If no slides, keep default hero
         }
-        
+
         function startSlideshow(slides) {
-            if (slideInterval) clearInterval(slideInterval);
-            if (slides.length <= 1) return;
-            
+            if (slideInterval) clearTimeout(slideInterval);
+            if (!slides || slides.length <= 1) return;
+
             function nextSlide() {
                 const slideEls = document.querySelectorAll('.slide');
-                slideEls[currentSlide].classList.remove('active');
+                const indicatorEls = document.querySelectorAll('#slide-indicators > div');
+
+                if (slideEls[currentSlide]) slideEls[currentSlide].classList.remove('active');
+                if (indicatorEls[currentSlide]) { indicatorEls[currentSlide].classList.remove('opacity-100'); indicatorEls[currentSlide].classList.add('opacity-30'); }
+
                 currentSlide = (currentSlide + 1) % slides.length;
-                slideEls[currentSlide].classList.add('active');
-                
-                const duration = (slides[currentSlide].duration || 5) * 1000;
+
+                if (slideEls[currentSlide]) slideEls[currentSlide].classList.add('active');
+                if (indicatorEls[currentSlide]) { indicatorEls[currentSlide].classList.remove('opacity-30'); indicatorEls[currentSlide].classList.add('opacity-100'); }
+
+                const duration = (slides[currentSlide].duration_seconds || slides[currentSlide].duration || 5) * 1000;
                 slideInterval = setTimeout(nextSlide, duration);
             }
-            
-            const firstDuration = (slides[0].duration || 5) * 1000;
+
+            const firstDuration = (slides[0].duration_seconds || slides[0].duration || 5) * 1000;
             slideInterval = setTimeout(nextSlide, firstDuration);
         }
 
@@ -391,19 +584,35 @@ Maintains original SSE logic for real-time updates.
             if (config && config.running_text) {
                 el.textContent = config.running_text;
             }
+            // Adjust speed if configured
+            if (config && config.running_text_speed) {
+                const speed = Math.max(15, Math.min(60, config.running_text_speed));
+                el.style.animationDuration = speed + 's';
+            }
         }
 
         // ========== DISPLAY UPDATE ==========
         function updateDisplay(data) {
-            // Handle Review
+            // Skip duplicate updates
+            if (data.updated_at && data.updated_at === lastUpdatedAt) return;
+            lastUpdatedAt = data.updated_at || 0;
+
+            // Handle customer review (overlays on top of payment success)
             if (data.show_review) {
-                showReview(data.review_bill_id);
-                return;
-            } else if (data.show_review === false && reviewActive) {
-                hideReview();
+                // Only show if not already dismissed for this bill
+                if (reviewDismissedForBill !== data.review_bill_id) {
+                    showReview(data.review_bill_id);
+                    return; // Skip other updates while review is active
+                }
+                // If already dismissed, fall through to handle modal etc.
             }
 
-            // Handle QR
+            // Handle modal
+            if (data.show_modal !== undefined) {
+                handleModalDisplay(data.show_modal, data.modal_html);
+            }
+
+            // Handle QR code payment
             if (data.show_qr && data.qr_code) {
                 showQRCode(data);
                 return;
@@ -411,158 +620,291 @@ Maintains original SSE logic for real-time updates.
                 hideQRCode();
             }
 
-            // Handle Bill Update
-            if (data.updated_at && data.updated_at === lastUpdatedAt) return;
-            lastUpdatedAt = data.updated_at || 0;
-
             const container = document.getElementById('bill-panel-container');
             const fallbackTotal = document.getElementById('fallback-total');
-            
-            // If data has full HTML rendered from server (preferred)
+            // Server-rendered bill panel HTML (preferred)
             if (data.bill_panel_html && data.has_bill) {
                 if (data.bill_panel_html !== lastBillHash) {
-                    // Update content
                     container.innerHTML = data.bill_panel_html;
                     lastBillHash = data.bill_panel_html;
-                    
-                    // Hide fallback total if the injected HTML has its own total
-                    if (container.querySelector('.total-section') || container.querySelector('.bill-summary')) {
-                         fallbackTotal.style.display = 'none';
+
+                    // Extract totals from injected POS bill panel HTML
+                    fallbackTotal.style.display = 'block';
+                    const totalRows = container.querySelectorAll('.bg-gray-50.border-b .flex.justify-between');
+                    if (totalRows.length > 0) {
+                        totalRows.forEach(row => {
+                            const label = row.querySelector('span:first-child');
+                            const value = row.querySelector('span:last-child');
+                            if (!label || !value) return;
+                            const labelText = label.textContent.trim().toLowerCase();
+                            const valueText = value.textContent.trim();
+
+                            if (labelText === 'subtotal') {
+                                document.getElementById('subtotal-display').textContent = valueText;
+                            } else if (labelText.startsWith('tax')) {
+                                document.getElementById('tax-display').textContent = valueText;
+                            } else if (labelText === 'total') {
+                                document.getElementById('total-display').textContent = valueText;
+                            }
+                        });
                     } else {
-                         fallbackTotal.style.display = 'block';
-                         // Update fallback total values if available in data
-                         if (data.total) document.getElementById('total-display').textContent = formatCurrency(data.total);
-                         if (data.subtotal) document.getElementById('subtotal-display').textContent = formatCurrency(data.subtotal);
+                        // Fallback to SSE data fields
+                        if (data.total) document.getElementById('total-display').textContent = formatCurrency(data.total);
+                        if (data.subtotal) document.getElementById('subtotal-display').textContent = formatCurrency(data.subtotal);
+                        if (data.tax) document.getElementById('tax-display').textContent = formatCurrency(data.tax);
+                    }
+
+                    // Extract order number for sidebar header
+                    const billNum = container.querySelector('.font-mono.text-white');
+                    if (billNum) {
+                        document.getElementById('sidebar-title').textContent = 'Order ' + billNum.textContent.trim();
+                    }
+
+                    // Extract table info
+                    const tableEl = document.getElementById('sidebar-table');
+                    const tableSpan = container.querySelector('.text-xs.font-semibold.text-white');
+                    if (tableSpan && tableSpan.textContent.trim().startsWith('Table')) {
+                        tableEl.textContent = tableSpan.textContent.trim();
+                        tableEl.style.display = 'block';
+                    } else {
+                        tableEl.style.display = 'none';
                     }
                 }
             } else if (!data.has_bill) {
                 // Empty state
                 container.innerHTML = `
                     <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                        <svg class="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                        <span class="font-bold">Menunggu Pesanan...</span>
+                        <svg class="w-16 h-16 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                        <span class="font-bold text-gray-500">Belum ada pesanan</span>
+                        <span class="text-xs text-gray-400 mt-1">Silakan pilih menu favorit Anda</span>
                     </div>
                 `;
-                fallbackTotal.style.display = 'none';
+                document.getElementById('total-display').textContent = 'Rp 0';
+                document.getElementById('subtotal-display').textContent = 'Rp 0';
+                document.getElementById('tax-display').textContent = 'Rp 0';
+                document.getElementById('sidebar-title').textContent = 'Your Order';
+                document.getElementById('sidebar-table').style.display = 'none';
                 lastBillHash = '';
+                fallbackTotal.style.display = 'block';
             }
         }
-        
+
+        // ========== MODAL DISPLAY ==========
+        let lastModalHTML = '';
+        function handleModalDisplay(showModal, modalHTML) {
+            const overlay = document.getElementById('customer-modal-overlay');
+            const content = document.getElementById('customer-modal-content');
+
+            if (showModal && modalHTML) {
+                // Only re-render if content changed (prevents flicker)
+                if (modalHTML !== lastModalHTML) {
+                    content.innerHTML = '';
+                    setTimeout(() => { content.innerHTML = modalHTML; }, 10);
+                    lastModalHTML = modalHTML;
+                }
+                overlay.style.display = 'flex';
+                overlay.style.alignItems = 'center';
+                overlay.style.justifyContent = 'center';
+            } else {
+                overlay.style.display = 'none';
+                content.innerHTML = '';
+                lastModalHTML = '';
+            }
+        }
+
         // ========== QR CODE ==========
         let qrTimer = null;
+        let qrTimeRemaining = 300;
+
         function showQRCode(data) {
             const modal = document.getElementById('qr-modal');
-            const img = document.getElementById('qr-code-image');
-            const loading = document.getElementById('qr-loading');
-            
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            document.getElementById('qr-amount').textContent = formatCurrency(data.total || 0);
-            
+            const qrImage = document.getElementById('qr-code-image');
+            const qrLoading = document.getElementById('qr-loading');
+            const qrAmount = document.getElementById('qr-amount');
+
+            modal.classList.add('active');
+            qrAmount.textContent = formatCurrency(data.total || 0);
+
             if (data.qr_code) {
-                img.src = data.qr_code;
-                img.classList.remove('hidden');
-                loading.classList.add('hidden');
+                qrImage.src = data.qr_code;
+                qrImage.style.display = 'block';
+                qrLoading.style.display = 'none';
             }
+
+            qrTimeRemaining = 300;
+            startQRTimer();
         }
-        
+
         function hideQRCode() {
-            const modal = document.getElementById('qr-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            document.getElementById('qr-modal').classList.remove('active');
+            if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
         }
 
-        // ========== REVIEW ==========
-        let reviewActive = false;
-        let reviewTimer = null;
-        let reviewCountdown = 15;
-        let reviewBillId = null;
-
-        function showReview(billId) {
-            if (reviewActive) return;
-            reviewActive = true;
-            reviewBillId = billId;
-            reviewCountdown = 15;
-            
-            const overlay = document.getElementById('review-overlay');
-            const form = document.getElementById('review-form');
-            const thankyou = document.getElementById('review-thankyou');
-            
-            overlay.classList.remove('hidden');
-            overlay.classList.add('flex');
-            form.style.display = 'block';
-            thankyou.classList.add('hidden');
-            
-            updateReviewTimer();
-            reviewTimer = setInterval(() => {
-                reviewCountdown--;
-                updateReviewTimer();
-                if (reviewCountdown <= 0) hideReview();
+        function startQRTimer() {
+            if (qrTimer) clearInterval(qrTimer);
+            qrTimer = setInterval(() => {
+                qrTimeRemaining--;
+                const m = Math.floor(qrTimeRemaining / 60);
+                const s = qrTimeRemaining % 60;
+                document.getElementById('qr-timer').textContent = `Expires in ${m}:${s.toString().padStart(2, '0')}`;
+                if (qrTimeRemaining <= 0) { clearInterval(qrTimer); hideQRCode(); }
             }, 1000);
         }
-        
-        function updateReviewTimer() {
-            document.getElementById('review-timer-text').textContent = `Otomatis tertutup dalam ${reviewCountdown} detik`;
-            document.getElementById('review-timer-bar').style.width = `${(reviewCountdown / 15) * 100}%`;
+
+        // ========== CUSTOMER REVIEW ==========
+        function showReview(billId) {
+            reviewBillId = billId || null;
+            const overlay = document.getElementById('review-overlay');
+            const buttons = document.getElementById('review-buttons');
+            const thankyou = document.getElementById('review-thankyou');
+            const timerText = document.getElementById('review-timer-text');
+            const countdown = document.getElementById('review-countdown');
+
+            // Reset to initial state
+            buttons.style.display = 'flex';
+            thankyou.style.display = 'none';
+            timerText.style.display = 'block';
+
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+
+            // Auto-dismiss after 3 seconds
+            let remaining = 3;
+            countdown.textContent = remaining;
+            if (reviewTimer) clearInterval(reviewTimer);
+            reviewTimer = setInterval(() => {
+                remaining--;
+                countdown.textContent = remaining;
+                if (remaining <= 0) {
+                    clearInterval(reviewTimer);
+                    reviewTimer = null;
+                    hideReview();
+                }
+            }, 1000);
         }
-        
+
         function hideReview() {
-            if (reviewTimer) clearInterval(reviewTimer);
-            reviewActive = false;
-            document.getElementById('review-overlay').classList.add('hidden');
-            document.getElementById('review-overlay').classList.remove('flex');
+            if (reviewTimer) { clearInterval(reviewTimer); reviewTimer = null; }
+            const overlay = document.getElementById('review-overlay');
+            const wasVisible = overlay.style.display === 'flex';
+            overlay.style.display = 'none';
+            // Mark as dismissed so SSE won't re-show it
+            if (reviewBillId) reviewDismissedForBill = reviewBillId;
+            // Only notify server if review was actually visible (prevents loop)
+            if (wasVisible) {
+                fetch(API_URL + '/api/customer-display/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ show_review: false })
+                }).catch(() => {});
+            }
         }
-        
+
         function submitReview(rating) {
-            if (reviewTimer) clearInterval(reviewTimer);
-            
-            document.getElementById('review-form').style.display = 'none';
-            document.getElementById('review-thankyou').classList.remove('hidden');
-            
-            // Send to API
-            fetch(`${API_URL}/api/customer-display/review`, {
+            // Show thank you immediately
+            document.getElementById('review-buttons').style.display = 'none';
+            document.getElementById('review-thankyou').style.display = 'block';
+            document.getElementById('review-timer-text').style.display = 'none';
+
+            // Stop the auto-dismiss timer, set a shorter one for thank you
+            if (reviewTimer) { clearInterval(reviewTimer); reviewTimer = null; }
+            setTimeout(() => hideReview(), 2000);
+
+            // Send review to API
+            fetch(API_URL + '/api/customer-display/review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rating: rating, bill_id: reviewBillId })
-            }).catch(e => console.error('Review submit failed', e));
-            
-            setTimeout(hideReview, 3000);
+            }).then(r => r.json())
+              .then(d => console.log('[Review] Submitted:', d))
+              .catch(e => console.warn('[Review] Failed:', e.message));
         }
+        // Expose for inline onclick
+        window.submitReview = submitReview;
 
         // ========== SSE CONNECTION ==========
         function connectSSE() {
-            if (eventSource) eventSource.close();
-            
-            eventSource = new EventSource(`${API_URL}/api/customer-display/stream`);
-            
-            eventSource.onopen = () => console.log('SSE Connected');
-            
-            eventSource.onmessage = (event) => {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.className = 'w-3 h-3 rounded-full bg-yellow-400 border-2 border-white shadow-sm animate-pulse';
+            statusEl.title = 'Connecting...';
+
+            fetch(`${API_URL}/health`)
+                .then(response => response.json())
+                .then(() => startSSE())
+                .catch(error => {
+                    console.error('[SSE] API not available:', error.message);
+                    statusEl.className = 'w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm';
+                    statusEl.title = 'Disconnected';
+                    setTimeout(connectSSE, 3000);
+                });
+        }
+
+        function startSSE() {
+            const statusEl = document.getElementById('connection-status');
+
+            try {
+                eventSource = new EventSource(`${API_URL}/api/customer-display/stream`);
+            } catch (e) {
+                console.error('[SSE] Failed to create EventSource:', e);
+                setTimeout(connectSSE, 3000);
+                return;
+            }
+
+            eventSource.onopen = function() {
+                console.log('[SSE] Connected');
+                statusEl.className = 'w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm';
+                statusEl.title = 'Connected';
+            };
+
+            eventSource.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
                     updateDisplay(data);
-                } catch(e) { console.error('SSE Parse Error', e); }
+                } catch (e) {
+                    console.error('[SSE] Parse error:', e);
+                }
             };
-            
-            eventSource.onerror = () => {
-                console.log('SSE Error, reconnecting...');
-                eventSource.close();
+
+            eventSource.onerror = function() {
+                console.log('[SSE] Disconnected, reconnecting...');
+                statusEl.className = 'w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm';
+                statusEl.title = 'Disconnected';
+                if (eventSource) { eventSource.close(); eventSource = null; }
                 setTimeout(connectSSE, 3000);
             };
         }
 
         // ========== INIT ==========
-        function init() {
-            loadConfig();
+        async function init() {
+            try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+
+            const modalOverlay = document.getElementById('customer-modal-overlay');
+            if (modalOverlay) modalOverlay.style.display = 'none';
+
+            await loadConfig();
             connectSSE();
         }
-        
-        // Stubs for injected HTML
-        window.checkShiftActive = () => false;
-        window.openFloorPlanModal = () => {};
-        window.printReceipt = () => {};
 
-        init();
+        // Stub functions (prevent errors from injected POS HTML)
+        window.checkShiftActive = function() { return false; };
+        window.openFloorPlanModal = function() {};
+        window.updateCustomerDisplay = function() {};
+        window.closeModal = function() {};
+        window.printReceipt = function() {};
+
+        // Start
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+        // Cleanup
+        window.addEventListener('beforeunload', function() {
+            if (slideInterval) clearTimeout(slideInterval);
+            if (eventSource) eventSource.close();
+        });
     </script>
 </body>
 </html>

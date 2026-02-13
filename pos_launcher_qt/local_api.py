@@ -1356,7 +1356,10 @@ def update_customer_display():
 
     with display_lock:
         # Full display reset (single atomic clear — prevents flicker from multiple partial updates)
+        # NOTE: Preserve show_review if active — review closes by customer tap or timer, not by cashier Done
         if data.get('clear_display'):
+            review_active = display_data.get('show_review', False)
+            review_bill = display_data.get('review_bill_id')
             display_data.update({
                 'items': [],
                 'total': 0,
@@ -1369,16 +1372,15 @@ def update_customer_display():
                 'has_bill': False,
                 'show_modal': False,
                 'modal_html': None,
-                'show_review': False,
-                'review_bill_id': None,
+                'show_review': review_active,
+                'review_bill_id': review_bill if review_active else None,
                 'updated_at': time.time()
             })
         # Check if we're triggering customer review
+        # NOTE: Preserve show_modal/modal_html so payment success stays visible underneath
         elif 'show_review' in data:
             display_data['show_review'] = data.get('show_review', False)
             display_data['review_bill_id'] = data.get('bill_id')
-            display_data['show_modal'] = False
-            display_data['modal_html'] = None
             display_data['updated_at'] = time.time()
         # Check if we're receiving modal HTML
         elif 'show_modal' in data:

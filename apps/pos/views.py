@@ -34,8 +34,8 @@ def render_bill_panel(request, bill):
         # Force fresh query to avoid cached items
         bill.refresh_from_db()
         active_items_count = bill.items.filter(status='pending', is_void=False).count()
-        # Check if ANY item was ever sent to kitchen (including voided ones)
-        has_sent_items = bill.items.filter(status='sent').exists()
+        # Check if ANY item was sent to kitchen (any non-pending status)
+        has_sent_items = bill.items.filter(is_void=False).exclude(status='pending').exists()
     else:
         active_items_count = 0
         has_sent_items = False
@@ -1527,12 +1527,30 @@ def refresh_bill_panel(request, bill_id):
     return render_bill_panel(request, bill)
 
 
+def _notify_kds_new_orders(bill, kitchen_orders):
+    """Send WebSocket push to KDS tablets for instant refresh. Non-blocking."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return
+        for ko in kitchen_orders:
+            async_to_sync(channel_layer.group_send)(
+                f"kds_{bill.brand_id}",
+                {'type': 'new_order', 'order_id': ko.id, 'station': ko.station}
+            )
+    except Exception as e:
+        logger.warning(f"KDS WebSocket notification failed: {e}")
+
+
 @login_required
 @require_http_methods(["POST"])
 def send_to_kitchen(request, bill_id):
     """Send pending items to kitchen - HTMX
 
     Uses new KitchenTicket system - creates tickets for printer polling.
+    Creates KitchenOrder records for KDS display tablets.
     Checks StoreProductStock for out-of-stock items before sending.
     """
     bill = get_object_or_404(Bill, id=bill_id)
@@ -1622,6 +1640,18 @@ def send_to_kitchen(request, bill_id):
         for item in bill.items.all():
             print(f"  - Item #{item.id}: {item.product.name} - Status: {item.status}")
 
+        # === KDS DISPLAY: Always create KitchenOrder records ===
+        # KDS tablets need data regardless of printer configuration
+        from apps.kitchen.services import create_kitchen_orders_for_items
+        kitchen_orders = create_kitchen_orders_for_items(bill, item_ids=pending_item_ids)
+        print(f"\n[KDS] Created {len(kitchen_orders)} KitchenOrder(s) for display")
+        for ko in kitchen_orders:
+            print(f"  - KitchenOrder #{ko.id}: station={ko.station}, status={ko.status}")
+
+        # Send WebSocket notification to KDS tablets for instant refresh
+        if kitchen_orders:
+            _notify_kds_new_orders(bill, kitchen_orders)
+
         # Get terminal config for auto print flags
         from apps.core.models import POSTerminal
         terminal = None
@@ -1658,6 +1688,7 @@ def send_to_kitchen(request, bill_id):
                 'items_count': pending_items.count(),
                 'tickets_count': len(tickets),
                 'tickets': [t.id for t in tickets] if tickets else [],
+                'kitchen_orders_count': len(kitchen_orders),
                 'auto_print_kitchen': terminal.auto_print_kitchen_order if terminal else False
             }
         )
@@ -2643,25 +2674,38 @@ def bill_data_json(request, bill_id):
 @login_required
 @require_http_methods(["POST"])
 def reprint_kitchen(request, bill_id):
-    """Reprint kitchen order - HTMX"""
+    """Reprint kitchen order - HTMX
+
+    Creates a new KitchenTicket (reprint) for the kitchen_printer_agent to pick up.
+    """
     bill = get_object_or_404(Bill, id=bill_id)
     station = request.POST.get('station', 'kitchen')
-    
-    items = bill.items.filter(
-        product__printer_target=station,
-        is_void=False
-    )
-    
-    from apps.kitchen.services import print_kitchen_order
-    print_kitchen_order(bill, station, list(items))
-    
+
+    from apps.kitchen.models import KitchenTicket
+    from apps.kitchen.services import reprint_kitchen_ticket
+
+    # Find the latest printed ticket for this station
+    original_ticket = KitchenTicket.objects.filter(
+        bill=bill,
+        printer_target=station,
+        is_reprint=False,
+    ).order_by('-created_at').first()
+
+    if original_ticket:
+        actor = f'admin:{request.user.username}'
+        reprint_kitchen_ticket(original_ticket, actor)
+    else:
+        # No existing ticket — create fresh tickets for this station
+        from apps.kitchen.services import create_kitchen_tickets
+        create_kitchen_tickets(bill)
+
     BillLog.objects.create(
         bill=bill,
         action='reprint_kitchen',
         user=request.user,
         details={'station': station}
     )
-    
+
     return HttpResponse(f'<div class="p-3 bg-green-100 text-green-700 rounded">Order {station} dicetak ulang</div>')
 
 
@@ -2745,21 +2789,20 @@ def quick_order_create(request):
         bill.closed_at = timezone.now()
         bill.save()
         
-        # Send to kitchen
-        from collections import defaultdict
-        from apps.kitchen.services import print_kitchen_order, create_kitchen_order
-        
+        # Send to kitchen — uses new KitchenTicket + KitchenOrder system
+        from apps.kitchen.services import create_kitchen_orders_for_items, create_kitchen_tickets
+
         pending_items = bill.items.filter(status='pending', is_void=False)
-        grouped = defaultdict(list)
-        for item in pending_items:
-            grouped[item.product.printer_target].append(item)
-        
-        for station, items_list in grouped.items():
-            if station != 'none':
-                create_kitchen_order(bill, station, items_list)
-                print_kitchen_order(bill, station, items_list)
-        
+        pending_item_ids = list(pending_items.values_list('id', flat=True))
         pending_items.update(status='sent')
+
+        # Create KitchenOrder for KDS display + WebSocket notification
+        kitchen_orders = create_kitchen_orders_for_items(bill, item_ids=pending_item_ids)
+        if kitchen_orders:
+            _notify_kds_new_orders(bill, kitchen_orders)
+
+        # Create KitchenTicket for kitchen printer agent
+        create_kitchen_tickets(bill, item_ids=pending_item_ids)
         
         # Queue receipt print via Print Agent
         from apps.pos.print_queue import queue_print_receipt

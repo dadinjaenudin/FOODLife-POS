@@ -144,6 +144,7 @@ def get_slideshow_config(request):
             slides_data.append({
                 'id': slide.id,
                 'title': slide.title,
+                'description': getattr(slide, 'description', '') or '',
                 'image_url': slide.image_url,
                 'duration': slide.duration_seconds,
                 'order': slide.order

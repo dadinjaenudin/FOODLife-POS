@@ -1,96 +1,55 @@
 ﻿"""Kitchen services for printing and KDS operations"""
 from django.db import transaction
 from django.utils import timezone
-from .models import KitchenOrder, PrinterConfig, KitchenTicket, KitchenTicketItem, KitchenTicketLog
+from .models import KitchenOrder, KitchenTicket, KitchenTicketItem, KitchenTicketLog
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def get_printer(config):
-    """Get printer instance based on config"""
-    try:
-        from escpos.printer import Network, Usb
-        
-        if config.connection_type == 'network':
-            return Network(config.ip_address, config.port)
-        elif config.connection_type == 'usb':
-            return Usb(int(config.usb_vendor, 16), int(config.usb_product, 16))
-    except Exception as e:
-        print(f"Printer error: {e}")
-    return None
 
+def create_kitchen_orders_for_items(bill, item_ids=None):
+    """
+    Create KitchenOrder records for KDS display, one per station per batch.
+    Each send_to_kitchen() call creates a separate KDS card with only its items.
 
-def print_kitchen_order(bill, station, items):
-    """Print order to kitchen printer"""
-    config = PrinterConfig.objects.filter(
-        brand=bill.brand,
-        station=station,
-        is_active=True
-    ).first()
-    
-    if not config:
-        print(f"No printer configured for station: {station}")
-        return
-    
-    try:
-        p = get_printer(config)
-        if not p:
-            return
-        
-        p.set(align='center', bold=True, double_height=True)
-        p.text(f"--- {station.upper()} ---\n")
-        p.set(align='left', bold=False, double_height=False)
-        
-        p.text(f"Bill: {bill.bill_number}\n")
-        if bill.table:
-            p.set(bold=True, double_height=True)
-            p.text(f"Meja: {bill.table.number}\n")
-            p.set(bold=False, double_height=False)
-        elif bill.queue_number:
-            p.set(bold=True, double_height=True)
-            p.text(f"Antrian: #{bill.queue_number}\n")
-            p.set(bold=False, double_height=False)
-        
-        p.text(f"Waktu: {bill.created_at.strftime('%H:%M')}\n")
-        p.text("-" * 32 + "\n")
-        
-        for item in items:
-            p.set(bold=True)
-            p.text(f"{item.quantity}x {item.product.name}\n")
-            p.set(bold=False)
-            
-            if item.modifiers:
-                for mod in item.modifiers:
-                    p.text(f"   - {mod['name']}\n")
-            
-            if item.notes:
-                p.set(bold=True)
-                p.text(f"   !! {item.notes}\n")
-                p.set(bold=False)
-        
-        p.text("-" * 32 + "\n")
-        p.cut()
-        p.close()
-        
-    except Exception as e:
-        print(f"Print error: {e}")
+    Args:
+        bill: Bill instance
+        item_ids: Optional list of specific BillItem IDs. If None, uses all non-void items.
 
+    Returns:
+        list: List of KitchenOrder instances created
+    """
+    items_query = bill.items.filter(
+        is_void=False
+    ).exclude(printer_target='').exclude(printer_target='none')
 
-def create_kitchen_order(bill, station, items):
-    """Create or get existing KDS entry - UPSERT pattern to prevent duplicates"""
-    kitchen_order, created = KitchenOrder.objects.get_or_create(
-        bill=bill,
-        station=station,
-        defaults={'status': 'new'}
-    )
-    
-    # If already exists and status is 'ready' or 'served', reset to 'new'
-    if not created and kitchen_order.status in ['ready', 'served']:
-        kitchen_order.status = 'new'
-        kitchen_order.save()
-    
-    return kitchen_order
+    if item_ids is not None:
+        items_query = items_query.filter(id__in=item_ids)
+
+    # Group item IDs by station
+    station_items = {}
+    for item in items_query:
+        station = item.printer_target or 'kitchen'
+        if station not in station_items:
+            station_items[station] = []
+        station_items[station].append(item.id)
+
+    if not station_items:
+        return []
+
+    kitchen_orders = []
+    for station, ids in station_items.items():
+        ko = KitchenOrder.objects.create(
+            bill=bill,
+            station=station,
+            status='new',
+            item_ids=ids,
+        )
+        kitchen_orders.append(ko)
+        logger.info(f"KDS order #{ko.id} for {station.upper()}: {len(ids)} items")
+
+    return kitchen_orders
 
 
 # ============================================================================

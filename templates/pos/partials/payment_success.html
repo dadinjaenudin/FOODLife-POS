@@ -95,7 +95,7 @@
                 body: JSON.stringify({ show_modal: true, modal_html: successHtml })
             }).catch(err => console.warn('Customer display update failed:', err.message));
 
-            // After 5 seconds: hide success modal → show customer review
+            // After 3 seconds: show customer review overlay (on top of success)
             setTimeout(() => {
                 console.log('Triggering customer review on customer display');
                 fetch(LOCAL_API + '/api/customer-display/update', {
@@ -103,17 +103,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ show_review: true, bill_id: billId })
                 }).catch(() => {});
-            }, 5000);
+            }, 3000);
 
-            // After 5s (review) + 18s (review timeout + thank you) = 23s total → clear to idle
-            setTimeout(() => {
-                console.log('Clearing customer display after review period');
-                fetch(LOCAL_API + '/api/customer-display/update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clear_display: true })
-                }).catch(() => {});
-            }, 23000);
+            // No auto-clear — display clears only when cashier clicks Done
         }
     }, 300);
 })();

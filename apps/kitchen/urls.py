@@ -18,9 +18,6 @@ urlpatterns = [
     path('performance/<str:station>/', views.performance_metrics, name='performance_metrics'),
     path('overdue/<str:station>/', views.check_overdue_orders, name='check_overdue'),
     
-    path('printers/', views.printer_list, name='printer_list'),
-    path('printers/test/<int:printer_id>/', views.test_printer, name='test_printer'),
-    
     # Kitchen Printer System Monitoring
     path('dashboard/', views.kitchen_dashboard, name='dashboard'),
     path('tickets/', views.kitchen_tickets, name='tickets'),

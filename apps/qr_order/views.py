@@ -1,7 +1,6 @@
 ﻿from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_http_methods
 from django.http import HttpResponse, JsonResponse
-from collections import defaultdict
 import json
 
 from apps.tables.models import Table
@@ -330,19 +329,17 @@ def guest_submit_order(request, brand_id, table_id):
     if not pending_items.exists():
         return HttpResponse('<div class="p-4 bg-yellow-100 text-yellow-700 rounded">Tidak ada item baru untuk dikirim</div>')
     
-    # Send to kitchen
-    from apps.kitchen.services import print_kitchen_order, create_kitchen_order
-    
-    grouped = defaultdict(list)
-    for item in pending_items:
-        grouped[item.product.printer_target].append(item)
-    
-    for station, items in grouped.items():
-        if station != 'none':
-            create_kitchen_order(bill, station, items)
-            print_kitchen_order(bill, station, items)
-    
+    # Send to kitchen — uses new KitchenTicket + KitchenOrder system
+    from apps.kitchen.services import create_kitchen_orders_for_items, create_kitchen_tickets
+
+    pending_item_ids = list(pending_items.values_list('id', flat=True))
     pending_items.update(status='sent')
+
+    # Create KitchenOrder for KDS display
+    create_kitchen_orders_for_items(bill, item_ids=pending_item_ids)
+
+    # Create KitchenTicket for kitchen printer agent
+    create_kitchen_tickets(bill, item_ids=pending_item_ids)
     
     return render(request, 'qr_order/partials/order_submitted.html', {
         'bill': bill,
