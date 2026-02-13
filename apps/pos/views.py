@@ -2726,32 +2726,49 @@ def modifier_modal(request, product_id):
 @login_required
 def quick_order_modal(request):
     """Quick order modal - HTMX"""
+    from apps.core.models import ProductPhoto
+    from django.db.models import Prefetch
+
     categories = Category.objects.filter(brand=request.user.brand, is_active=True)
-    products = Product.objects.filter(category__brand=request.user.brand, is_active=True)
-    
+    products = Product.objects.filter(
+        category__brand=request.user.brand, is_active=True
+    ).select_related('category').prefetch_related(
+        Prefetch(
+            'photos',
+            queryset=ProductPhoto.objects.filter(is_primary=True).order_by('sort_order'),
+            to_attr='primary_photos'
+        )
+    ).order_by('category__sort_order', 'name')
+
+    minio_endpoint = get_minio_endpoint_for_request(request)
+    minio_bucket = 'product-images'
+
     return render(request, 'pos/partials/quick_order_modal.html', {
         'categories': categories,
         'products': products,
+        'minio_endpoint': minio_endpoint,
+        'minio_bucket': minio_bucket,
     })
 
 
 @login_required
 @require_http_methods(["POST"])
 def quick_order_create(request):
-    """Create quick order with direct payment - HTMX"""
+    """Create quick order bill with items, then return bill ID for payment modal.
+
+    Flow: Creates takeaway bill + items + sends to kitchen → returns JSON with bill_id
+    so frontend can open the standard payment modal (same as table order).
+    """
     from apps.pos.utils import generate_queue_number
-    
+
     items_data = request.POST.get('items')
-    payment_method = request.POST.get('payment_method', 'cash')
-    payment_amount = Decimal(request.POST.get('payment_amount', 0))
     customer_name = request.POST.get('customer_name', '')
-    
+
     items = json.loads(items_data)
-    
+
     with transaction.atomic():
-        # Generate queue number using utility function
         queue_number = generate_queue_number(request.user.brand)
-        
+
         bill = Bill.objects.create(
             brand=request.user.brand,
             bill_type='takeaway',
@@ -2759,7 +2776,7 @@ def quick_order_create(request):
             queue_number=queue_number,
             created_by=request.user,
         )
-        
+
         for item_data in items:
             product = Product.objects.get(id=item_data['product_id'])
             BillItem.objects.create(
@@ -2772,57 +2789,32 @@ def quick_order_create(request):
                 created_by=request.user,
                 status='pending',
             )
-        
+
         bill.calculate_totals()
-        
-        # Create payment record
-        Payment.objects.create(
-            bill=bill,
-            method=payment_method,
-            amount=bill.total,  # Use actual bill total, not payment_amount
-            created_by=request.user,
-        )
-        
-        # Quick orders are always paid immediately
-        bill.status = 'paid'
-        bill.closed_by = request.user
-        bill.closed_at = timezone.now()
-        bill.save()
-        
-        # Send to kitchen — uses new KitchenTicket + KitchenOrder system
+
+        # Send to kitchen
         from apps.kitchen.services import create_kitchen_orders_for_items, create_kitchen_tickets
 
         pending_items = bill.items.filter(status='pending', is_void=False)
         pending_item_ids = list(pending_items.values_list('id', flat=True))
         pending_items.update(status='sent')
 
-        # Create KitchenOrder for KDS display + WebSocket notification
         kitchen_orders = create_kitchen_orders_for_items(bill, item_ids=pending_item_ids)
         if kitchen_orders:
             _notify_kds_new_orders(bill, kitchen_orders)
 
-        # Create KitchenTicket for kitchen printer agent
         create_kitchen_tickets(bill, item_ids=pending_item_ids)
-        
-        # Queue receipt print via Print Agent
-        from apps.pos.print_queue import queue_print_receipt
-        print(f"\n[VIEWS] Quick order - Calling queue_print_receipt for Bill #{bill.bill_number}")
-        try:
-            queue_print_receipt(bill, terminal_id=request.session.get('terminal_id'))
-            print(f"[VIEWS] ✅ queue_print_receipt completed")
-        except Exception as e:
-            print(f"[VIEWS] ❌ Print queue failed: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    change = payment_amount - bill.total if payment_amount > bill.total else Decimal('0')
-    
-    return render(request, 'pos/partials/quick_order_success.html', {
-        'bill': bill,
+
+    # Set active bill in session so bill panel shows it
+    request.session['active_bill_id'] = bill.id
+
+    # Return JSON with bill ID — frontend will open payment modal
+    return JsonResponse({
+        'success': True,
+        'bill_id': bill.id,
+        'bill_number': bill.bill_number,
+        'total': str(bill.total),
         'queue_number': queue_number,
-        'change': change,
-        'payment_amount': payment_amount,
-        'payment_method': payment_method,
     })
 
 
@@ -2831,26 +2823,27 @@ def queue_display(request):
     """
     Real-time queue display for TV/Monitor
     Auto-refresh via HTMX every 5 seconds
-    NOW SERVING: Shows orders completed in last 3 minutes only
+    NOW SERVING: Shows orders completed in last 5 minutes only
     """
     from apps.pos.utils import get_active_queues, get_serving_queues, get_queue_statistics
-    
+
     brand = request.user.brand
-    
-    # Get current serving (completed in last 3 minutes only)
-    serving = get_serving_queues(brand, limit=2, minutes=3)
-    
+
+    # Get current serving (completed in last 5 minutes)
+    serving = get_serving_queues(brand, limit=3, minutes=5)
+
     # Get preparing orders (paid but not completed) - show up to 20
     preparing = get_active_queues(brand, limit=20)
-    
+
     # Get statistics
     stats = get_queue_statistics(brand)
-    
+
     return render(request, 'pos/queue_display.html', {
         'serving': serving,
         'preparing': preparing,
         'stats': stats,
-        'avg_wait': stats['avg_wait_minutes'],
+        'brand': brand,
+        'now': timezone.now(),
     })
 
 

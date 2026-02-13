@@ -88,30 +88,18 @@ CATATAN:
     ====================================================================
     {% endcomment %}
     function quickOrder() {
-        console.log('Alpine.js quickOrder() initialized:', new Date().toISOString());
         return {
             items: [],
             customerName: '',
-            paymentMethod: 'cash',
-            paymentAmount: 0,
+            submitting: false,
 
             {# Computed: Total harga semua item #}
             get total() {
                 return this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             },
 
-            {# Computed: Nominal pembayaran yang sudah diformat (dengan pemisah ribuan) #}
-            get formattedPaymentAmount() {
-                return this.formatNumber(this.paymentAmount);
-            },
-
-            set formattedPaymentAmount(value) {
-                this.paymentAmount = parseInt(value.replace(/,/g, '')) || 0;
-            },
-
             {# Tambah item ke keranjang (jika sudah ada, qty +1) #}
             addItem(productId, name, price) {
-                console.log('Adding item:', productId, name, price);
                 const existingItem = this.items.find(item => item.product_id === productId);
                 if (existingItem) {
                     existingItem.quantity++;
@@ -123,30 +111,22 @@ CATATAN:
                         quantity: 1
                     });
                 }
-                this.paymentAmount = this.total;
-                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
             },
 
             {# Hapus item dari keranjang berdasarkan index #}
             removeItem(index) {
                 this.items.splice(index, 1);
-                this.paymentAmount = this.total;
-                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
             },
 
             {# Tambah qty item +1 #}
             increaseQty(index) {
                 this.items[index].quantity++;
-                this.paymentAmount = this.total;
-                updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
             },
 
             {# Kurangi qty item -1 (jika qty=1, hapus item) #}
             decreaseQty(index) {
                 if (this.items[index].quantity > 1) {
                     this.items[index].quantity--;
-                    this.paymentAmount = this.total;
-                    updateCustomerDisplay(this.items, this.total, this.paymentAmount, this.paymentMethod);
                 } else {
                     this.removeItem(index);
                 }
@@ -161,49 +141,56 @@ CATATAN:
             formatRupiah(amount) {
                 const num = Math.round(amount).toString();
                 const formatted = num.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                console.log('formatRupiah:', amount, '=>', 'Rp ' + formatted);
                 return 'Rp ' + formatted;
             },
 
-            {# Format angka dengan pemisah ribuan tanpa prefix Rp: 10000 → "10,000" #}
-            formatNumber(amount) {
-                const num = Math.round(amount).toString();
-                return num.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-            },
-
             {% comment %}
-            submitOrder - Kirim order ke server
-            Endpoint: POST /pos/quick-order/create/
-            Data: items (JSON), payment_method, payment_amount, customer_name
-            Response: HTML modal success/error yang di-render di #modal-container
+            submitOrder - Create bill with items, then open standard payment modal.
+            Step 1: POST /pos/quick-order/create/ → returns JSON {bill_id}
+            Step 2: GET /pos/bill/{bill_id}/payment/ → loads payment modal HTML
             {% endcomment %}
             submitOrder() {
-                if (this.items.length === 0 || this.paymentAmount < this.total) {
-                    return;
-                }
+                if (this.items.length === 0 || this.submitting) return;
+                this.submitting = true;
 
                 const formData = new FormData();
                 formData.append('items', JSON.stringify(this.items));
-                formData.append('payment_method', this.paymentMethod);
-                formData.append('payment_amount', this.paymentAmount);
                 formData.append('customer_name', this.customerName);
                 formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
 
                 fetch('/pos/quick-order/create/', {
                     method: 'POST',
                     body: formData,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.bill_id) {
+                        {# Close quick order modal #}
+                        const quickOrderModal = document.querySelector('[x-data="quickOrder()"]');
+                        if (quickOrderModal) quickOrderModal.closest('.fixed').remove();
+
+                        {# Load payment modal via HTMX (same as bill panel Payment button) #}
+                        htmx.ajax('GET', '/pos/bill/' + data.bill_id + '/payment/', {
+                            target: '#modal-container',
+                            swap: 'innerHTML'
+                        });
+
+                        {# Refresh bill panel to show the new active bill #}
+                        htmx.ajax('GET', '/pos/bill/' + data.bill_id + '/refresh/', {
+                            target: '#bill-panel',
+                            swap: 'outerHTML'
+                        });
+                    } else {
+                        showToast('Failed to create order', 'error');
+                        this.submitting = false;
                     }
                 })
-                    .then(response => response.text())
-                    .then(html => {
-                        document.getElementById('modal-container').innerHTML = html;
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        showToast('Failed to create order', 'error');
-                    });
+                .catch(error => {
+                    console.error('Quick order error:', error);
+                    showToast('Failed to create order: ' + error.message, 'error');
+                    this.submitting = false;
+                });
             }
         }
     }

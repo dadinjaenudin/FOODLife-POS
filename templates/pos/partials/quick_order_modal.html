@@ -1,12 +1,11 @@
-﻿{% load humanize %}
-<script>console.log('🟣 Quick Order Modal Rendered:', new Date().toISOString());</script>
-<!-- Quick Order Modal - Fast & Simple -->
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" 
+{% load humanize %}
+<!-- Quick Order Modal - Select items, then pay via standard payment modal -->
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
      x-data="quickOrder()"
      onclick="if(event.target === this) this.remove()">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl flex flex-col max-h-[90vh] relative z-[61]" onclick="event.stopPropagation()">
-        
-        <!-- Header - Compact -->
+
+        <!-- Header -->
         <div class="p-3 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-t-xl flex items-center justify-between flex-shrink-0">
             <div class="flex items-center gap-2">
                 <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
@@ -16,10 +15,10 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-bold">Quick Order</h2>
-                    <p class="text-xs text-purple-100">Select items & pay instantly</p>
+                    <p class="text-xs text-purple-100">Select items, then proceed to payment</p>
                 </div>
             </div>
-            <button onclick="this.closest('.fixed').remove()" 
+            <button onclick="this.closest('.fixed').remove()"
                     class="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-1.5 transition">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -32,23 +31,40 @@
             <!-- Left: Products -->
             <div class="flex-1 overflow-y-auto p-3 border-r">
                 <h3 class="text-base font-bold text-gray-800 mb-2">Select Products</h3>
-                
-                <!-- Product Grid - Compact -->
+
+                <!-- Product Grid -->
                 <div class="grid grid-cols-4 gap-2">
                     {% for product in products %}
                     <button type="button"
                             data-product-id="{{ product.id }}"
                             data-product-name="{{ product.name }}"
                             data-product-price="{{ product.price }}"
-                            @click="console.log('Raw price:', $el.dataset.productPrice); addItem($el.dataset.productId, $el.dataset.productName, parseIndonesianNumber($el.dataset.productPrice))"
-                            class="p-2 border-2 border-gray-200 hover:border-purple-400 rounded-lg transition-all hover:shadow-lg group bg-white">
-                        {% if product.image %}
-                        <img src="{{ product.image.url }}" alt="{{ product.name }}" class="w-full h-20 object-cover rounded-lg mb-1.5">
+                            @click="addItem($el.dataset.productId, $el.dataset.productName, parseIndonesianNumber($el.dataset.productPrice))"
+                            class="p-2 border-2 border-gray-200 hover:border-purple-400 rounded-lg transition-all hover:shadow-lg group bg-white text-left">
+
+                        {% if product.primary_photos|length > 0 %}
+                            {% with product.primary_photos.0 as photo %}
+                            <img src="{{ minio_endpoint }}/{{ minio_bucket }}/{{ photo.object_key }}?v={{ photo.checksum|slice:':8' }}"
+                                 alt="{{ product.name }}"
+                                 class="w-full h-20 object-cover rounded-lg mb-1.5 bg-gray-100"
+                                 loading="lazy"
+                                 onerror="this.onerror=null; this.parentElement.querySelector('.img-fallback').style.display='flex'; this.style.display='none';">
+                            <div class="img-fallback w-full h-20 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-1.5 items-center justify-center" style="display:none;">
+                                <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                            {% endwith %}
+                        {% elif product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}" class="w-full h-20 object-cover rounded-lg mb-1.5 bg-gray-100" loading="lazy">
                         {% else %}
-                        <div class="w-full h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-lg mb-1.5 flex items-center justify-center">
-                            <span class="text-2xl">ðŸ½ï¸</span>
+                        <div class="w-full h-20 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-1.5 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
                         </div>
                         {% endif %}
+
                         <h4 class="font-semibold text-xs text-gray-900 mb-0.5 line-clamp-2">{{ product.name }}</h4>
                         <p class="text-purple-600 font-bold text-xs">Rp {{ product.price|floatformat:0|intcomma }}</p>
                     </button>
@@ -56,12 +72,12 @@
                 </div>
             </div>
 
-            <!-- Right: Cart & Payment - Compact -->
+            <!-- Right: Cart & Create Order -->
             <div class="w-80 flex flex-col bg-gray-50">
                 <!-- Cart Items -->
                 <div class="flex-1 overflow-y-auto p-3">
                     <h3 class="text-base font-bold text-gray-800 mb-2">Order Summary</h3>
-                    
+
                     <template x-if="items.length === 0">
                         <div class="text-center py-6 text-gray-400">
                             <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,7 +121,7 @@
                     </div>
                 </div>
 
-                <!-- Payment Section - Compact -->
+                <!-- Bottom: Customer Name + Total + Proceed -->
                 <div class="p-3 border-t bg-white">
                     <!-- Customer Name -->
                     <div class="mb-2">
@@ -116,58 +132,39 @@
                     </div>
 
                     <!-- Total -->
-                    <div class="mb-2 p-2 bg-purple-50 rounded-lg">
+                    <div class="mb-3 p-2 bg-purple-50 rounded-lg">
                         <div class="flex justify-between items-center">
                             <span class="text-sm font-bold text-gray-900">Total</span>
                             <span class="text-xl font-bold text-purple-600" x-text="formatRupiah(total)"></span>
                         </div>
-                    </div>
-
-                    <!-- Payment Method -->
-                    <div class="mb-2">
-                        <label class="block text-xs font-semibold text-gray-700 mb-1">Payment Method</label>
-                        <div class="grid grid-cols-2 gap-2">
-                            <button type="button" @click="paymentMethod = 'cash'"
-                                    :class="paymentMethod === 'cash' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700'"
-                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                                </svg>
-                                Cash
-                            </button>
-                            <button type="button" @click="paymentMethod = 'card'"
-                                    :class="paymentMethod === 'card' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700'"
-                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
-                                </svg>
-                                Card
-                            </button>
+                        <div class="flex justify-between items-center mt-1">
+                            <span class="text-[10px] text-gray-500">Items</span>
+                            <span class="text-xs text-gray-600 font-semibold" x-text="items.reduce((s, i) => s + i.quantity, 0) + ' item(s)'"></span>
                         </div>
                     </div>
 
-                    <!-- Payment Amount -->
-                    <div class="mb-3">
-                        <label class="block text-xs font-semibold text-gray-700 mb-1">Payment Amount</label>
-                        <input type="text" x-model="formattedPaymentAmount"
-                               :placeholder="'Min: ' + formatNumber(total)"
-                               class="w-full px-2 py-1.5 text-sm text-right border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 font-bold">
-                        <template x-if="paymentAmount >= total && paymentAmount > 0">
-                            <p class="text-xs text-green-600 mt-1 font-semibold">
-                                Change: <span x-text="formatRupiah(paymentAmount - total)"></span>
-                            </p>
-                        </template>
-                    </div>
-
-                    <!-- Submit Button -->
+                    <!-- Submit Button: Create Bill & Open Payment -->
                     <button type="button" @click="submitOrder()"
-                            :disabled="items.length === 0 || paymentAmount < total"
-                            :class="items.length === 0 || paymentAmount < total ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-xl'"
-                            class="w-full py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                        Complete Order
+                            :disabled="items.length === 0 || submitting"
+                            :class="items.length === 0 || submitting ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-xl'"
+                            class="w-full py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2">
+                        <template x-if="!submitting">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                </svg>
+                                Proceed to Payment
+                            </span>
+                        </template>
+                        <template x-if="submitting">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                Creating Order...
+                            </span>
+                        </template>
                     </button>
                 </div>
             </div>
@@ -175,4 +172,3 @@
 
     </div>
 </div>
-
