@@ -17,7 +17,7 @@ import logging
 from apps.core.models import POSTerminal, Store, Category, Product, User, ProductPhoto, Brand, Company, StoreBrand, MediaGroup, PaymentMethodProfile, DataEntryPrompt, EFTTerminal
 from apps.core.models_session import StoreSession
 from apps.core.minio_client import get_minio_endpoint_for_request
-from apps.pos.models import Bill, Payment
+from apps.pos.models import Bill, Payment, QRISAuditLog, QRISTransaction
 from apps.tables.models import Table, TableArea
 from apps.promotions.models import Promotion
 from .decorators import manager_required, supervisor_required
@@ -6179,19 +6179,21 @@ def payment_profile_list(request):
     if error_response:
         return error_response
 
-    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
-    brand_ids = list(store_brands.values_list('brand_id', flat=True))
+    profiles = PaymentMethodProfile.objects.filter(
+        company=store_config.company
+    ).select_related('brand', 'store', 'media_group').prefetch_related('prompts').order_by('sort_order', 'name')
 
-    # Use global brand filter
+    # Use global brand filter - show brand-specific + company-wide
     context_brand_id = request.session.get('context_brand_id', '')
-    if context_brand_id and context_brand_id in [str(bid) for bid in brand_ids]:
-        brand_ids = [context_brand_id]
-
-    profiles = PaymentMethodProfile.objects.filter(brand_id__in=brand_ids).select_related('brand', 'media_group').prefetch_related('prompts').order_by('sort_order', 'name')
+    if context_brand_id:
+        profiles = profiles.filter(
+            Q(brand_id=context_brand_id) | Q(brand__isnull=True)
+        )
 
     context = {
         'store_config': store_config,
         'profiles': profiles,
+        'context_brand_id': context_brand_id,
     }
     return render(request, 'management/payment_profiles.html', context)
 
@@ -6215,20 +6217,14 @@ def payment_profile_create(request):
     if error_response:
         return error_response
 
-    # Resolve brand from global filter
-    context_brand_id = request.session.get('context_brand_id', '')
-    current_brand = None
-    if context_brand_id:
-        current_brand = Brand.objects.filter(id=context_brand_id).first()
-    if not current_brand:
-        current_brand = store_config.brand
-
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
     media_groups = MediaGroup.objects.filter(company=store_config.company, is_active=True)
 
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip()
-        brand_id = str(current_brand.id)
+        brand_id = request.POST.get('brand') or None
+        store_id = request.POST.get('store') or None
         media_group_id = request.POST.get('media_group') or None
         media_id = request.POST.get('media_id', '0')
         color = request.POST.get('color', '#6b7280')
@@ -6242,32 +6238,42 @@ def payment_profile_create(request):
             messages.error(request, 'Profile name is required')
         elif not code:
             messages.error(request, 'Profile code is required')
-        elif PaymentMethodProfile.objects.filter(brand_id=brand_id, code=code).exists():
-            messages.error(request, f'Profile with code "{code}" already exists for this brand')
         else:
-            try:
-                profile = PaymentMethodProfile.objects.create(
-                    brand_id=brand_id,
-                    media_group_id=media_group_id,
-                    name=name,
-                    code=code,
-                    media_id=_clean_number_input(media_id, 0),
-                    color=color,
-                    sort_order=_clean_number_input(sort_order, 0),
-                    smallest_denomination=_clean_number_input(smallest_denomination, 0),
-                    allow_change=allow_change,
-                    open_cash_drawer=open_cash_drawer,
-                    legacy_method_id=legacy_method_id,
-                )
-                _save_prompts_from_post(request, profile)
-                messages.success(request, f'Payment profile "{name}" created successfully')
-                return redirect('management:payment_profile_list')
-            except Exception as e:
-                messages.error(request, f'Error creating profile: {str(e)}')
+            # Check duplicate code within same scope
+            dup_qs = PaymentMethodProfile.objects.filter(company=store_config.company, code=code)
+            if brand_id:
+                dup_qs = dup_qs.filter(brand_id=brand_id)
+            else:
+                dup_qs = dup_qs.filter(brand__isnull=True)
+            if dup_qs.exists():
+                scope = 'this brand' if brand_id else 'company-wide'
+                messages.error(request, f'Profile with code "{code}" already exists for {scope}')
+            else:
+                try:
+                    profile = PaymentMethodProfile.objects.create(
+                        company=store_config.company,
+                        brand_id=brand_id,
+                        store_id=store_id if store_id else None,
+                        media_group_id=media_group_id,
+                        name=name,
+                        code=code,
+                        media_id=_clean_number_input(media_id, 0),
+                        color=color,
+                        sort_order=_clean_number_input(sort_order, 0),
+                        smallest_denomination=_clean_number_input(smallest_denomination, 0),
+                        allow_change=allow_change,
+                        open_cash_drawer=open_cash_drawer,
+                        legacy_method_id=legacy_method_id,
+                    )
+                    _save_prompts_from_post(request, profile)
+                    messages.success(request, f'Payment profile "{name}" created successfully')
+                    return redirect('management:payment_profile_list')
+                except Exception as e:
+                    messages.error(request, f'Error creating profile: {str(e)}')
 
     context = {
         'store_config': store_config,
-        'current_brand': current_brand,
+        'store_brands': store_brands,
         'media_groups': media_groups,
         'is_edit': False,
         'legacy_method_choices': [
@@ -6286,14 +6292,15 @@ def payment_profile_edit(request, profile_id):
     if error_response:
         return error_response
 
-    profile = get_object_or_404(PaymentMethodProfile, id=profile_id)
-    current_brand = profile.brand
+    profile = get_object_or_404(PaymentMethodProfile, id=profile_id, company=store_config.company)
+    store_brands = StoreBrand.objects.filter(store=store_config, is_active=True).select_related('brand')
     media_groups = MediaGroup.objects.filter(company=store_config.company, is_active=True)
 
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip()
-        brand_id = str(current_brand.id)
+        brand_id = request.POST.get('brand') or None
+        store_id = request.POST.get('store') or None
         media_group_id = request.POST.get('media_group') or None
         media_id = request.POST.get('media_id', '0')
         color = request.POST.get('color', '#6b7280')
@@ -6307,26 +6314,36 @@ def payment_profile_edit(request, profile_id):
             messages.error(request, 'Profile name is required')
         elif not code:
             messages.error(request, 'Profile code is required')
-        elif PaymentMethodProfile.objects.filter(brand_id=brand_id, code=code).exclude(id=profile.id).exists():
-            messages.error(request, f'Profile with code "{code}" already exists for this brand')
         else:
-            try:
-                profile.media_group_id = media_group_id
-                profile.name = name
-                profile.code = code
-                profile.media_id = _clean_number_input(media_id, 0)
-                profile.color = color
-                profile.sort_order = _clean_number_input(sort_order, 0)
-                profile.smallest_denomination = _clean_number_input(smallest_denomination, 0)
-                profile.allow_change = allow_change
-                profile.open_cash_drawer = open_cash_drawer
-                profile.legacy_method_id = legacy_method_id
-                profile.save()
-                _save_prompts_from_post(request, profile)
-                messages.success(request, f'Payment profile "{name}" updated successfully')
-                return redirect('management:payment_profile_list')
-            except Exception as e:
-                messages.error(request, f'Error updating profile: {str(e)}')
+            # Check duplicate code within same scope
+            dup_qs = PaymentMethodProfile.objects.filter(company=store_config.company, code=code).exclude(id=profile.id)
+            if brand_id:
+                dup_qs = dup_qs.filter(brand_id=brand_id)
+            else:
+                dup_qs = dup_qs.filter(brand__isnull=True)
+            if dup_qs.exists():
+                scope = 'this brand' if brand_id else 'company-wide'
+                messages.error(request, f'Profile with code "{code}" already exists for {scope}')
+            else:
+                try:
+                    profile.brand_id = brand_id
+                    profile.store_id = store_id if store_id else None
+                    profile.media_group_id = media_group_id
+                    profile.name = name
+                    profile.code = code
+                    profile.media_id = _clean_number_input(media_id, 0)
+                    profile.color = color
+                    profile.sort_order = _clean_number_input(sort_order, 0)
+                    profile.smallest_denomination = _clean_number_input(smallest_denomination, 0)
+                    profile.allow_change = allow_change
+                    profile.open_cash_drawer = open_cash_drawer
+                    profile.legacy_method_id = legacy_method_id
+                    profile.save()
+                    _save_prompts_from_post(request, profile)
+                    messages.success(request, f'Payment profile "{name}" updated successfully')
+                    return redirect('management:payment_profile_list')
+                except Exception as e:
+                    messages.error(request, f'Error updating profile: {str(e)}')
 
     import json
     prompts_list = list(profile.prompts.order_by('sort_order').values(
@@ -6335,7 +6352,7 @@ def payment_profile_edit(request, profile_id):
     ))
     context = {
         'store_config': store_config,
-        'current_brand': current_brand,
+        'store_brands': store_brands,
         'media_groups': media_groups,
         'profile': profile,
         'prompts': json.dumps(prompts_list),
@@ -7142,3 +7159,95 @@ def kitchen_template_toggle(request, template_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# ============================================================================
+# QRIS Audit Log
+# ============================================================================
+
+@manager_required
+def qris_audit_log(request):
+    """QRIS Audit Log — all QRIS payment events for bank analysis."""
+    logs = QRISAuditLog.objects.select_related('bill', 'transaction', 'user').order_by('-created_at')
+
+    # Filter by event type
+    event_filter = request.GET.get('event', '')
+    if event_filter:
+        logs = logs.filter(event=event_filter)
+
+    # Filter by status
+    status_filter = request.GET.get('status', '')
+    if status_filter:
+        logs = logs.filter(status_after=status_filter)
+
+    # Filter by date range
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    if date_from:
+        logs = logs.filter(created_at__date__gte=date_from)
+    if date_to:
+        logs = logs.filter(created_at__date__lte=date_to)
+
+    # Search by txn_ref or bill number
+    search = request.GET.get('search', '')
+    if search:
+        logs = logs.filter(
+            Q(txn_ref__icontains=search) |
+            Q(bill__bill_number__icontains=search)
+        )
+
+    # Stats (before pagination)
+    today = timezone.now().date()
+    today_logs = QRISAuditLog.objects.filter(created_at__date=today)
+    total_today = today_logs.count()
+    paid_today = today_logs.filter(event='payment_confirmed').count()
+    errors_today = today_logs.filter(event__in=['error', 'gateway_error', 'gateway_timeout']).count()
+    avg_response = today_logs.filter(
+        response_time_ms__isnull=False
+    ).aggregate(avg=Avg('response_time_ms'))['avg']
+    avg_wait = today_logs.filter(
+        event='payment_confirmed',
+        elapsed_since_create_s__isnull=False
+    ).aggregate(avg=Avg('elapsed_since_create_s'))['avg']
+
+    # QRIS transaction summary today
+    txn_today = QRISTransaction.objects.filter(created_at__date=today)
+    txn_created = txn_today.count()
+    txn_paid = txn_today.filter(status='paid').count()
+    txn_expired = txn_today.filter(status='expired').count()
+    txn_cancelled = txn_today.filter(status='cancelled').count()
+    txn_total_paid = txn_today.filter(status='paid').aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+    # Pagination
+    paginator = Paginator(logs, 50)
+    page = request.GET.get('page', 1)
+    try:
+        logs_page = paginator.page(page)
+    except PageNotAnInteger:
+        logs_page = paginator.page(1)
+    except EmptyPage:
+        logs_page = paginator.page(paginator.num_pages)
+
+    context = {
+        'logs': logs_page,
+        'event_filter': event_filter,
+        'status_filter': status_filter,
+        'date_from': date_from,
+        'date_to': date_to,
+        'search': search,
+        # Stats today
+        'total_today': total_today,
+        'paid_today': paid_today,
+        'errors_today': errors_today,
+        'avg_response_ms': round(avg_response, 1) if avg_response else None,
+        'avg_wait_s': round(avg_wait, 1) if avg_wait else None,
+        # Transaction summary
+        'txn_created': txn_created,
+        'txn_paid': txn_paid,
+        'txn_expired': txn_expired,
+        'txn_cancelled': txn_cancelled,
+        'txn_total_paid': txn_total_paid,
+        # Event choices for filter dropdown
+        'event_choices': QRISAuditLog.EVENT_CHOICES,
+    }
+    return render(request, 'management/qris_audit_log.html', context)

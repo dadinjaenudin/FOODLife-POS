@@ -244,8 +244,8 @@ class DataEntryPromptInline(admin.TabularInline):
 
 @admin.register(PaymentMethodProfile)
 class PaymentMethodProfileAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'brand', 'media_group', 'media_id', 'legacy_method_id', 'sort_order', 'is_active']
-    list_filter = ['brand', 'media_group', 'is_active']
+    list_display = ['name', 'code', 'company', 'brand', 'media_group', 'media_id', 'legacy_method_id', 'sort_order', 'is_active']
+    list_filter = ['company', 'brand', 'media_group', 'is_active']
     search_fields = ['name', 'code']
     readonly_fields = ['id', 'created_at', 'updated_at']
     inlines = [DataEntryPromptInline]

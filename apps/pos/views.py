@@ -3814,17 +3814,30 @@ def shift_status_check(request):
 @require_http_methods(["POST"])
 def qris_create(request, bill_id):
     """Create a QRIS transaction - generates QR code for payment."""
-    from .payment_gateway import get_payment_gateway
+    import logging
+    import time as _time
+    qris_logger = logging.getLogger('pos.qris')
+
+    from .payment_gateway import get_payment_gateway, _audit_log
     from .models import QRISTransaction
 
+    client_ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', ''))
+    if client_ip and ',' in client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+
+    t0 = _time.monotonic()
     bill = get_object_or_404(Bill, id=bill_id, status__in=['open', 'hold'])
 
     try:
         amount = Decimal(request.POST.get('amount', '0'))
     except Exception:
+        qris_logger.warning('QRIS_CREATE_INVALID_AMOUNT bill=%s raw=%s user=%s', bill_id, request.POST.get('amount'), request.user)
+        _audit_log(event='error', bill=bill, error_message=f'Invalid amount: {request.POST.get("amount")}', user=request.user, ip_address=client_ip)
         return JsonResponse({'success': False, 'error': 'Invalid amount'}, status=400)
 
     if amount <= 0:
+        qris_logger.warning('QRIS_CREATE_ZERO_AMOUNT bill=%s amount=%s user=%s', bill_id, amount, request.user)
+        _audit_log(event='error', bill=bill, amount=amount, error_message='Amount must be positive', user=request.user, ip_address=client_ip)
         return JsonResponse({'success': False, 'error': 'Amount must be positive'}, status=400)
 
     remaining = bill.get_remaining()
@@ -3842,21 +3855,59 @@ def qris_create(request, bill_id):
 
     effective_remaining = remaining - pending_total
     if amount > effective_remaining:
+        qris_logger.warning('QRIS_CREATE_OVER_REMAINING bill=%s amount=%s remaining=%s user=%s', bill_id, amount, effective_remaining, request.user)
+        _audit_log(event='error', bill=bill, amount=amount, error_message=f'Amount {amount} exceeds remaining {effective_remaining}', user=request.user, ip_address=client_ip)
         return JsonResponse({'success': False, 'error': f'Amount exceeds remaining balance (Rp {effective_remaining})'}, status=400)
 
     # Cancel any existing pending QRIS transactions for this bill
-    QRISTransaction.objects.filter(bill=bill, status='pending').update(status='cancelled')
+    old_pending = list(QRISTransaction.objects.filter(bill=bill, status='pending').values_list('transaction_id', flat=True))
+    cancelled = QRISTransaction.objects.filter(bill=bill, status='pending').update(status='cancelled')
+    if cancelled:
+        qris_logger.info('QRIS_AUTO_CANCELLED bill=%s count=%d', bill_id, cancelled)
+        for old_txn_id in old_pending:
+            _audit_log(event='auto_cancel', txn_ref=old_txn_id, bill=bill, gateway_name='mock', status_before='pending', status_after='cancelled', user=request.user, ip_address=client_ip, extra_data={'reason': 'new QR requested'})
 
     gateway = get_payment_gateway()
     result = gateway.create_qris_transaction(bill, amount, user=request.user)
 
     if not result.success:
+        elapsed_ms = (_time.monotonic() - t0) * 1000
+        qris_logger.error('QRIS_CREATE_GATEWAY_ERROR bill=%s amount=%s error=%s elapsed=%.0fms', bill_id, amount, result.error_message, elapsed_ms)
+        _audit_log(event='gateway_error', bill=bill, amount=amount, response_time_ms=int(elapsed_ms), error_message=result.error_message, user=request.user, ip_address=client_ip)
         return JsonResponse({'success': False, 'error': result.error_message}, status=500)
+
+    # Generate QR code image as base64
+    qr_image = None
+    try:
+        import qrcode as qrlib
+        import io as _io
+        import base64 as _b64
+        qr = qrlib.QRCode(version=1, error_correction=qrlib.constants.ERROR_CORRECT_L, box_size=10, border=4)
+        qr.add_data(result.qr_string)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = _io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        qr_image = 'data:image/png;base64,' + _b64.b64encode(buf.read()).decode()
+    except Exception as e:
+        qris_logger.warning('QRIS_QR_IMAGE_ERROR txn_id=%s error=%s', result.transaction_id, str(e))
+
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    qris_logger.info(
+        'QRIS_CREATE_OK bill=%s txn_id=%s amount=%s remaining=%s has_qr_image=%s '
+        'expires_at=%s elapsed=%.0fms user=%s',
+        bill_id, result.transaction_id, amount, effective_remaining,
+        qr_image is not None,
+        result.expires_at.isoformat() if result.expires_at else None,
+        elapsed_ms, request.user,
+    )
 
     return JsonResponse({
         'success': True,
         'transaction_id': result.transaction_id,
         'qr_string': result.qr_string,
+        'qr_image': qr_image,
         'expires_at': result.expires_at.isoformat() if result.expires_at else None,
         'amount': float(amount),
     })
@@ -3865,11 +3916,35 @@ def qris_create(request, bill_id):
 @login_required
 def qris_status(request, bill_id, transaction_id):
     """Poll QRIS transaction status - called every 3s from frontend."""
-    from .payment_gateway import get_payment_gateway
+    import logging
+    import time as _time
+    qris_logger = logging.getLogger('pos.qris')
 
+    from .payment_gateway import get_payment_gateway, _audit_log
+
+    t0 = _time.monotonic()
     get_object_or_404(Bill, id=bill_id)
     gateway = get_payment_gateway()
     result = gateway.check_status(transaction_id)
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+
+    # Log non-pending statuses (paid, expired, failed, cancelled) — penting untuk audit
+    if result.status != 'pending':
+        qris_logger.info(
+            'QRIS_STATUS bill=%s txn_id=%s status=%s paid_at=%s elapsed=%.0fms',
+            bill_id, transaction_id, result.status,
+            result.paid_at.isoformat() if result.paid_at else None,
+            elapsed_ms,
+        )
+        # Note: payment_confirmed/expired/status_change already logged by gateway.check_status()
+        # Here we add view-level response_time_ms for status poll endpoint performance
+        _audit_log(
+            event='status_check',
+            txn_ref=transaction_id,
+            status_after=result.status,
+            response_time_ms=int(elapsed_ms),
+            extra_data={'paid_at': result.paid_at.isoformat() if result.paid_at else None},
+        )
 
     return JsonResponse({
         'status': result.status,
@@ -3903,13 +3978,51 @@ def qris_simulate(request, bill_id, transaction_id):
 
 @login_required
 @require_http_methods(["POST"])
-def qris_cancel(request, bill_id, transaction_id):
-    """Cancel a pending QRIS transaction."""
+def qris_simulate_modal(request, bill_id, transaction_id):
+    """DEV ONLY: Simulate QRIS payment status change for modal integration.
+    Only changes transaction status to 'paid' — does NOT create Payment or close bill.
+    The payment modal form submission handles that separately."""
+    import logging
+    qris_logger = logging.getLogger('pos.qris')
+
     from .payment_gateway import get_payment_gateway
 
     get_object_or_404(Bill, id=bill_id)
     gateway = get_payment_gateway()
-    gateway.cancel_transaction(transaction_id)
+
+    if not hasattr(gateway, 'simulate_payment'):
+        return JsonResponse({'success': False, 'error': 'Simulation not available'}, status=400)
+
+    success = gateway.simulate_payment(transaction_id)
+    if not success:
+        qris_logger.warning('QRIS_SIMULATE_MODAL_FAILED bill=%s txn_id=%s user=%s', bill_id, transaction_id, request.user)
+        return JsonResponse({'success': False, 'error': 'Transaction not found or not pending'}, status=400)
+
+    qris_logger.info('QRIS_SIMULATE_MODAL_OK bill=%s txn_id=%s user=%s', bill_id, transaction_id, request.user)
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def qris_cancel(request, bill_id, transaction_id):
+    """Cancel a pending QRIS transaction."""
+    import logging
+    qris_logger = logging.getLogger('pos.qris')
+
+    from .payment_gateway import get_payment_gateway, _audit_log
+
+    client_ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', ''))
+    if client_ip and ',' in client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+
+    get_object_or_404(Bill, id=bill_id)
+    gateway = get_payment_gateway()
+    success = gateway.cancel_transaction(transaction_id)
+
+    if success:
+        qris_logger.info('QRIS_CANCEL_OK bill=%s txn_id=%s user=%s', bill_id, transaction_id, request.user)
+    else:
+        qris_logger.warning('QRIS_CANCEL_FAILED bill=%s txn_id=%s user=%s', bill_id, transaction_id, request.user)
 
     return JsonResponse({'success': True})
 

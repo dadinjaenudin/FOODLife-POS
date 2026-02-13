@@ -1,5 +1,5 @@
 ﻿from django.contrib import admin
-from .models import Bill, BillItem, Payment, BillLog, StoreProductStock, QRISTransaction
+from .models import Bill, BillItem, Payment, BillLog, StoreProductStock, QRISTransaction, QRISAuditLog
 from .models_refund import BillRefund, BillRefundItem, RefundPaymentReversal
 
 
@@ -72,6 +72,15 @@ class QRISTransactionAdmin(admin.ModelAdmin):
     list_filter = ['status', 'gateway_name', 'created_at']
     search_fields = ['transaction_id', 'bill__bill_number']
     readonly_fields = ['id', 'created_at']
+
+
+@admin.register(QRISAuditLog)
+class QRISAuditLogAdmin(admin.ModelAdmin):
+    list_display = ['created_at', 'event', 'txn_ref', 'bill', 'status_before', 'status_after', 'amount', 'response_time_ms', 'elapsed_since_create_s', 'user']
+    list_filter = ['event', 'gateway_name', 'created_at']
+    search_fields = ['txn_ref', 'bill__bill_number', 'error_message']
+    readonly_fields = ['id', 'created_at', 'transaction', 'bill', 'extra_data']
+    ordering = ['-created_at']
 
 
 @admin.register(StoreProductStock)

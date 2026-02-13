@@ -1008,7 +1008,11 @@ class MediaGroup(models.Model):
 class PaymentMethodProfile(models.Model):
     """Configurable payment method profile with dynamic data entry prompts"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    brand = models.ForeignKey('Brand', on_delete=models.CASCADE, related_name='payment_profiles')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='payment_profiles')
+    brand = models.ForeignKey('Brand', on_delete=models.CASCADE, related_name='payment_profiles',
+        null=True, blank=True, help_text='Leave empty for company-wide profile')
+    store = models.ForeignKey('Store', on_delete=models.CASCADE, related_name='payment_profiles',
+        null=True, blank=True, help_text='Leave empty for brand-wide or company-wide profile')
     media_group = models.ForeignKey(MediaGroup, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='payment_profiles')
 
@@ -1035,14 +1039,14 @@ class PaymentMethodProfile(models.Model):
 
     class Meta:
         db_table = 'core_payment_method_profile'
-        unique_together = [['brand', 'code']]
         ordering = ['sort_order', 'name']
         indexes = [
-            models.Index(fields=['brand', 'is_active']),
+            models.Index(fields=['company', 'is_active']),
         ]
 
     def __str__(self):
-        return f"{self.brand.name} - {self.name}"
+        scope = self.brand.name if self.brand else 'Company-wide'
+        return f"{scope} - {self.name}"
 
 
 class DataEntryPrompt(models.Model):

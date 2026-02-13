@@ -129,7 +129,7 @@
                                 {% if slide.is_active %}Hide{% else %}Show{% endif %}
                             </button>
                             <button 
-                                onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}', {% if slide.brand %}{{ slide.brand.id }}{% else %}''{% endif %})"
+                                onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}', {% if slide.brand %}'{{ slide.brand.id }}'{% else %}''{% endif %})"
                                 class="px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded text-xs font-medium transition"
                                 title="Edit">
                                 ✏️ Edit
@@ -256,7 +256,7 @@
                 
                 <!-- Edit -->
                 <button 
-                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}', {% if slide.brand %}{{ slide.brand.id }}{% else %}''{% endif %})"
+                    onclick="editSlide({{ slide.id }}, '{{ slide.title|escapejs }}', '{{ slide.description|escapejs }}', {{ slide.order }}, {{ slide.duration_seconds }}, {{ slide.is_active|yesno:'true,false' }}, '{{ slide.start_date|date:"Y-m-d"|default:"" }}', '{{ slide.end_date|date:"Y-m-d"|default:"" }}', {% if slide.brand %}'{{ slide.brand.id }}'{% else %}''{% endif %})"
                     class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition"
                     title="Edit">
                     ✏️ Edit

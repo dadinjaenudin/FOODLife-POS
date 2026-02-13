@@ -32,7 +32,6 @@ setTimeout(() => {
         <h2 class="text-xl font-bold text-gray-900">Payment Profiles</h2>
         <p class="text-xs text-gray-500">
             <span class="font-semibold text-gray-700">{{ profiles|length }}</span> profile{{ profiles|length|pluralize }}
-            <span class="text-gray-400">&middot; filtered by global brand</span>
         </p>
     </div>
     <a href="{% url 'management:payment_profile_create' %}"
@@ -53,6 +52,7 @@ setTimeout(() => {
                 <tr>
                     <th class="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wider w-8"></th>
                     <th class="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wider">Profile</th>
+                    <th class="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wider">Scope</th>
                     <th class="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wider">Media</th>
                     <th class="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wider">Data Entry Prompts</th>
                     <th class="px-3 py-2.5 text-center text-[11px] font-semibold text-gray-600 uppercase tracking-wider w-28">Actions</th>
@@ -88,6 +88,17 @@ setTimeout(() => {
                                 <span class="text-[11px] text-gray-400 font-mono">{{ profile.code }}</span>
                             </div>
                         </div>
+                    </td>
+
+                    <!-- Scope -->
+                    <td class="px-3 py-2.5">
+                        {% if profile.store %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-800 rounded-full">{{ profile.store.name }}</span>
+                        {% elif profile.brand %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-800 rounded-full">{{ profile.brand.name }}</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-800 rounded-full">Company-wide</span>
+                        {% endif %}
                     </td>
 
                     <!-- Media Group + ID -->

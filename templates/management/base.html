@@ -12,7 +12,8 @@
     <!-- HTMX - LOCAL -->
     <script src="{% static 'js/htmx.min.js' %}"></script>
     
-    <!-- Alpine.js - LOCAL -->
+    <!-- Alpine.js Collapse Plugin + Core - LOCAL -->
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="{% static 'js/alpine.min.js' %}"></script>
     
     <!-- Chart.js for graphs - LOCAL -->
@@ -271,13 +272,17 @@
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'session' in request.path and 'open' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Open/Close Session
                         </a>
-                        <a href="{% url 'management:store_sessions' %}" 
+                        <a href="{% url 'management:store_sessions' %}"
                            class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'store_sessions' in request.path or 'sessions' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
                             Session History
                         </a>
+                        <a href="{% url 'management:qris_audit_log' %}"
+                           class="flex items-center px-3 py-2 text-sm text-slate-400 rounded-lg {% if 'qris-audit' in request.path %}bg-slate-700 text-emerald-400{% else %}hover:bg-slate-700/50 hover:text-slate-300{% endif %} transition-all duration-200">
+                            QRIS Audit Log
+                        </a>
                     </div>
                 </div>
-                
+
                 <!-- System Setup Group -->
                 <div class="mb-1">
                     <button @click="systemSetupOpen = !systemSetupOpen" 

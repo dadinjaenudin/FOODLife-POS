@@ -189,6 +189,7 @@ class Command(BaseCommand):
                         existing.delete()
 
                     profile = PaymentMethodProfile.objects.create(
+                        company=company,
                         brand=brand,
                         media_group=mg_map.get(p_data['media_group_code']),
                         media_id=p_data['media_id'],

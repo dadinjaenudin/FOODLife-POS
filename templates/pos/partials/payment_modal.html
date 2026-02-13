@@ -1,7 +1,7 @@
 {% load humanize %}
 <!--
 ============================================================================
-PAYMENT MODAL (payment_modal.html) — v11
+PAYMENT MODAL (payment_modal.html) — v12
 ============================================================================
 Modal pembayaran utama di POS. Dipanggil saat kasir klik tombol "Payment"
 (F2) pada bill yang aktif.
@@ -37,9 +37,10 @@ SERVER → CLIENT DATA FLOW:
 │  - Parse payment_methods_json → array of payment methods │
 │  - Manage state: amount, method, payments[], promptValues │
 │  - Numpad routing: amount field ↔ prompt fields          │
+│  - QRIS: generate QR, poll status, auto-submit on paid  │
 │  - syncDisplay() → kirim clone ke customer display (SSE) │
 └──────────┬──────────────────────────────────────────────┘
-           │ Form submit via HTMX POST
+           │ Form submit via HTMX POST (manual atau QRIS auto-submit)
            ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Django View: process_payment() (apps/pos/views.py)     │
@@ -66,17 +67,23 @@ LAYOUT VISUAL:
 │  ○ QRIS      │  [EFT No: ▾ BCA ]  ← Dropdown      │
 │  ○ DANA      │  [Approval: _____]  ← Prompt        │
 │  ○ Voucher   │                                     │
-│              │  [Numpad → APPROVAL_CODE]  Indicator │
-│              │  ┌───┬───┬───┬───┐                  │
-│              │  │ 7 │ 8 │ 9 │DEL│  Numpad          │
-│              │  │ 4 │ 5 │ 6 │ C │                  │
-│              │  │ 1 │ 2 │ 3 │00 │                  │
-│              │  │ 0 │000│   │   │                  │
-│              │  ├───┼───┼───┼───┤                  │
-│              │  │Ext│50K│100│Rnd│  Quick Amount     │
-│              │  └───┴───┴───┴───┘                  │
+│              │  ┌─────────────────────────────┐    │
+│              │  │  QRIS QR CODE OVERLAY       │    │
+│              │  │  (replaces numpad when       │    │
+│              │  │   QRIS is active)            │    │
+│              │  │  ┌───────────────┐           │    │
+│              │  │  │   QR IMAGE    │           │    │
+│              │  │  │   (base64)    │           │    │
+│              │  │  └───────────────┘           │    │
+│              │  │  [Cancel] [Simulate]         │    │
+│              │  └─────────────────────────────┘    │
+│              │                                     │
+│              │  [Numpad] (hidden saat QRIS aktif)  │
+│              │  [Ext│50K│100│Rnd]  Quick Amount    │
 ├──────────────┴─────────────────────────────────────┤
 │  [Cancel]  [+ Split]  [====== Bayar Rp XXX ======] │
+│  (Cancel disabled saat QRIS polling/paid)          │
+│  (Bayar shows "Menunggu QRIS..." saat polling)     │
 └────────────────────────────────────────────────────┘
 
 KONSEP UTAMA:
@@ -91,6 +98,10 @@ KONSEP UTAMA:
    - account_no (6 digit, numeric)
    - eft_no (dropdown dari EFTTerminal master data)
    - approval_code (4-6 digit, numeric)
+
+   Contoh: QRIS BCA CPM punya 2 prompts:
+   - amount (field_type=amount)
+   - qrcontent (field_type=scanner, use_scanner=true) → trigger QR generate button
 
    Jika terminal belum dikonfigurasi profil → fallback ke mode legacy
    (hardcoded methods tanpa dynamic prompts).
@@ -139,6 +150,40 @@ KONSEP UTAMA:
    - profile_id, prompt_data (untuk dynamic profiles)
    - payments[0..N][method/amount/reference/profile_id/prompt_data] (split)
 
+   Dua cara submit:
+   a) Manual: kasir klik tombol "Bayar" → submitPayment() → canPay check → form.requestSubmit()
+   b) QRIS auto-submit: setelah QRIS confirmed paid → 800ms delay → form.requestSubmit()
+      (bypass canPay, karena QRIS sudah terbayar dan HARUS diproses)
+
+7. QRIS PAYMENT INTEGRATION
+   Untuk metode pembayaran dengan prompt field_type='scanner' (misal QRIS BCA CPM),
+   tombol "Generate QR" muncul di samping input field.
+
+   Flow QRIS:
+   a) Kasir masukkan nominal → klik "Generate QR"
+   b) Frontend POST ke /pos/bill/{id}/qris/create/ → backend buat QRISTransaction
+      + generate QR image (base64 PNG via library qrcode)
+   c) QR code tampil di modal (menggantikan numpad area)
+   d) Frontend polling setiap 3 detik ke /pos/bill/{id}/qris/{txn_id}/status/
+   e) Customer scan QR → gateway update status ke 'paid'
+   f) Polling detect 'paid' → isi qrcontent field → show success → auto-submit form
+
+   State Machine (qrisState):
+     idle → generating → polling → paid → idle (auto-submit)
+                                  → error (expired/cancelled/failed)
+
+   Safety Rules:
+   - Tombol "Bayar" DISABLED saat qrisState='polling'/'generating'
+   - Tombol "Cancel" DISABLED saat qrisState='polling'/'paid'
+   - Auto-submit BYPASS canPay (QRIS terbayar = HARUS diproses)
+   - Ganti metode → auto-cancel QRIS pending
+   - Tutup modal → auto-cancel QRIS + hide customer display QR
+
+   Gateway Abstraction (apps/pos/payment_gateway.py):
+   - MockQRISGateway: development (simulate payment via button)
+   - Production: Midtrans/Xendit (setting PAYMENT_GATEWAY di Django settings)
+   - Lihat markdown/QRIS_PAYMENT_INTEGRATION.md untuk panduan production
+
 CONTEXT VARIABLES (dari Django view):
 =====================================
 - bill                  : Object Bill aktif (id, bill_number, table, total)
@@ -165,6 +210,15 @@ ALPINE.JS STATE (paymentModal()):
 - activeField     : String target numpad ('amount' atau 'prompt:field_name')
 - total           : Integer total bill (read-only)
 
+QRIS STATE:
+- qrisState         : 'idle' | 'generating' | 'polling' | 'paid' | 'error'
+- qrisTransactionId : String ID transaksi QRIS dari gateway
+- qrisQrImage       : String base64 data URL QR code PNG
+- qrisFieldName     : String nama prompt field untuk auto-fill (biasanya 'qrcontent')
+- qrisError         : String pesan error
+- qrisAmount        : Integer nominal QRIS transaction
+- _qrisTimer        : Handle setInterval untuk polling (3 detik)
+
 COMPUTED PROPERTIES:
 - selectedMethod    → Object metode terpilih dari paymentMethods array
 - currentProfileId  → UUID profile_id (untuk hidden input)
@@ -175,13 +229,31 @@ COMPUTED PROPERTIES:
 - remaining         → total - paidTotal (minimum 0)
 - changeAmount      → Kembalian (hanya jika allow_change dan bayar > total)
 - canPay            → Boolean apakah tombol "Bayar" aktif
+                      (return false jika qrisState='polling'/'generating')
+
+QRIS METHODS:
+- generateQR(fieldName)   → POST /qris/create/, show QR, start polling
+- _startQRISPolling()     → Poll GET /qris/{txn}/status/ setiap 3 detik
+- _stopQRISPolling()      → clearInterval polling timer
+- _hideCustomerQR()       → POST ke Flask API untuk hide QR di customer display
+- cancelQRIS()            → POST /qris/{txn}/cancel/, reset semua QRIS state
+- simulateQRIS()          → POST /qris/{txn}/simulate-modal/ (DEV ONLY)
+
+QRIS API ENDPOINTS:
+- POST /pos/bill/{id}/qris/create/           → Buat transaksi, return QR image
+- GET  /pos/bill/{id}/qris/{txn}/status/     → Cek status (polling)
+- POST /pos/bill/{id}/qris/{txn}/cancel/     → Batalkan transaksi
+- POST /pos/bill/{id}/qris/{txn}/simulate-modal/ → Simulate paid (DEV ONLY)
 
 FILE TERKAIT:
-- apps/pos/views.py → payment_modal() (line ~1699) dan process_payment() (line ~1901)
+- apps/pos/views.py → payment_modal(), process_payment(), qris_create/status/cancel
+- apps/pos/payment_gateway.py → PaymentGateway ABC, MockQRISGateway, get_payment_gateway()
+- apps/pos/models.py → Payment, QRISTransaction
 - apps/core/models.py → PaymentMethodProfile, DataEntryPrompt, EFTTerminal
-- apps/pos/models.py → Payment (payment_profile, payment_metadata)
 - templates/pos/partials/payment_success.html → Halaman sukses setelah bayar
 - templates/pos/partials/main/js/launcher_integration.html → sendModalToCustomerDisplay()
+- pos_launcher_qt/local_api.py → Flask API customer display QR (/api/customer-display/qr)
+- markdown/QRIS_PAYMENT_INTEGRATION.md → Dokumentasi lengkap QRIS + panduan production
 ============================================================================
 -->
 
@@ -206,6 +278,8 @@ function paymentModal() {
     try { _paymentMethods = {{ payment_methods_json|safe }}; } catch(e) {}
     var _useProfiles = {{ use_profiles|yesno:"true,false" }};  // true jika terminal punya payment profiles
     var _defaultMethod = '{{ default_method|escapejs }}' || 'cash';  // metode default saat modal dibuka
+    var _billId = '{{ bill.id }}';
+    var _csrfToken = '{{ csrf_token }}';
 
     return {
         // ===== REACTIVE STATE =====
@@ -220,6 +294,20 @@ function paymentModal() {
         payments: [],                     // Array split payments yang sudah di-add
         activeField: 'amount',            // Target numpad: 'amount' atau 'prompt:field_name'
         _syncTimer: null,                 // Debounce timer untuk syncDisplay()
+
+        // ===== QRIS STATE =====
+        // QRIS payment flow: kasir generate QR → customer scan → polling detect paid → auto-submit
+        // State machine: idle → generating → polling → paid → idle (form auto-submit)
+        //                                             → error (expired/cancelled/failed)
+        // Lihat: markdown/QRIS_PAYMENT_INTEGRATION.md untuk dokumentasi lengkap
+        // Gateway: apps/pos/payment_gateway.py (MockQRISGateway dev, production via settings)
+        qrisState: 'idle',               // idle | generating | polling | paid | error
+        qrisTransactionId: '',           // QRIS transaction ID dari gateway (misal 'MOCK-A1B2C3D4E5F6')
+        qrisQrImage: '',                 // Base64 QR code image (data:image/png;base64,...)
+        qrisFieldName: '',               // Nama prompt field untuk auto-fill saat paid (biasanya 'qrcontent')
+        qrisError: '',                   // Pesan error untuk ditampilkan di UI
+        qrisAmount: 0,                   // Nominal yang dipakai untuk QRIS transaction
+        _qrisTimer: null,                // setInterval handle untuk polling (3 detik)
 
         // ===== COMPUTED PROPERTIES =====
 
@@ -337,8 +425,16 @@ function paymentModal() {
          * Validasi: tombol "Bayar" aktif jika:
          * - Single payment: amount >= total DAN amount > 0
          * - Split payment: total semua payments >= total bill
+         * - QRIS sedang polling/generating → DISABLE (harus tunggu konfirmasi)
+         *
+         * CATATAN QRIS: Saat QRIS polling, canPay return false agar kasir
+         * tidak bisa klik "Bayar" manual. Setelah QRIS confirmed paid,
+         * auto-submit BYPASS canPay via form.requestSubmit() langsung.
+         * Ini mencegah skenario bahaya: uang masuk tapi transaksi tidak tercatat.
          */
         get canPay() {
+            // Block manual pay while QRIS is in progress — payment will auto-submit on confirmation
+            if (this.qrisState === 'polling' || this.qrisState === 'generating') return false;
             if (this.payments.length === 0) return this.amount >= this.total && this.amount > 0;
             return this.paidTotal >= this.total;
         },
@@ -409,6 +505,8 @@ function paymentModal() {
 
         /** Ganti metode pembayaran — reset semua input prompt dan kembali ke amount */
         setMethod(id) {
+            // Cancel any pending QRIS when switching methods
+            if (this.qrisState !== 'idle') this.cancelQRIS();
             this.method = id;
             this.reference = '';
             this.promptValues = {};
@@ -439,6 +537,320 @@ function paymentModal() {
             this.$nextTick(function() {
                 var input = self.$el.querySelector('[data-prompt-field="' + fieldName + '"]');
                 if (input) input.focus();
+            });
+        },
+
+        // ===== QRIS METHODS =====
+        // Flow: generateQR() → _startQRISPolling() → [paid] → auto-submit form
+        // Semua API endpoint: /pos/bill/{id}/qris/...
+        // Gateway abstraction: apps/pos/payment_gateway.py
+
+        /**
+         * Generate QRIS QR code untuk pembayaran.
+         *
+         * Flow:
+         * 1. Validasi amount > 0
+         * 2. POST /pos/bill/{id}/qris/create/ → server buat QRISTransaction + generate QR image
+         * 3. Response berisi: transaction_id, qr_string, qr_image (base64 PNG)
+         * 4. Tampilkan QR di modal (menggantikan numpad area)
+         * 5. Kirim QR ke customer display via local Flask API (opsional, non-blocking)
+         * 6. Start polling status setiap 3 detik
+         *
+         * Server-side (qris_create view):
+         * - Cancel existing pending QRIS untuk bill ini
+         * - Panggil gateway.create_qris_transaction() → INSERT QRISTransaction
+         * - Generate QR image via library qrcode (base64 PNG)
+         *
+         * @param {string} fieldName - nama prompt field untuk auto-fill saat paid (biasanya 'qrcontent')
+         */
+        generateQR(fieldName) {
+            var amount = this.amount;
+            if (!amount || amount <= 0) {
+                this.qrisError = 'Masukkan nominal terlebih dahulu';
+                this.qrisState = 'error';
+                console.warn('[QRIS] Generate failed: amount is 0 or empty');
+                return;
+            }
+
+            this.qrisState = 'generating';
+            this.qrisError = '';
+            this.qrisFieldName = fieldName;
+            this.qrisAmount = amount;
+            this._qrisCreateTime = Date.now();   // Track kapan QR di-generate
+            this._qrisPollCount = 0;             // Counter polling
+            this._qrisPollErrors = 0;            // Counter polling errors
+
+            var self = this;
+            var t0 = Date.now();
+            console.log('[QRIS] Creating transaction — bill:', _billId, 'amount:', amount, 'field:', fieldName, 'time:', new Date().toISOString());
+
+            fetch('/pos/bill/' + _billId + '/qris/create/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': _csrfToken,
+                },
+                body: 'amount=' + amount
+            })
+            .then(function(r) {
+                var responseTime = Date.now() - t0;
+                console.log('[QRIS] Create response — status:', r.status, 'time:', responseTime + 'ms');
+                if (!r.ok) {
+                    console.error('[QRIS] Create HTTP error — status:', r.status, r.statusText);
+                }
+                return r.json();
+            })
+            .then(function(data) {
+                var totalTime = Date.now() - t0;
+                if (!data.success) {
+                    self.qrisState = 'error';
+                    self.qrisError = data.error || 'Gagal membuat QRIS';
+                    console.error('[QRIS] Create failed —', data.error, 'response_time:', totalTime + 'ms');
+                    return;
+                }
+
+                self.qrisTransactionId = data.transaction_id;
+                console.log('[QRIS] Transaction created —',
+                    'txn_id:', data.transaction_id,
+                    'amount:', data.amount,
+                    'expires_at:', data.expires_at,
+                    'has_qr_image:', !!data.qr_image,
+                    'response_time:', totalTime + 'ms'
+                );
+
+                // Use QR image from server response (generated by qrcode library)
+                if (data.qr_image) {
+                    self.qrisQrImage = data.qr_image;
+                } else {
+                    console.warn('[QRIS] No QR image in response — qrcode library mungkin error di server');
+                }
+
+                // Also show QR on customer display via local API (non-blocking, may fail if not running)
+                fetch('http://127.0.0.1:5000/api/customer-display/qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        qr_data: data.qr_string,
+                        total: amount,
+                        payment_method: 'QRIS'
+                    })
+                }).catch(function() {});
+
+                // Start polling
+                self.qrisState = 'polling';
+                console.log('[QRIS] Polling started — interval: 3000ms, txn_id:', data.transaction_id);
+                self._startQRISPolling();
+            })
+            .catch(function(err) {
+                var totalTime = Date.now() - t0;
+                self.qrisState = 'error';
+                self.qrisError = 'Network error: ' + err.message;
+                console.error('[QRIS] Create network error —', err.message, 'response_time:', totalTime + 'ms');
+            });
+        },
+
+        /**
+         * Poll QRIS transaction status setiap 3 detik.
+         *
+         * GET /pos/bill/{id}/qris/{transaction_id}/status/
+         * Response: { status: 'pending'|'paid'|'expired'|'failed'|'cancelled', paid_at, transaction_id }
+         *
+         * Jika status='paid':
+         *   1. Isi prompt field (qrcontent) dengan transaction_id
+         *   2. Set qrisState='paid' → tampilkan success overlay
+         *   3. Stop polling + hide customer display QR
+         *   4. Setelah 800ms → set qrisState='idle' → form.requestSubmit()
+         *      (BYPASS canPay — QRIS sudah terbayar, HARUS diproses)
+         *
+         * Jika status='expired'/'cancelled'/'failed':
+         *   → Show error state, stop polling
+         *
+         * KEAMANAN: Auto-submit menggunakan form.requestSubmit() bukan submitPayment()
+         * karena submitPayment() cek canPay yang bisa return false. QRIS yang sudah
+         * terbayar WAJIB diproses — tidak boleh ada uang masuk tanpa Payment record.
+         */
+        _startQRISPolling() {
+            var self = this;
+            if (self._qrisTimer) clearInterval(self._qrisTimer);
+
+            self._qrisTimer = setInterval(function() {
+                self._qrisPollCount = (self._qrisPollCount || 0) + 1;
+                var pollNum = self._qrisPollCount;
+                var t0 = Date.now();
+                var elapsedSinceCreate = self._qrisCreateTime ? ((Date.now() - self._qrisCreateTime) / 1000).toFixed(1) : '?';
+
+                fetch('/pos/bill/' + _billId + '/qris/' + self.qrisTransactionId + '/status/')
+                .then(function(r) {
+                    var responseTime = Date.now() - t0;
+                    if (!r.ok) {
+                        console.error('[QRIS] Poll #' + pollNum + ' HTTP error — status:', r.status, 'time:', responseTime + 'ms');
+                    }
+                    return r.json();
+                })
+                .then(function(data) {
+                    var responseTime = Date.now() - t0;
+
+                    if (data.status === 'paid') {
+                        var totalWaitTime = self._qrisCreateTime ? ((Date.now() - self._qrisCreateTime) / 1000).toFixed(1) : '?';
+                        console.log('[QRIS] ✓ PAYMENT CONFIRMED —',
+                            'txn_id:', self.qrisTransactionId,
+                            'status: paid',
+                            'paid_at:', data.paid_at,
+                            'poll_count:', pollNum,
+                            'wait_time:', totalWaitTime + 's',
+                            'last_poll_response:', responseTime + 'ms',
+                            'amount:', self.qrisAmount,
+                            'bill:', _billId,
+                            'time:', new Date().toISOString()
+                        );
+
+                        // Fill qrcontent field with transaction reference
+                        self.promptValues[self.qrisFieldName] = self.qrisTransactionId;
+                        self.qrisState = 'paid';
+                        self._stopQRISPolling();
+                        self._hideCustomerQR();
+                        self.syncDisplay();
+                        // Auto-submit payment after brief success display (800ms)
+                        // PENTING: Jangan tunggu kasir klik manual — QRIS sudah terbayar,
+                        // harus langsung diproses agar tidak ada resiko uang masuk tapi transaksi batal.
+                        setTimeout(function() {
+                            self.qrisState = 'idle';
+                            self.$nextTick(function() {
+                                // Force submit — bypass canPay karena QRIS sudah terbayar
+                                console.log('[QRIS] Auto-submitting payment form —',
+                                    'txn_id:', self.qrisTransactionId,
+                                    'amount:', self.amount,
+                                    'total:', self.total,
+                                    'method:', self.method,
+                                    'time:', new Date().toISOString()
+                                );
+                                var form = document.getElementById('payment-form');
+                                if (form) {
+                                    // requestSubmit() triggers native submit event yang HTMX intercept
+                                    if (form.requestSubmit) {
+                                        form.requestSubmit();
+                                    } else {
+                                        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                                    }
+                                } else {
+                                    console.error('[QRIS] CRITICAL — payment-form not found in DOM! Payment may not be recorded.');
+                                }
+                            });
+                        }, 800);
+                    } else if (data.status === 'expired' || data.status === 'cancelled' || data.status === 'failed') {
+                        var totalWaitTime = self._qrisCreateTime ? ((Date.now() - self._qrisCreateTime) / 1000).toFixed(1) : '?';
+                        console.warn('[QRIS] ✗ Transaction ended —',
+                            'txn_id:', self.qrisTransactionId,
+                            'status:', data.status,
+                            'poll_count:', pollNum,
+                            'elapsed:', totalWaitTime + 's',
+                            'last_poll_response:', responseTime + 'ms',
+                            'amount:', self.qrisAmount,
+                            'bill:', _billId,
+                            'time:', new Date().toISOString()
+                        );
+                        self.qrisState = 'error';
+                        self.qrisError = 'QRIS ' + data.status;
+                        self._stopQRISPolling();
+                        self._hideCustomerQR();
+                    }
+                    // Log setiap 5 poll untuk monitoring (tapi tidak spam setiap 3 detik)
+                    else if (pollNum % 5 === 0) {
+                        console.log('[QRIS] Polling #' + pollNum + ' — status:', data.status,
+                            'elapsed:', elapsedSinceCreate + 's',
+                            'response:', responseTime + 'ms'
+                        );
+                    }
+                })
+                .catch(function(err) {
+                    self._qrisPollErrors = (self._qrisPollErrors || 0) + 1;
+                    var responseTime = Date.now() - t0;
+                    console.error('[QRIS] Poll #' + pollNum + ' network error —',
+                        err.message,
+                        'response_time:', responseTime + 'ms',
+                        'total_errors:', self._qrisPollErrors,
+                        'txn_id:', self.qrisTransactionId
+                    );
+                });
+            }, 3000);
+        },
+
+        /** Stop QRIS polling interval (clearInterval) */
+        _stopQRISPolling() {
+            if (this._qrisTimer) {
+                clearInterval(this._qrisTimer);
+                this._qrisTimer = null;
+            }
+        },
+
+        /** Hide QR dari customer display via Flask API (non-blocking, fail silently) */
+        _hideCustomerQR() {
+            fetch('http://127.0.0.1:5000/api/customer-display/hide-qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}'
+            }).catch(function() {});
+        },
+
+        /**
+         * Cancel QRIS transaction yang sedang pending.
+         * POST /pos/bill/{id}/qris/{txn}/cancel/ → update status='cancelled'
+         * Reset semua QRIS state ke idle, stop polling, hide customer display QR.
+         * Dipanggil dari: tombol Cancel di QR overlay, setMethod(), closeModal()
+         */
+        cancelQRIS() {
+            var self = this;
+            var elapsed = self._qrisCreateTime ? ((Date.now() - self._qrisCreateTime) / 1000).toFixed(1) : '?';
+            console.log('[QRIS] Cancelling —',
+                'txn_id:', self.qrisTransactionId || '(none)',
+                'state:', self.qrisState,
+                'poll_count:', self._qrisPollCount || 0,
+                'elapsed:', elapsed + 's',
+                'bill:', _billId,
+                'time:', new Date().toISOString()
+            );
+            if (self.qrisTransactionId) {
+                fetch('/pos/bill/' + _billId + '/qris/' + self.qrisTransactionId + '/cancel/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': _csrfToken },
+                }).catch(function(err) {
+                    console.error('[QRIS] Cancel request failed —', err.message);
+                });
+            }
+            self._stopQRISPolling();
+            self._hideCustomerQR();
+            self.qrisState = 'idle';
+            self.qrisTransactionId = '';
+            self.qrisQrImage = '';
+            self.qrisError = '';
+            self.qrisFieldName = '';
+        },
+
+        /**
+         * DEV ONLY: Simulate QRIS payment (ubah status jadi 'paid').
+         * POST /pos/bill/{id}/qris/{txn}/simulate-modal/
+         *
+         * PENTING: Endpoint ini HANYA ubah QRISTransaction.status → 'paid'.
+         * TIDAK membuat Payment record atau menutup bill.
+         * Polling (_startQRISPolling) akan detect status='paid' → trigger auto-submit.
+         *
+         * Berbeda dengan /simulate/ (tanpa -modal) yang langsung auto-complete bill.
+         * Endpoint -modal khusus untuk integrasi di payment modal agar Payment
+         * tetap dibuat via form submission normal (process_payment view).
+         */
+        simulateQRIS() {
+            var elapsed = this._qrisCreateTime ? ((Date.now() - this._qrisCreateTime) / 1000).toFixed(1) : '?';
+            console.log('[QRIS] DEV Simulate —',
+                'txn_id:', this.qrisTransactionId,
+                'amount:', this.qrisAmount,
+                'elapsed:', elapsed + 's',
+                'time:', new Date().toISOString()
+            );
+            fetch('/pos/bill/' + _billId + '/qris/' + this.qrisTransactionId + '/simulate-modal/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': _csrfToken },
+            }).catch(function(err) {
+                console.error('[QRIS] Simulate request failed —', err.message);
             });
         },
 
@@ -477,17 +889,28 @@ function paymentModal() {
          * Form berisi: method, amount, reference, profile_id, prompt_data,
          * + payments[0..N] untuk split payments.
          * Server akan membuat Payment record(s) dan return payment_success.html.
+         *
+         * Menggunakan form.requestSubmit() (bukan htmx.trigger) karena:
+         * - requestSubmit() trigger native SubmitEvent yang HTMX intercept
+         * - htmx.trigger() fire CustomEvent yang HTMX mungkin tidak tangkap
+         *
+         * CATATAN: Untuk QRIS auto-submit, form.requestSubmit() dipanggil
+         * langsung dari _startQRISPolling() TANPA melalui method ini,
+         * karena method ini cek canPay yang bisa return false.
          */
         submitPayment() {
             console.log('[Payment] submitPayment called, canPay:', this.canPay, 'amount:', this.amount, 'total:', this.total, 'payments:', this.payments.length);
             if (!this.canPay) return;
             if (this.payments.length > 0 && this.paidTotal >= this.total) this.amount = 0;
             var form = document.getElementById('payment-form');
-            console.log('[Payment] form found:', !!form, 'htmx:', typeof htmx);
-            if (form && typeof htmx !== 'undefined') {
-                htmx.trigger(form, 'submit');
-            } else if (form) {
-                form.submit();
+            console.log('[Payment] form found:', !!form);
+            if (form) {
+                // requestSubmit() triggers native submit event yang HTMX intercept
+                if (form.requestSubmit) {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                }
             }
         },
 
@@ -496,6 +919,9 @@ function paymentModal() {
             // Flag ini digunakan oleh htmx_handlers.html untuk memblokir
             // HTMX request lain ke #modal-container saat payment modal aktif
             window._paymentModalActive = true;
+            // Register QRIS cleanup for closeModal()
+            var self = this;
+            window._qrisCleanup = function() { self.cancelQRIS(); };
             this.$nextTick(() => {
                 var input = this.$el.querySelector('input[name=amount_display]');
                 if (input) input.focus();
@@ -511,6 +937,8 @@ function paymentModal() {
  */
 function closeModal() {
     window._paymentModalActive = false;
+    // Cancel any pending QRIS transaction and hide customer display QR
+    if (window._qrisCleanup) window._qrisCleanup();
     document.getElementById('modal-container').innerHTML = '';
     if (typeof sendModalToCustomerDisplay === 'function') sendModalToCustomerDisplay();
 }
@@ -750,10 +1178,32 @@ function closeModal() {
                                 {% endif %}
                                 {% if prompt.use_scanner %}
                                 <button type="button" @click="activateScanner('{{ prompt.field_name }}'); activeField = 'prompt:{{ prompt.field_name }}'"
-                                        class="px-2 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition flex-shrink-0">
+                                        class="px-2 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition flex-shrink-0"
+                                        title="Scan">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
                                     </svg>
+                                </button>
+                                {% endif %}
+                                {% if prompt.field_type == 'scanner' %}
+                                <!--
+                                    Generate QR button — tampil untuk prompt dengan field_type='scanner'.
+                                    Contoh: QRIS BCA CPM punya prompt 'qrcontent' (field_type=scanner).
+                                    Klik → generateQR(fieldName) → buat QRIS transaction + show QR overlay.
+                                    Disabled saat QRIS sudah aktif (polling/generating).
+                                -->
+                                <button type="button"
+                                        @click="generateQR('{{ prompt.field_name }}')"
+                                        :disabled="qrisState === 'polling' || qrisState === 'generating'"
+                                        class="px-2 py-1.5 rounded-lg transition flex-shrink-0 flex items-center gap-1"
+                                        :class="qrisState === 'polling' || qrisState === 'generating'
+                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                            : 'bg-purple-100 text-purple-700 hover:bg-purple-200'"
+                                        title="Generate QR">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h2v2h-2zM20 16h0v4h-4v-2M14 12h6M12 14v6M12 4v4M4 12h4"/>
+                                    </svg>
+                                    <span class="text-[10px] font-bold">QR</span>
                                 </button>
                                 {% endif %}
                             </div>
@@ -784,12 +1234,91 @@ function closeModal() {
                     {% endif %}
 
                     <!--
+                        QRIS QR CODE OVERLAY
+                        Tampil saat qrisState != 'idle' — menggantikan numpad area.
+                        4 state visual:
+                        1. generating: spinner "Generating QR Code..."
+                        2. polling: QR image + amount + "Menunggu pembayaran..." + tombol Cancel/Simulate
+                        3. paid: green checkmark + "QRIS Terbayar!" + "Memproses pembayaran otomatis..."
+                           (800ms kemudian form auto-submit via requestSubmit())
+                        4. error: red X + pesan error + tombol "Tutup"
+
+                        QR image berasal dari server (base64 PNG, generated via library qrcode).
+                        Juga dikirim ke customer display via Flask local API (opsional).
+                    -->
+                    <div x-show="qrisState !== 'idle'" x-cloak class="mb-2.5">
+                        <!-- Generating state -->
+                        <div x-show="qrisState === 'generating'" class="flex flex-col items-center justify-center py-6 bg-gray-50 rounded-xl border-2 border-gray-200">
+                            <svg class="w-8 h-8 text-purple-500 animate-spin mb-2" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            <span class="text-xs font-bold text-gray-600">Generating QR Code...</span>
+                        </div>
+
+                        <!-- Polling state — QR is shown -->
+                        <div x-show="qrisState === 'polling'" class="flex flex-col items-center bg-purple-50 rounded-xl border-2 border-purple-200 p-3">
+                            <div class="text-[10px] font-bold text-purple-600 uppercase tracking-wide mb-2">Scan QR untuk Bayar</div>
+                            <!-- QR Image -->
+                            <div class="bg-white rounded-lg p-2 shadow-sm mb-2">
+                                <img x-show="qrisQrImage" :src="qrisQrImage" alt="QRIS QR Code" class="w-36 h-36 object-contain">
+                                <div x-show="!qrisQrImage" class="w-36 h-36 flex items-center justify-center text-gray-400">
+                                    <svg class="w-12 h-12 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h2v2h-2z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="text-sm font-bold text-purple-800 mb-1">Rp <span x-text="fmt(qrisAmount)"></span></div>
+                            <div class="flex items-center gap-1.5 mb-3">
+                                <span class="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                                <span class="text-[10px] font-medium text-purple-600">Menunggu pembayaran...</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="button" @click="cancelQRIS()"
+                                        class="px-3 py-1.5 text-[10px] font-bold bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                                    Cancel
+                                </button>
+                                <button type="button" @click="simulateQRIS()"
+                                        class="px-3 py-1.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition">
+                                    Simulate Payment
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Paid state — success, will auto-submit -->
+                        <div x-show="qrisState === 'paid'" class="flex flex-col items-center justify-center py-6 bg-green-50 rounded-xl border-2 border-green-200">
+                            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
+                                <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-bold text-green-700">QRIS Terbayar!</span>
+                            <span class="text-[10px] text-green-600 mt-0.5">Memproses pembayaran otomatis...</span>
+                            <span class="text-[9px] text-green-500 mt-0.5 font-mono" x-text="qrisTransactionId"></span>
+                        </div>
+
+                        <!-- Error state -->
+                        <div x-show="qrisState === 'error'" class="flex flex-col items-center justify-center py-4 bg-red-50 rounded-xl border-2 border-red-200">
+                            <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mb-2">
+                                <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </div>
+                            <span class="text-xs font-bold text-red-700" x-text="qrisError || 'QRIS Error'"></span>
+                            <button type="button" @click="qrisState = 'idle'; qrisError = ''"
+                                    class="mt-2 px-3 py-1 text-[10px] font-bold bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+
+                    <!--
                         NUMPAD TARGET INDICATOR
                         Muncul saat activeField = 'prompt:xxx' (numpad diarahkan ke prompt field).
                         Menampilkan nama field yang sedang menerima input numpad.
                         Tombol "← Amount" untuk kembali routing numpad ke amount.
                     -->
-                    <div x-show="activeField && activeField.startsWith('prompt:')" x-cloak
+                    <div x-show="qrisState === 'idle' && activeField && activeField.startsWith('prompt:')" x-cloak
                          class="flex items-center gap-1.5 mb-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded-lg">
                         <svg class="w-3 h-3 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
@@ -800,6 +1329,8 @@ function closeModal() {
                         </button>
                     </div>
 
+                    <!-- NUMPAD + QUICK AMOUNTS — Hidden when QRIS overlay is active -->
+                    <div x-show="qrisState === 'idle'">
                     <!--
                         NUMPAD — Grid 4 kolom, 4 baris.
                         Setiap tombol memanggil numpad(key) yang route ke:
@@ -851,6 +1382,7 @@ function closeModal() {
                             Round
                         </button>
                     </div>
+                    </div><!-- /NUMPAD + QUICK AMOUNTS wrapper -->
                 </div>
             </form>
         </div>
@@ -858,17 +1390,28 @@ function closeModal() {
         <!--
             FOOTER — 3 tombol aksi:
             1. Cancel: tutup modal tanpa bayar
-            2. + Split: tambah pembayaran parsial ke list (tampil jika amount > 0 DAN belum cukup)
-            3. Bayar: submit pembayaran (aktif jika canPay=true, disabled jika belum cukup)
+               - DISABLED saat qrisState='polling'/'paid' (mencegah batal setelah customer bayar)
+            2. + Split: tambah pembayaran parsial ke list
+               - HIDDEN saat QRIS aktif (qrisState != 'idle')
+               - Tampil jika amount > 0 DAN belum cukup
+            3. Bayar: submit pembayaran
+               - Aktif jika canPay=true (disabled saat QRIS polling/generating)
+               - Saat QRIS polling: tampil "Menunggu QRIS..." dengan spinner
+               - QRIS auto-submit BYPASS tombol ini (langsung form.requestSubmit)
         -->
         <div class="p-2.5 border-t bg-gray-50 flex gap-2" style="flex-shrink:0;">
+            <!-- Cancel: disabled saat QRIS polling — mencegah batal setelah customer bayar -->
             <button type="button" onclick="closeModal()"
-                    class="px-5 py-2.5 rounded-lg font-bold text-xs bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-all">
+                    :disabled="qrisState === 'polling' || qrisState === 'paid'"
+                    class="px-5 py-2.5 rounded-lg font-bold text-xs transition-all"
+                    :class="qrisState === 'polling' || qrisState === 'paid'
+                        ? 'bg-gray-200 border-2 border-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50'">
                 Cancel
             </button>
-            <!-- Tombol + Split: tampil jika ada amount DAN (sudah ada split ATAU amount < total) -->
+            <!-- Tombol + Split: hidden saat QRIS aktif -->
             <button type="button"
-                    x-show="amount > 0 && (payments.length > 0 || amount < total)"
+                    x-show="qrisState === 'idle' && amount > 0 && (payments.length > 0 || amount < total)"
                     x-cloak
                     @click="addPayment()"
                     class="px-4 py-2.5 rounded-lg font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white transition-all">
@@ -883,12 +1426,18 @@ function closeModal() {
                     @click="submitPayment()"
                     :disabled="!canPay"
                     class="flex-1 py-2.5 rounded-lg font-bold text-sm transition-all"
-                    :class="canPay ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg' : 'bg-gray-300 text-gray-500 cursor-not-allowed'">
+                    :class="qrisState === 'polling'
+                        ? 'bg-purple-500 text-white shadow-lg animate-pulse'
+                        : (canPay ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg' : 'bg-gray-300 text-gray-500 cursor-not-allowed')">
                 <span class="flex items-center justify-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg x-show="qrisState !== 'polling'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                     </svg>
-                    <span x-text="canPay ? 'Bayar Rp ' + fmt(payments.length > 0 ? paidTotal : amount) : 'Masukkan Nominal'"></span>
+                    <svg x-show="qrisState === 'polling'" x-cloak class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    <span x-text="qrisState === 'polling' ? 'Menunggu QRIS...' : (canPay ? 'Bayar Rp ' + fmt(payments.length > 0 ? paidTotal : amount) : 'Masukkan Nominal')"></span>
                 </span>
             </button>
         </div>

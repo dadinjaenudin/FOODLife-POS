@@ -120,6 +120,7 @@ urlpatterns = [
     path('transactions/bills/', views.bills_list, name='bills'),
     path('transactions/payments/', views.payments_list, name='payments'),
     path('transactions/sessions/', views.store_sessions_list, name='store_sessions'),
+    path('transactions/qris-audit/', views.qris_audit_log, name='qris_audit_log'),
     
     # Reports & Analytics
     path('reports/', views.reports_dashboard, name='reports'),

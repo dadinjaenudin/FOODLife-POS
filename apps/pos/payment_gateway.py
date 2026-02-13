@@ -11,7 +11,37 @@ from typing import Optional
 from decimal import Decimal
 from django.conf import settings
 from django.utils import timezone
+import logging
 import uuid
+
+logger = logging.getLogger('pos.qris')
+
+
+def _audit_log(event, txn_ref='', bill=None, transaction=None, amount=None,
+               status_before='', status_after='', gateway_name='',
+               response_time_ms=None, elapsed_since_create_s=None,
+               error_message='', extra_data=None, user=None, ip_address=None):
+    """Write a row to QRISAuditLog table. Non-blocking — errors are logged, not raised."""
+    try:
+        from .models import QRISAuditLog
+        QRISAuditLog.objects.create(
+            event=event,
+            txn_ref=txn_ref,
+            bill=bill,
+            transaction=transaction,
+            amount=amount,
+            status_before=status_before,
+            status_after=status_after,
+            gateway_name=gateway_name,
+            response_time_ms=response_time_ms,
+            elapsed_since_create_s=elapsed_since_create_s,
+            error_message=error_message,
+            extra_data=extra_data or {},
+            user=user,
+            ip_address=ip_address,
+        )
+    except Exception as e:
+        logger.error('QRIS_AUDIT_LOG_FAILED event=%s txn_ref=%s error=%s', event, txn_ref, e)
 
 
 @dataclass
@@ -79,6 +109,24 @@ class MockQRISGateway(PaymentGateway):
             created_by=kwargs.get('user'),
         )
 
+        logger.info(
+            'QRIS_CREATE bill=%s txn_id=%s amount=%s gateway=mock expires_at=%s user=%s',
+            bill.id, transaction_id, amount, expires_at.isoformat(),
+            kwargs.get('user'),
+        )
+
+        _audit_log(
+            event='create',
+            txn_ref=transaction_id,
+            bill=bill,
+            transaction=txn,
+            amount=amount,
+            status_after='pending',
+            gateway_name='mock',
+            user=kwargs.get('user'),
+            extra_data={'expires_at': expires_at.isoformat()},
+        )
+
         return QRISCreateResult(
             success=True,
             transaction_id=transaction_id,
@@ -92,16 +140,65 @@ class MockQRISGateway(PaymentGateway):
         try:
             txn = QRISTransaction.objects.get(transaction_id=transaction_id)
         except QRISTransaction.DoesNotExist:
+            logger.warning('QRIS_STATUS_NOT_FOUND txn_id=%s', transaction_id)
+            _audit_log(
+                event='error',
+                txn_ref=transaction_id,
+                error_message='Transaction not found on status check',
+            )
             return QRISStatusResult(
                 status='failed',
                 transaction_id=transaction_id,
                 error_message='Transaction not found',
             )
 
+        prev_status = txn.status
+
         # Check if expired
         if txn.status == 'pending' and txn.expires_at and timezone.now() > txn.expires_at:
             txn.status = 'expired'
             txn.save(update_fields=['status'])
+            elapsed = (timezone.now() - txn.created_at).total_seconds()
+            logger.info(
+                'QRIS_EXPIRED txn_id=%s bill=%s amount=%s elapsed=%.1fs timeout=%s',
+                txn.transaction_id, txn.bill_id, txn.amount, elapsed, txn.expires_at.isoformat(),
+            )
+            _audit_log(
+                event='expired',
+                txn_ref=txn.transaction_id,
+                bill=txn.bill,
+                transaction=txn,
+                amount=txn.amount,
+                status_before='pending',
+                status_after='expired',
+                gateway_name=txn.gateway_name,
+                elapsed_since_create_s=elapsed,
+            )
+
+        # Log status transitions (paid, expired, failed, cancelled)
+        if txn.status != 'pending' and prev_status == 'pending':
+            elapsed = (timezone.now() - txn.created_at).total_seconds()
+            event_type = 'payment_confirmed' if txn.status == 'paid' else 'status_change'
+            logger.info(
+                'QRIS_STATUS_CHANGE txn_id=%s bill=%s status=%s prev=%s amount=%s '
+                'elapsed=%.1fs paid_at=%s gateway=%s',
+                txn.transaction_id, txn.bill_id, txn.status, prev_status,
+                txn.amount, elapsed,
+                txn.paid_at.isoformat() if txn.paid_at else None,
+                txn.gateway_name,
+            )
+            _audit_log(
+                event=event_type,
+                txn_ref=txn.transaction_id,
+                bill=txn.bill,
+                transaction=txn,
+                amount=txn.amount,
+                status_before=prev_status,
+                status_after=txn.status,
+                gateway_name=txn.gateway_name,
+                elapsed_since_create_s=elapsed,
+                extra_data={'paid_at': txn.paid_at.isoformat() if txn.paid_at else None},
+            )
 
         return QRISStatusResult(
             status=txn.status,
@@ -114,10 +211,32 @@ class MockQRISGateway(PaymentGateway):
 
         try:
             txn = QRISTransaction.objects.get(transaction_id=transaction_id, status='pending')
+            elapsed = (timezone.now() - txn.created_at).total_seconds()
             txn.status = 'cancelled'
             txn.save(update_fields=['status'])
+            logger.info(
+                'QRIS_CANCELLED txn_id=%s bill=%s amount=%s elapsed=%.1fs',
+                txn.transaction_id, txn.bill_id, txn.amount, elapsed,
+            )
+            _audit_log(
+                event='cancelled',
+                txn_ref=txn.transaction_id,
+                bill=txn.bill,
+                transaction=txn,
+                amount=txn.amount,
+                status_before='pending',
+                status_after='cancelled',
+                gateway_name=txn.gateway_name,
+                elapsed_since_create_s=elapsed,
+            )
             return True
         except QRISTransaction.DoesNotExist:
+            logger.warning('QRIS_CANCEL_NOT_FOUND txn_id=%s', transaction_id)
+            _audit_log(
+                event='error',
+                txn_ref=transaction_id,
+                error_message='Cancel failed — transaction not found or not pending',
+            )
             return False
 
     def simulate_payment(self, transaction_id: str) -> bool:
@@ -126,12 +245,35 @@ class MockQRISGateway(PaymentGateway):
 
         try:
             txn = QRISTransaction.objects.get(transaction_id=transaction_id, status='pending')
+            elapsed = (timezone.now() - txn.created_at).total_seconds()
             txn.status = 'paid'
             txn.paid_at = timezone.now()
             txn.gateway_response = {'simulated': True, 'paid_at': str(timezone.now())}
             txn.save(update_fields=['status', 'paid_at', 'gateway_response'])
+            logger.info(
+                'QRIS_SIMULATED txn_id=%s bill=%s amount=%s elapsed=%.1fs paid_at=%s',
+                txn.transaction_id, txn.bill_id, txn.amount, elapsed, txn.paid_at.isoformat(),
+            )
+            _audit_log(
+                event='simulate',
+                txn_ref=txn.transaction_id,
+                bill=txn.bill,
+                transaction=txn,
+                amount=txn.amount,
+                status_before='pending',
+                status_after='paid',
+                gateway_name=txn.gateway_name,
+                elapsed_since_create_s=elapsed,
+                extra_data={'simulated': True, 'paid_at': txn.paid_at.isoformat()},
+            )
             return True
         except QRISTransaction.DoesNotExist:
+            logger.warning('QRIS_SIMULATE_NOT_FOUND txn_id=%s', transaction_id)
+            _audit_log(
+                event='error',
+                txn_ref=transaction_id,
+                error_message='Simulate failed — transaction not found or not pending',
+            )
             return False
 
 

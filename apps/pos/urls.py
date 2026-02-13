@@ -40,6 +40,7 @@ urlpatterns = [
     path('bill/<int:bill_id>/qris/create/', views.qris_create, name='qris_create'),
     path('bill/<int:bill_id>/qris/<str:transaction_id>/status/', views.qris_status, name='qris_status'),
     path('bill/<int:bill_id>/qris/<str:transaction_id>/simulate/', views.qris_simulate, name='qris_simulate'),
+    path('bill/<int:bill_id>/qris/<str:transaction_id>/simulate-modal/', views.qris_simulate_modal, name='qris_simulate_modal'),
     path('bill/<int:bill_id>/qris/<str:transaction_id>/cancel/', views.qris_cancel, name='qris_cancel'),
     path('bill/<int:bill_id>/qris/success/', views.qris_payment_success, name='qris_payment_success'),
     

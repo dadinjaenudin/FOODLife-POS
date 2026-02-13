@@ -1,82 +1,13 @@
 <!--
 ============================================================================
-CUSTOMER DISPLAY (customer_display.html)
+CUSTOMER DISPLAY (customer_display.html) - Revamp v2
 ============================================================================
-Layar kedua (second monitor) yang menampilkan informasi bill dan
-slideshow promosi ke customer. Dijalankan dari POS Launcher Qt
-(pos_launcher_qt.py) sebagai QWebEngineView window terpisah.
+Refactored layout based on "Comic" theme reference:
+1. Left Column: Logos & Staff Profile
+2. Middle Column: Slideshow, Tenant Info, Promo, Running Text
+3. Right Column: Order Summary (Bill Panel)
 
-ARSITEKTUR: SSE (Server-Sent Events)
-=====================================
-SSE adalah protokol HTTP one-way streaming dimana server mengirim
-event secara real-time ke client melalui koneksi HTTP yang tetap
-terbuka (persistent connection).
-
-DATA FLOW:
-┌───────────────────────────┐
-│  POS Main Screen          │
-│  (Django + HTMX)          │
-│  - User tambah item       │
-│  - User buka payment      │
-└─────────┬─────────────────┘
-          │ HTTP POST (clone bill panel HTML)
-          ▼
-┌───────────────────────────┐
-│  Flask Local API (:5000)  │
-│  POST /api/customer-      │
-│       display/update      │
-│  - Simpan ke display_data │
-│  - notify_subscribers()   │
-│    → queue.put(data)      │
-└─────────┬─────────────────┘
-          │ SSE stream (text/event-stream)
-          ▼
-┌───────────────────────────┐
-│  Customer Display (ini)   │
-│  GET /api/customer-       │
-│      display/stream       │
-│  - EventSource listener   │
-│  - updateDisplay(data)    │
-│  - Render bill panel HTML │
-└───────────────────────────┘
-
-ENDPOINT API (Flask Local - localhost:5000):
-- GET  /health                        : Health check
-- GET  /api/customer-display/stream   : SSE stream (persistent connection)
-- POST /api/customer-display/update   : Terima update dari POS
-- GET  /api/customer-display/config   : Config branding/slideshow
-
-FUNGSI UTAMA:
-- connectSSE()        : Health check → startSSE()
-- startSSE()          : Buat EventSource, handle onmessage/onerror
-- updateDisplay(data) : Render bill panel HTML atau empty state
-- handleModalDisplay(): Tampilkan payment modal di customer display
-- showQRCode(data)    : Tampilkan QR code untuk pembayaran digital
-- loadConfig()        : Load branding config + slideshow images
-
-LAYOUT (2-column grid):
-┌──────────────────────┬──────────────┐
-│                      │              │
-│   Slideshow (70%)    │  Bill Panel  │
-│   Promo images dari  │  (30%)       │
-│   MinIO storage      │  Mirror dari │
-│                      │  POS bill    │
-│                      │              │
-├──────────────────────┴──────────────┤
-│  Footer: Running text + status      │
-└─────────────────────────────────────┘
-
-RECONNECTION:
-- connectSSE() cek /health dulu sebelum buka SSE
-- Jika gagal, retry setiap 3 detik
-- EventSource.onerror → close + retry 3 detik
-- Server kirim keepalive setiap 30 detik agar koneksi tidak timeout
-
-ANTI-FLICKER:
-- Track lastBillHash & lastModalHash untuk skip duplicate update
-- Hanya toggle display state jika berubah (showContainers/hideContainers)
-- Modal inject langsung tanpa delay
-============================================================================
+Maintains original SSE logic for real-time updates.
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -85,329 +16,73 @@ ANTI-FLICKER:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Customer Display</title>
     
-    <!-- Disable caching to always show fresh content -->
+    <!-- Disable caching -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     
     <!-- Tailwind CSS (Local) -->
     <script src="assets/tailwind.js"></script>
+    
+    <!-- Google Fonts for "Comic" look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        /* Base Reset & Fonts */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100vh;
-            overflow: hidden;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        body { 
+            font-family: 'Comic Neue', 'Comic Sans MS', sans-serif;
+            overflow: hidden; 
             background: white;
             color: #333;
-            position: relative;
-        }
-        
-        /* ========== HEADER ========== */
-        .header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: #f8f9fa;
-            border-bottom: 2px solid #e9ecef;
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-        }
-        
-        .header-logo {
-            width: 60px;
-            height: 60px;
-            margin-right: 1rem;
-            border-radius: 50%;
-            background: #667eea;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            color: white;
-        }
-        
-        .header-logo img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            border-radius: 50%;
-        }
-        
-        .header-text h1 {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 0.25rem;
-        }
-        
-        .header-text p {
-            font-size: 1rem;
-            color: #666;
-        }
-        
-        /* ========== MAIN CONTENT ========== */
-        .main-content {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100vw;
-            height: 100vh;
-            display: grid;
-            grid-template-columns: 7fr 3fr;
-            gap: 0;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
-        
-        /* ========== SLIDESHOW (LEFT 70%) ========== */
-        .slideshow-container {
-            background: #f8f9fa;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-            width: 100%;
-            height: 100vh;
-        }
-        
-        .slide {
-            display: none;
-            width: 100%;
-            height: 100vh;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            animation: fadeIn 0.5s ease-in-out;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-        
-        .slide.active {
-            display: flex;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        
-        /* Slide Images from MinIO */
-        .slide-image {
-            width: 100%;
-            height: 100vh;
-            object-fit: cover;
-            border-radius: 0;
-        }
-        
-        .slide-error {
-            padding: 4rem;
-            font-size: 2rem;
-            color: #dc3545;
-            background: #fff3cd;
-            border-radius: 10px;
-        }
-        
-        .slide-content {
-            padding: 2rem;
-            border-radius: 15px;
-            width: 100%;
-        }
-        
-        .slide h2 {
-            font-size: 3.5rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            color: #667eea;
-        }
-        
-        .slide p {
-            font-size: 2rem;
-            color: #333;
-        }
-        
-        .slide-indicators {
-            position: absolute;
-            bottom: 3.5rem;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 0.5rem;
-            z-index: 20;
-        }
-        
-        .slide-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #d1d5db;
-            transition: all 0.3s;
-        }
-        
-        .slide-indicator.active {
-            background: #667eea;
-            width: 30px;
-            border-radius: 6px;
-        }
-        
-        /* ========== BILLING INFO (RIGHT 30% FULL HEIGHT) ========== */
-        .billing-container {
-            background: white;
-            padding: 0;
-            color: #333;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            overflow-x: hidden;
-            height: 100vh;
-            width: 100%;
-            max-width: 100%;
-            margin: 0;
-            border: none;
-            box-sizing: border-box;
-        }
-        
-        .billing-header {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #667eea;
-            margin: 0;
-            padding: 1.5rem 1rem 0.75rem 1rem;
-            border-bottom: 3px solid #667eea;
-        }
-        
-        .items-list {
-            flex: 1;
-            overflow-y: auto;
-            margin: 0;
-            padding: 1rem;
-        }
-        
-        .empty-bill {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #999;
-            padding: 2rem 1rem;
-        }
-        
-        .empty-bill svg {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 1rem;
-            opacity: 0.3;
         }
 
-        .empty-bill img {
-            width: 140px;
-            height: 140px;
-            object-fit: contain;
+        /* Comic Style Borders */
+        .comic-border {
+            border: 3px solid #000;
+            border-radius: 24px;
+            box-shadow: 4px 4px 0px #000;
+        }
+        
+        .comic-panel {
+            background: white;
+            border: 2px solid #000;
             border-radius: 16px;
-            margin-bottom: 1rem;
+            overflow: hidden;
         }
 
-        .empty-bill p {
-            font-size: 1.1rem;
-        }
-        
-        /* ========== FOOTER (RUNNING TEXT + STATUS) ========== */
-        .footer {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #f8f9fa;
-            border-top: 2px solid #e9ecef;
-            padding: 0.5rem 1rem;
-            overflow: hidden;
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .running-text {
-            flex: 1;
-            display: inline-block;
-            white-space: nowrap;
-            animation: marquee 30s linear infinite;
-            font-size: 1.4rem;
-            font-weight: 500;
-            padding-left: 100%;
-            color: #666;
-        }
-        
+        /* Animation Keyframes */
         @keyframes marquee {
             from { transform: translateX(0); }
             to { transform: translateX(-100%); }
         }
         
-        /* ========== CONNECTION STATUS ========== */
-        .connection-status {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-left: 1rem;
-        }
-        
-        .status-connected {
-            background: rgba(76, 175, 80, 0.9);
-            color: white;
-        }
-        
-        .status-disconnected {
-            background: rgba(244, 67, 54, 0.9);
-            color: white;
-        }
-        
-        /* ========== SCROLLBAR ========== */
-        .billing-container::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .billing-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-        
-        .billing-container::-webkit-scrollbar-thumb {
-            background: #667eea;
-            border-radius: 10px;
-        }
-        
-        .billing-container::-webkit-scrollbar-thumb:hover {
-            background: #764ba2;
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
-        /* ========== HIDE POS-ONLY CONTROLS IN MIRRORED BILL PANEL ========== */
-        /* Customer sees: item list, prices, totals only.
-           Hide: all buttons, keyboard shortcuts, qty controls, button grids */
+        /* Slideshow Styles */
+        .slide {
+            display: none;
+            position: absolute;
+            inset: 0;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .slide.active { display: flex; }
+        .slide img { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Bill Panel Overrides */
+        #bill-panel-container {
+            height: 100%;
+            overflow-y: auto;
+            border: none !important; /* Remove default border from injected HTML */
+        }
+        
+        /* Hide POS-only controls in injected bill panel */
         #bill-panel-container button,
         #bill-panel-container kbd,
         #bill-panel-container .inline-flex,
@@ -415,342 +90,236 @@ ANTI-FLICKER:
             display: none !important;
         }
 
-        /* ========== QR CODE MODAL ========== */
-        .qr-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            animation: fadeIn 0.3s ease-out;
-        }
-        
-        .qr-modal.active {
-            display: flex;
-        }
-        
-        .qr-content {
-            background: white;
-            padding: 3rem;
-            border-radius: 30px;
-            text-align: center;
-            animation: scaleIn 0.3s ease-out;
-        }
-        
-        @keyframes scaleIn {
-            from { transform: scale(0.8); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
-        }
-        
-        .qr-content h2 {
-            color: #333;
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .qr-content p {
-            color: #666;
-            font-size: 1.4rem;
-            margin-bottom: 2rem;
-        }
-        
-        .qr-code-container {
-            background: #f8f9fa;
-            padding: 2rem;
-            border-radius: 20px;
-            margin-bottom: 2rem;
-        }
-        
-        .qr-code-container img {
-            width: 300px;
-            height: 300px;
-            border: 5px solid #667eea;
-            border-radius: 15px;
-        }
-        
-        .qr-amount {
-            font-size: 3rem;
-            font-weight: bold;
-            color: #667eea;
-            margin-top: 1.5rem;
-        }
-        
-        .qr-timer {
-            font-size: 1.2rem;
-            color: #999;
-            margin-top: 1rem;
-        }
-
-        /* ========== CUSTOMER REVIEW OVERLAY ========== */
-        .review-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(8px);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 3000;
-            animation: fadeIn 0.4s ease-out;
-        }
-
-        .review-overlay.active {
-            display: flex;
-        }
-
-        .review-card {
-            background: white;
-            border-radius: 24px;
-            padding: 3rem 3.5rem;
-            text-align: center;
-            max-width: 640px;
-            width: 90%;
-            animation: scaleIn 0.4s ease-out;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
-        }
-
-        .review-card h2 {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #1f2937;
-            margin-bottom: 0.5rem;
-        }
-
-        .review-card p {
-            font-size: 1.15rem;
-            color: #6b7280;
-            margin-bottom: 2rem;
-        }
-
-        .review-faces {
-            display: flex;
-            justify-content: center;
-            gap: 1.25rem;
-            margin-bottom: 2rem;
-        }
-
-        .review-face {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            cursor: pointer;
-            padding: 1rem 0.75rem;
-            border-radius: 16px;
-            border: 3px solid transparent;
-            transition: all 0.2s ease;
-            min-width: 90px;
-        }
-
-        .review-face:hover {
-            transform: translateY(-6px);
-            border-color: #667eea;
-            background: #f0f4ff;
-        }
-
-        .review-face:active {
-            transform: scale(0.95);
-        }
-
-        .review-face .emoji {
-            font-size: 3.5rem;
-            margin-bottom: 0.5rem;
-            line-height: 1;
-        }
-
-        .review-face .label {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #6b7280;
-        }
-
-        .review-face.selected {
-            border-color: #667eea;
-            background: #eef2ff;
-        }
-
-        .review-timer {
-            font-size: 0.9rem;
-            color: #9ca3af;
-            margin-top: 0.5rem;
-        }
-
-        .review-timer-bar {
-            width: 100%;
-            height: 4px;
-            background: #e5e7eb;
-            border-radius: 2px;
-            margin-top: 1rem;
+        /* Running Text */
+        .running-text-container {
             overflow: hidden;
+            white-space: nowrap;
+        }
+        .running-text {
+            display: inline-block;
+            padding-left: 100%;
+            animation: marquee 20s linear infinite;
         }
 
-        .review-timer-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            border-radius: 2px;
-            transition: width 1s linear;
-        }
-
-        .review-thankyou {
-            display: none;
-            animation: scaleIn 0.3s ease-out;
-        }
-
-        .review-thankyou.active {
-            display: block;
-        }
-
-        .review-thankyou .checkmark {
-            width: 80px;
-            height: 80px;
-            background: #dcfce7;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1rem;
-        }
-
-        .review-thankyou h3 {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #16a34a;
-            margin-bottom: 0.5rem;
-        }
-
-        .review-thankyou p {
-            font-size: 1.1rem;
-            color: #6b7280;
-            margin-bottom: 0;
-        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
     </style>
 </head>
-<body>
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Slideshow (Left 70%) -->
-        <div class="slideshow-container">
-            <!-- Header -->
-            <div class="header">
-                <div class="header-logo" id="header-logo">
-                    🏪
-                </div>
-                <div class="header-text">
-                    <h1 id="brand-name">Loading...</h1>
-                </div>
-            </div>
-            
-            <div id="slideshow-slides">
-                <!-- Slides will be loaded here -->
-            </div>
-            <div class="slide-indicators" id="slide-indicators"></div>
-            
-            <!-- Footer (Running Text + Connection Status) -->
-            <div class="footer">
-                <div class="running-text" id="running-text">Loading...</div>
-                <span class="connection-status status-disconnected" id="connection-status">Connecting...</span>
-            </div>
-        </div>
-        
-        <!-- Billing Info (Right 55%) - Bill Panel Mirror -->
-        <div id="bill-panel-container" class="billing-container">
-            <div class="billing-header">
-                📋 Your Order
-            </div>
-            
-            <div class="items-list" id="items-list">
-                <div class="empty-bill" id="empty-bill-default">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-                    </svg>
-                    <p>Waiting for items...</p>
-                </div>
-            </div>
-            
+<body class="h-screen w-full bg-white p-2">
 
+    <!-- MAIN GRID LAYOUT -->
+    <div class="grid grid-cols-12 gap-3 h-full w-full">
+        
+        <!-- LEFT COLUMN (Branding & Staff) - 20% -->
+        <div class="col-span-3 flex flex-col gap-3 h-full">
+            <!-- Top: Main Logo Area -->
+            <div class="comic-border h-1/3 flex items-center justify-center p-4 bg-white">
+                <div class="text-center">
+                    <!-- Placeholder Logo -->
+                    <div class="w-24 h-24 mx-auto mb-2 relative">
+                        <!-- YOGYA Logo Placeholder -->
+                        <svg class="w-full h-full text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                           <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z"/>
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-red-600 tracking-tighter hover:scale-105 transition-transform">YOGYA</h1>
+                    <div class="bg-green-600 text-white text-xs px-3 py-1 rounded-full font-bold mt-1 inline-block">LEMBANG</div>
+                </div>
+            </div>
+
+            <!-- Middle: Staff Profile -->
+            <div class="comic-border h-1/3 p-2 bg-white relative overflow-hidden group">
+                <img src="assets/staff_placeholder.jpg" 
+                     onerror="this.src='https://ui-avatars.com/api/?name=Neneng+Sureneng&background=random&size=200'" 
+                     class="w-full h-full object-cover rounded-xl"
+                     alt="Staff Photo">
+                
+                <!-- Name Badge -->
+                <div class="absolute bottom-4 left-0 right-0 text-center">
+                    <div class="bg-white border-2 border-black inline-block px-4 py-1.5 rounded-full shadow-md transform -rotate-2 group-hover:rotate-0 transition-transform">
+                        <span class="font-bold text-lg">Neneng Sureneng</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom: Secondary Logo -->
+            <div class="comic-border h-1/3 flex items-center justify-center p-4 bg-white">
+                <div class="flex items-center gap-2">
+                     <div class="text-center">
+                        <div class="text-xs font-bold text-gray-400 mb-1">POWERED BY</div>
+                        <h2 class="text-xl font-bold text-red-600 border-2 border-red-600 px-2 py-1 rounded">TOSERBA YOGYA</h2>
+                        <div class="text-xs font-bold text-green-700 bg-green-100 rounded px-1 mt-1">PONDOK BAMBU</div>
+                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER COLUMN (Content) - 50% -->
+        <div class="col-span-6 flex flex-col gap-3 h-full">
+            <!-- Top: Tenant Header -->
+            <div class="comic-border h-24 flex items-center px-6 bg-white gap-4 shadow-sm">
+                <div class="w-14 h-14 bg-amber-100 rounded-full border-2 border-amber-300 flex items-center justify-center text-2xl overflow-hidden">
+                    ☕
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-xs font-bold text-amber-600 bg-amber-50 px-2 rounded w-fit">KOPITIAM</span>
+                    <h1 class="text-3xl font-bold text-gray-800" style="text-shadow: 2px 2px 0px #eee;">BOE KOPITIAM</h1>
+                </div>
+            </div>
+
+            <!-- Middle: Main Slideshow/Ad -->
+            <div class="comic-border flex-1 relative overflow-hidden bg-gray-100 group">
+                <!-- Slideshow Container -->
+                <div id="slideshow-slides" class="absolute inset-0 w-full h-full">
+                    <!-- Default Slide -->
+                    <div class="slide active flex flex-col items-center justify-center bg-teal-50 text-center p-8">
+                         <div class="text-6xl mb-4 animate-bounce">🎬</div>
+                         <h2 class="text-4xl font-bold text-teal-800 mb-2">SEGERA HADIR!</h2>
+                         <p class="text-xl text-teal-600 font-bold">Menu Spesial Hari Ini</p>
+                    </div>
+                </div>
+                
+                <!-- Badge Overlay -->
+                <div class="absolute top-4 right-4 bg-red-500 text-white font-bold px-4 py-2 rounded-full border-2 border-white shadow-lg transform rotate-6">
+                    NEW!
+                </div>
+            </div>
+
+            <!-- Bottom 1: Promo Info -->
+            <div class="comic-border h-48 bg-white p-3 flex flex-col">
+                <h3 class="font-bold text-lg mb-2 flex items-center gap-2">
+                    <span class="bg-yellow-400 text-black px-2 rounded text-sm border border-black">PROMO</span>
+                    HARI INI
+                </h3>
+                <div class="flex-1 bg-yellow-50 rounded-xl border-2 border-yellow-200 border-dashed flex items-center justify-center">
+                    <span class="text-yellow-700 font-bold text-xl opacity-50">Space Iklan / Promo Text</span>
+                </div>
+            </div>
+
+            <!-- Bottom 2: Running Text -->
+            <div class="comic-border h-16 bg-white flex items-center overflow-hidden relative px-4">
+                 <div class="absolute left-0 top-0 bottom-0 bg-white z-10 px-4 flex items-center font-bold text-gray-400 border-r-2 border-gray-100">
+                    📢 INFO
+                 </div>
+                 <div class="running-text-container w-full ml-16">
+                     <div class="running-text text-xl font-bold text-gray-700" id="running-text">
+                         Selamat datang di BOE KOPITIAM • Silakan pesan menu favorit Anda • Promo diskon 20% untuk member •
+                     </div>
+                 </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN (Bill Panel) - 30% -->
+        <div class="col-span-3 comic-border bg-white h-full flex flex-col overflow-hidden relative">
+            <!-- Header -->
+            <div class="bg-green-500 p-4 border-b-2 border-black text-white flex justify-between items-center">
+                <div>
+                     <h2 class="text-xl font-bold">Order Summary</h2>
+                     <div class="text-xs opacity-90 font-bold">Table A1 • #TXN-001</div>
+                </div>
+                <div class="bg-white/20 p-2 rounded-lg">
+                    🛒
+                </div>
+            </div>
+            
+            <!-- Items List Container -->
+            <div id="bill-panel-container" class="flex-1 p-2">
+                <!-- Empty State -->
+                <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
+                    <svg class="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                    <span class="font-bold">Belum ada pesanan</span>
+                </div>
+            </div>
+
+            <!-- Total Section (Fallback if not in bill panel) -->
+            <div id="fallback-total" class="bg-gray-50 p-4 border-t-2 border-black">
+                <div class="flex justify-between items-center mb-1 text-sm font-bold text-gray-500">
+                    <span>Subtotal</span>
+                    <span id="subtotal-display">Rp 0</span>
+                </div>
+                <div class="flex justify-between items-center mb-1 text-sm font-bold text-gray-500">
+                    <span>Tax & Service</span>
+                    <span>-</span>
+                </div>
+                <div class="border-t-2 border-dashed border-gray-300 my-2"></div>
+                <div class="flex justify-between items-center text-2xl font-bold text-gray-800">
+                    <span>Total</span>
+                    <span id="total-display">Rp 0</span>
+                </div>
+            </div>
         </div>
     </div>
-    
-    <!-- Modal Overlay for Customer Display -->
-    <div id="customer-modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99999; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); align-items: center; justify-content: center; padding: 2rem;">
-        <div id="customer-modal-content" style="background: white; border-radius: 1rem; max-width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
-            <!-- Modal content will be injected here -->
-        </div>
-    </div>
-    
-    <!-- QR Code Modal (for payment) -->
-    <div class="qr-modal" id="qr-modal">
-        <div class="qr-content">
-            <h2>💳 Scan to Pay</h2>
-            <p>Scan QR code dengan aplikasi pembayaran Anda</p>
-            <div class="qr-code-container">
-                <img id="qr-code-image" src="" alt="QR Code" style="display: none;">
-                <div id="qr-loading" style="font-size: 3rem; color: #667eea;">
+
+    <!-- QR Code Modal -->
+    <div id="qr-modal" class="fixed inset-0 bg-black/80 z-[999] hidden items-center justify-center backdrop-blur-sm">
+        <div class="bg-white p-8 rounded-3xl max-w-md w-full text-center border-4 border-black shadow-[8px_8px_0px_#000]">
+            <h2 class="text-3xl font-bold mb-2">💳 Scan to Pay</h2>
+            <p class="text-gray-600 font-bold mb-6">Scan QR code dengan aplikasi pembayaran Anda</p>
+            
+            <div class="bg-gray-100 p-4 rounded-xl border-2 border-gray-300 inline-block mb-4">
+                <img id="qr-code-image" src="" alt="QR Code" class="w-64 h-64 object-contain rounded-lg hidden">
+                <div id="qr-loading" class="w-64 h-64 flex items-center justify-center text-4xl text-gray-400 font-bold">
                     ⏳ Generating...
                 </div>
             </div>
-            <div class="qr-amount" id="qr-amount">Rp 0</div>
-            <div class="qr-timer" id="qr-timer">Expires in 5:00</div>
+            
+            <div class="text-4xl font-bold text-green-600 mb-2" id="qr-amount">Rp 0</div>
+            <div class="text-gray-500 font-bold" id="qr-timer">Expires in 5:00</div>
         </div>
     </div>
 
-    <!-- Customer Review Overlay -->
-    <div class="review-overlay" id="review-overlay">
-        <div class="review-card">
-            <!-- Rating Selection (shown first) -->
+    <!-- Review Overlay -->
+    <div id="review-overlay" class="fixed inset-0 bg-black/80 z-[1000] hidden items-center justify-center backdrop-blur-sm">
+        <div class="bg-white p-8 rounded-3xl max-w-2xl w-full text-center border-4 border-black shadow-[8px_8px_0px_#000]">
             <div id="review-form">
-                <h2>Bagaimana pelayanan kami?</h2>
-                <p>Sentuh untuk memberikan penilaian Anda</p>
+                <h2 class="text-3xl font-bold mb-2">Bagaimana pelayanan kami?</h2>
+                <p class="text-gray-600 font-bold mb-8">Sentuh untuk memberikan penilaian Anda</p>
 
-                <div class="review-faces">
-                    <div class="review-face" onclick="submitReview(1)">
-                        <div class="emoji">😡</div>
-                        <div class="label">Sangat Buruk</div>
-                    </div>
-                    <div class="review-face" onclick="submitReview(2)">
-                        <div class="emoji">😟</div>
-                        <div class="label">Buruk</div>
-                    </div>
-                    <div class="review-face" onclick="submitReview(3)">
-                        <div class="emoji">😐</div>
-                        <div class="label">Biasa</div>
-                    </div>
-                    <div class="review-face" onclick="submitReview(4)">
-                        <div class="emoji">😊</div>
-                        <div class="label">Baik</div>
-                    </div>
-                    <div class="review-face" onclick="submitReview(5)">
-                        <div class="emoji">🤩</div>
-                        <div class="label">Sangat Baik</div>
-                    </div>
+                <div class="flex justify-center gap-4 mb-8">
+                    <button onclick="submitReview(1)" class="group hover:-translate-y-2 transition-transform">
+                        <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😡</div>
+                        <span class="font-bold text-sm text-gray-500">Sangat Buruk</span>
+                    </button>
+                    <button onclick="submitReview(2)" class="group hover:-translate-y-2 transition-transform">
+                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😟</div>
+                         <span class="font-bold text-sm text-gray-500">Buruk</span>
+                    </button>
+                    <button onclick="submitReview(3)" class="group hover:-translate-y-2 transition-transform">
+                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😐</div>
+                         <span class="font-bold text-sm text-gray-500">Biasa</span>
+                    </button>
+                    <button onclick="submitReview(4)" class="group hover:-translate-y-2 transition-transform">
+                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">😊</div>
+                         <span class="font-bold text-sm text-gray-500">Baik</span>
+                    </button>
+                    <button onclick="submitReview(5)" class="group hover:-translate-y-2 transition-transform">
+                         <div class="text-6xl mb-2 group-hover:scale-110 transition-transform">🤩</div>
+                         <span class="font-bold text-sm text-gray-500">Sangat Baik</span>
+                    </button>
                 </div>
-
-                <div class="review-timer" id="review-timer-text">Otomatis tertutup dalam 15 detik</div>
-                <div class="review-timer-bar">
-                    <div class="review-timer-bar-fill" id="review-timer-bar"></div>
+                
+                <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                    <div id="review-timer-bar" class="h-full bg-green-500 w-full transition-all duration-1000 ease-linear"></div>
                 </div>
+                <div class="text-xs text-gray-400 font-bold mt-2" id="review-timer-text">Otomatis tertutup dalam 15 detik</div>
             </div>
-
-            <!-- Thank You (shown after selection) -->
-            <div class="review-thankyou" id="review-thankyou">
-                <div class="checkmark">
-                    <svg width="40" height="40" fill="none" stroke="#16a34a" viewBox="0 0 24 24" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                    </svg>
-                </div>
-                <h3>Terima Kasih!</h3>
-                <p>Penilaian Anda sangat berarti bagi kami</p>
+            
+            <div id="review-thankyou" class="hidden">
+                 <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-green-500">
+                     <svg class="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                     </svg>
+                 </div>
+                 <h3 class="text-3xl font-bold text-green-600 mb-2">Terima Kasih!</h3>
+                 <p class="text-gray-600 font-bold">Penilaian Anda sangat berarti bagi kami</p>
             </div>
         </div>
     </div>
-    
+
+    <!-- SSE & LOGIC SCRIPT -->
     <script>
         const API_URL = 'http://127.0.0.1:5000';
         let eventSource = null;
@@ -758,11 +327,9 @@ ANTI-FLICKER:
         let currentSlide = 0;
         let slideInterval = null;
 
-        // Anti-flicker: track last rendered content to skip duplicate updates
+        // Anti-flicker hashes
         let lastBillHash = '';
-        let lastModalHash = '';
         let lastUpdatedAt = 0;
-        let currentDisplayState = 'hidden'; // 'hidden' | 'active'
         
         // ========== UTILITY FUNCTIONS ==========
         function formatCurrency(amount) {
@@ -771,401 +338,72 @@ ANTI-FLICKER:
         
         // ========== LOAD CONFIGURATION ==========
         async function loadConfig(retries = 10, delay = 2000) {
-            console.log('[Config] Starting config load process...');
-            console.log(`[Config] API URL: ${API_URL}/api/customer-display/config`);
-            
-            for (let i = 0; i < retries; i++) {
-                try {
-                    console.log(`[Config] Attempt ${i + 1}/${retries}: Fetching config...`);
-                    
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 5000);
-                    
-                    const response = await fetch(`${API_URL}/api/customer-display/config`, {
-                        signal: controller.signal,
-                        cache: 'no-cache',
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-                    clearTimeout(timeoutId);
-                    
-                    console.log(`[Config] Response status: ${response.status}`);
-                    console.log(`[Config] Response type: ${response.type}`);
-                    console.log(`[Config] Response OK: ${response.ok}`);
-                    
-                    // Check if response is actually JSON
-                    const contentType = response.headers.get('content-type');
-                    console.log(`[Config] Content-Type: ${contentType}`);
-                    
-                    if (!contentType || !contentType.includes('application/json')) {
-                        throw new Error(`Expected JSON, got ${contentType}`);
-                    }
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    config = await response.json();
-                    console.log('[Config] ✅ Config loaded successfully');
-                    console.log('[Config] Source: Django API Database');
-                    console.log('[Config] Brand:', config.brand?.name || 'N/A');
-                    console.log('[Config] Slides:', config.slideshow?.length || 0);
-                    console.log('[Config] Running Text Speed:', config.running_text_speed || 'N/A');
-                    console.log('[Config] Theme:', config.theme ? 'Custom' : 'Default');
-                    
-                    // Apply config
-                    applyBrandConfig();
-                    initSlideshow();
-                    initRunningText();
-                    return; // Success!
-                } catch (error) {
-                    console.error(`[Config] ❌ Attempt ${i + 1} failed:`, error.message);
-                    console.error('[Config] Error details:', error);
-                    
-                    if (i < retries - 1) {
-                        console.log(`[Config] Retrying in ${delay}ms...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                    } else {
-                        console.error('[Config] ❌ All retries failed. Using defaults.');
-                        // Use defaults
-                        document.getElementById('brand-name').textContent = 'POS System';
-                        document.getElementById('running-text').textContent = 'Welcome!';
-                    }
-                }
-            }
-        }
-        
-        function applyBrandConfig() {
-            if (!config || !config.brand) return;
-            
-            const brand = config.brand;
-            document.getElementById('brand-name').textContent = brand.name || 'POS System';
-            
-            // Logo
-            if (brand.logo_url) {
-                const logoHtml = `<img src="${brand.logo_url}" alt="Logo" onerror="console.error('[Brand] Logo failed to load:', '${brand.logo_url}'); this.style.display='none';">`;
-                document.getElementById('header-logo').innerHTML = logoHtml;
-                console.log('[Brand] Logo URL:', brand.logo_url);
-            }
-
-            // Store image for empty-bill state
-            if (config.store_image_url) {
-                const emptyBill = document.getElementById('empty-bill-default');
-                if (emptyBill) {
-                    const svg = emptyBill.querySelector('svg');
-                    if (svg) {
-                        const img = document.createElement('img');
-                        img.src = config.store_image_url;
-                        img.alt = brand.name || '';
-                        img.onerror = function() { this.style.display = 'none'; svg.style.display = ''; };
-                        svg.style.display = 'none';
-                        svg.parentNode.insertBefore(img, svg);
-                    }
-                }
-                console.log('[Brand] Store image URL:', config.store_image_url);
-            }
-
-            // Theme colors
-            if (config.theme) {
-                const theme = config.theme;
-                if (theme.primary_color && theme.secondary_color) {
-                    document.body.style.background = `linear-gradient(135deg, ${theme.primary_color} 0%, ${theme.secondary_color} 100%)`;
-                }
-            }
-        }
-        
-        // ========== SLIDESHOW ==========
-        async function initSlideshow() {
-            console.log('[Customer Display] Initializing slideshow from local config...');
-            
             try {
-                // Use slideshow data from local API config (already fetched server-side)
-                const slides = (config && Array.isArray(config.slideshow)) ? config.slideshow : [];
+                const response = await fetch(`${API_URL}/api/customer-display/config`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                config = await response.json();
+                console.log('[Config] Loaded:', config);
                 
-                if (!slides.length) {
-                    console.log('[Customer Display] No slides available, showing default');
-                    showDefaultSlide();
-                    // Show slideshow container even with default slide
-                    const slideshowContainer = document.querySelector('.slideshow-container');
-                    if (slideshowContainer) slideshowContainer.style.display = 'flex';
-                    return;
-                }
-                
-                console.log(`[Customer Display] Loaded ${slides.length} slides from config`);
-                
-                const slidesContainer = document.getElementById('slideshow-slides');
-                const indicatorsContainer = document.getElementById('slide-indicators');
-                
-                // Create slides with images (URLs already converted to absolute by local_api.py)
-                slidesContainer.innerHTML = slides.map((slide, index) => `
-                    <div class="slide ${index === 0 ? 'active' : ''}" data-index="${index}" data-duration="${(slide.duration_seconds || slide.duration || 5) * 1000}">
-                        <img src="${slide.image_url}" 
-                             alt="${slide.title || 'Slide'}" 
-                             class="slide-image"
-                             loading="${index === 0 ? 'eager' : 'lazy'}"
-                             onerror="console.error('[Slideshow] Image failed to load:', '${slide.image_url}'); this.style.display='none'; this.parentElement.innerHTML='<div class=\\'slide-error\\'>Image failed to load<br><small>${slide.image_url}</small></div>';">
+                initSlideshow();
+                initRunningText();
+            } catch (error) {
+                console.warn('[Config] Failed to load config:', error);
+                // Fail gracefully, use defaults
+            }
+        }
+
+        // ========== SLIDESHOW ==========
+        function initSlideshow() {
+            const slides = (config && config.slideshow) ? config.slideshow : [];
+            const container = document.getElementById('slideshow-slides');
+            
+            if (slides.length > 0 && container) {
+                container.innerHTML = slides.map((slide, index) => `
+                    <div class="slide ${index === 0 ? 'active' : ''}">
+                        <img src="${slide.image_url}" onerror="this.src='/static/placeholder.jpg'" alt="Slide">
                     </div>
                 `).join('');
-                
-                // Create indicators
-                indicatorsContainer.innerHTML = slides.map((_, index) => 
-                    `<div class="slide-indicator ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`
-                ).join('');
-                
-                // Show slideshow container
-                const slideshowContainer = document.querySelector('.slideshow-container');
-                if (slideshowContainer) {
-                    slideshowContainer.style.display = 'flex';
-                    console.log('[Customer Display] Slideshow container shown');
-                }
-                
-                // Start rotation
-                console.log('[Customer Display] Starting slideshow...');
                 startSlideshow(slides);
-                
-            } catch (error) {
-                console.error('[Customer Display] Failed to load slideshow:', error);
-                showDefaultSlide();
-                // Show slideshow container even on error
-                const slideshowContainer = document.querySelector('.slideshow-container');
-                if (slideshowContainer) slideshowContainer.style.display = 'flex';
             }
-        }
-        
-        function showDefaultSlide() {
-            // Show default welcome slide if no slides available
-            const brandName = config && config.brand && config.brand.name ? config.brand.name : 'YOGYA Food Life';
-            const slidesContainer = document.getElementById('slideshow-slides');
-            if (slidesContainer) {
-                slidesContainer.innerHTML = `
-                    <div class="slide active">
-                        <div class="slide-content" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                            <h2>🎉 Selamat datang di ${brandName}!</h2>
-                            <p>Nikmati berbagai menu pilihan terbaik</p>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Clear indicators for default slide
-            const indicatorsContainer = document.getElementById('slide-indicators');
-            if (indicatorsContainer) {
-                indicatorsContainer.innerHTML = '';
-            }
-            
-            console.log('[Customer Display] Showing default welcome slide');
         }
         
         function startSlideshow(slides) {
             if (slideInterval) clearInterval(slideInterval);
-            
-            if (!slides || slides.length === 0) {
-                console.log('[Slideshow] No slides to rotate');
-                return;
-            }
-            
-            console.log('[Slideshow] Starting rotation with', slides.length, 'slides');
+            if (slides.length <= 1) return;
             
             function nextSlide() {
+                const slideEls = document.querySelectorAll('.slide');
+                slideEls[currentSlide].classList.remove('active');
                 currentSlide = (currentSlide + 1) % slides.length;
-                console.log('[Slideshow] Moving to slide', currentSlide + 1, 'of', slides.length);
-                showSlide(currentSlide);
+                slideEls[currentSlide].classList.add('active');
                 
-                // Use slide-specific duration or default 5 seconds
-                const slide = slides[currentSlide];
-                const duration = (slide.duration_seconds || slide.duration || 5) * 1000;
-                console.log('[Slideshow] Next rotation in', duration / 1000, 'seconds');
+                const duration = (slides[currentSlide].duration || 5) * 1000;
                 slideInterval = setTimeout(nextSlide, duration);
             }
             
-            // Only start rotation if more than 1 slide
-            if (slides.length > 1) {
-                // Start with first slide's duration
-                const firstSlide = slides[0];
-                const firstDuration = (firstSlide.duration_seconds || firstSlide.duration || 5) * 1000;
-                console.log('[Slideshow] First rotation in', firstDuration / 1000, 'seconds');
-                slideInterval = setTimeout(nextSlide, firstDuration);
-            } else {
-                console.log('[Slideshow] Only 1 slide, no rotation needed');
-            }
+            const firstDuration = (slides[0].duration || 5) * 1000;
+            slideInterval = setTimeout(nextSlide, firstDuration);
         }
-        
-        function showSlide(index) {
-            // Update slides
-            const slides = document.querySelectorAll('.slide');
-            slides.forEach((slide, i) => {
-                slide.classList.toggle('active', i === index);
-            });
-            
-            // Update indicators
-            const indicators = document.querySelectorAll('.slide-indicator');
-            indicators.forEach((indicator, i) => {
-                indicator.classList.toggle('active', i === index);
-            });
-        }
-        
+
         // ========== RUNNING TEXT ==========
         function initRunningText() {
-            const runningTextEl = document.getElementById('running-text');
-            const footer = document.querySelector('.footer');
-            
-            // Always show footer
-            if (footer) footer.style.display = 'flex';
-            
-            // Set running text from config or use default
+            const el = document.getElementById('running-text');
             if (config && config.running_text) {
-                runningTextEl.textContent = config.running_text;
-                console.log('[Customer Display] Running text loaded:', config.running_text);
-            } else {
-                runningTextEl.textContent = 'Selamat datang di YOGYA Food Life • Nikmati berbagai menu pilihan terbaik • Terima kasih atas kunjungan Anda';
-                console.log('[Customer Display] Using default running text');
+                el.textContent = config.running_text;
             }
         }
-        
-        // ========== CONTAINER HELPERS (anti-flicker) ==========
-        function showContainers() {
-            const bp = document.getElementById('bill-panel-container');
-            const ss = document.querySelector('.slideshow-container');
-            const hd = document.querySelector('.header');
-            if (currentDisplayState === 'active') return; // Already visible
-            if (bp) bp.style.display = 'block';
-            if (ss) ss.style.display = 'block';
-            if (hd) hd.style.display = 'flex';
-            currentDisplayState = 'active';
-        }
 
-        function hideContainers() {
-            const bp = document.getElementById('bill-panel-container');
-            const ss = document.querySelector('.slideshow-container');
-            const hd = document.querySelector('.header');
-            if (currentDisplayState === 'hidden') return; // Already hidden
-            if (bp) bp.style.display = 'none';
-            if (ss) ss.style.display = 'none';
-            if (hd) hd.style.display = 'none';
-            currentDisplayState = 'hidden';
-        }
-
-        // ========== CUSTOMER REVIEW ==========
-        let reviewTimer = null;
-        let reviewCountdown = 15; // seconds
-        let reviewBillId = null;
-        let reviewActive = false; // Guard against duplicate SSE triggers
-
-        function showReview(billId) {
-            // Anti-flicker: skip if review is already showing
-            if (reviewActive) {
-                console.log('[Review] Already showing, skipping duplicate trigger');
-                return;
-            }
-            console.log('[Review] Showing customer review for bill:', billId);
-            reviewActive = true;
-            reviewBillId = billId;
-            reviewCountdown = 15;
-
-            // Reset UI: show form, hide thank you
-            const form = document.getElementById('review-form');
-            const thankyou = document.getElementById('review-thankyou');
-            form.style.display = 'block';
-            thankyou.className = 'review-thankyou';
-
-            // Show overlay
-            const overlay = document.getElementById('review-overlay');
-            overlay.classList.add('active');
-
-            // Start countdown timer bar
-            const timerBar = document.getElementById('review-timer-bar');
-            timerBar.style.width = '100%';
-
-            // Update timer text and bar every second
-            updateReviewTimer();
-            reviewTimer = setInterval(() => {
-                reviewCountdown--;
-                updateReviewTimer();
-
-                if (reviewCountdown <= 0) {
-                    console.log('[Review] Auto-closing review (timeout)');
-                    hideReview();
-                }
-            }, 1000);
-        }
-
-        function updateReviewTimer() {
-            const timerText = document.getElementById('review-timer-text');
-            const timerBar = document.getElementById('review-timer-bar');
-            timerText.textContent = `Otomatis tertutup dalam ${reviewCountdown} detik`;
-            timerBar.style.width = `${(reviewCountdown / 15) * 100}%`;
-        }
-
-        function hideReview() {
-            if (reviewTimer) {
-                clearInterval(reviewTimer);
-                reviewTimer = null;
-            }
-
-            reviewActive = false;
-            const overlay = document.getElementById('review-overlay');
-            overlay.classList.remove('active');
-            reviewBillId = null;
-
-            // Clear customer display back to idle
-            console.log('[Review] Clearing display to idle state');
-        }
-
-        function submitReview(rating) {
-            console.log('[Review] Customer selected rating:', rating);
-
-            // Stop countdown
-            if (reviewTimer) {
-                clearInterval(reviewTimer);
-                reviewTimer = null;
-            }
-
-            // Show thank you animation
-            const form = document.getElementById('review-form');
-            const thankyou = document.getElementById('review-thankyou');
-            form.style.display = 'none';
-            thankyou.className = 'review-thankyou active';
-
-            // Send review to Flask API → Django
-            fetch(`${API_URL}/api/customer-display/review`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    rating: rating,
-                    bill_id: reviewBillId
-                })
-            })
-            .then(resp => resp.json())
-            .then(data => console.log('[Review] Saved:', data))
-            .catch(err => console.warn('[Review] Save failed:', err.message));
-
-            // Auto-close after 3 seconds showing "thank you"
-            setTimeout(() => {
-                hideReview();
-            }, 3000);
-        }
-
-        // ========== DISPLAY UPDATE (anti-flicker) ==========
+        // ========== DISPLAY UPDATE ==========
         function updateDisplay(data) {
-            // Handle customer review trigger
+            // Handle Review
             if (data.show_review) {
-                // Hide payment success modal first, then show review
-                handleModalDisplay(false, null);
                 showReview(data.review_bill_id);
-                return; // Don't process bill updates while review is showing
+                return;
             } else if (data.show_review === false && reviewActive) {
-                // Only call hideReview if review is currently active and explicitly told to hide
                 hideReview();
-                return; // Skip processing stale bill data from this event
             }
 
-            // Handle modal display
-            if (data.show_modal !== undefined) {
-                handleModalDisplay(data.show_modal, data.modal_html);
-            }
-
-            // Check if showing QR code for payment
+            // Handle QR
             if (data.show_qr && data.qr_code) {
                 showQRCode(data);
                 return;
@@ -1173,275 +411,158 @@ ANTI-FLICKER:
                 hideQRCode();
             }
 
-            // Skip if updated_at hasn't changed (duplicate SSE event)
-            if (data.updated_at && data.updated_at === lastUpdatedAt && !data.show_modal) {
-                return;
-            }
+            // Handle Bill Update
+            if (data.updated_at && data.updated_at === lastUpdatedAt) return;
             lastUpdatedAt = data.updated_at || 0;
 
-            const billPanelContainer = document.getElementById('bill-panel-container');
-
-            // Check if we have bill panel HTML (new format - mirror POS bill panel)
+            const container = document.getElementById('bill-panel-container');
+            const fallbackTotal = document.getElementById('fallback-total');
+            
+            // If data has full HTML rendered from server (preferred)
             if (data.bill_panel_html && data.has_bill) {
-                // Anti-flicker: skip innerHTML replacement if content is the same
-                const newHash = data.bill_panel_html.length + '_' + data.updated_at;
-                if (newHash === lastBillHash) {
-                    return; // Content unchanged, skip re-render
+                if (data.bill_panel_html !== lastBillHash) {
+                    // Update content
+                    container.innerHTML = data.bill_panel_html;
+                    lastBillHash = data.bill_panel_html;
+                    
+                    // Hide fallback total if the injected HTML has its own total
+                    if (container.querySelector('.total-section') || container.querySelector('.bill-summary')) {
+                         fallbackTotal.style.display = 'none';
+                    } else {
+                         fallbackTotal.style.display = 'block';
+                         // Update fallback total values if available in data
+                         if (data.total) document.getElementById('total-display').textContent = formatCurrency(data.total);
+                         if (data.subtotal) document.getElementById('subtotal-display').textContent = formatCurrency(data.subtotal);
+                    }
                 }
-                lastBillHash = newHash;
-
-                billPanelContainer.innerHTML = data.bill_panel_html;
-                // Set styling once (className check avoids redundant reflow)
-                if (billPanelContainer.className !== '') {
-                    billPanelContainer.className = '';
-                    billPanelContainer.style.background = 'white';
-                }
-
-                showContainers();
-                return;
-            }
-
-            // Fallback to legacy JSON format or empty state
-            // Restore billing container styling if it was removed
-            if (!billPanelContainer.classList.contains('billing-container')) {
-                billPanelContainer.className = 'billing-container';
-                billPanelContainer.innerHTML = `
-                    <div class="billing-header">Your Order</div>
-                    <div class="items-list" id="items-list"></div>
-                    <div class="billing-total" id="billing-total" style="display: none;">
-                        <div class="total-row"><span>Subtotal</span><span id="subtotal-value">Rp 0</span></div>
-                        <div class="total-row grand-total"><span>TOTAL</span><span id="total-value">Rp 0</span></div>
+            } else if (!data.has_bill) {
+                // Empty state
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
+                        <svg class="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                        <span class="font-bold">Menunggu Pesanan...</span>
                     </div>
                 `;
-            }
-
-            const itemsListEl = document.getElementById('items-list');
-            const billingTotalEl = document.getElementById('billing-total');
-
-            if (!data.items || data.items.length === 0) {
-                // Empty state — hide all UI for blank screen
-                if (currentDisplayState !== 'hidden') {
-                    const storeImg = (config && config.store_image_url)
-                        ? `<img src="${config.store_image_url}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='';">`
-                        : '';
-                    const svgDisplay = storeImg ? 'style="display:none;"' : '';
-                    itemsListEl.innerHTML = `
-                        <div class="empty-bill">
-                            ${storeImg}
-                            <svg ${svgDisplay} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-                            </svg>
-                            <p>Waiting for items...</p>
-                        </div>
-                    `;
-                    billingTotalEl.style.display = 'none';
-                    hideContainers();
-                }
+                fallbackTotal.style.display = 'none';
                 lastBillHash = '';
-            } else {
-                // Show items (legacy format)
-                itemsListEl.innerHTML = data.items.map(item => `
-                    <div class="item-row">
-                        <div class="item-info">
-                            <div class="item-name">${item.name}</div>
-                            <div class="item-details">${item.quantity} × ${formatCurrency(item.price)}</div>
-                        </div>
-                        <div class="item-price">${formatCurrency(item.quantity * item.price)}</div>
-                    </div>
-                `).join('');
-
-                billingTotalEl.style.display = 'block';
-                document.getElementById('subtotal-value').textContent = formatCurrency(data.subtotal || data.total || 0);
-                document.getElementById('total-value').textContent = formatCurrency(data.total || 0);
-
-                showContainers();
             }
         }
         
-        // ========== MODAL DISPLAY ==========
-        function handleModalDisplay(showModal, modalHTML) {
-            const modalOverlay = document.getElementById('customer-modal-overlay');
-            const modalContent = document.getElementById('customer-modal-content');
-
-            if (showModal && modalHTML) {
-                // Anti-flicker: skip if modal content is the same
-                const newHash = modalHTML.length + '_' + modalHTML.substring(0, 100);
-                if (newHash === lastModalHash && modalOverlay.style.display === 'flex') {
-                    return; // Same modal already showing
-                }
-                lastModalHash = newHash;
-
-                // Inject directly — no delay to avoid blank frame flicker
-                modalContent.innerHTML = modalHTML;
-                modalOverlay.style.display = 'flex';
-                modalOverlay.style.alignItems = 'center';
-                modalOverlay.style.justifyContent = 'center';
-            } else {
-                if (modalOverlay.style.display !== 'none') {
-                    modalOverlay.style.display = 'none';
-                    modalContent.innerHTML = '';
-                    lastModalHash = '';
-                }
-            }
-        }
-        
-        // ========== QR CODE DISPLAY ==========
+        // ========== QR CODE ==========
         let qrTimer = null;
-        let qrTimeRemaining = 300; // 5 minutes
-        
         function showQRCode(data) {
             const modal = document.getElementById('qr-modal');
-            const qrImage = document.getElementById('qr-code-image');
-            const qrLoading = document.getElementById('qr-loading');
-            const qrAmount = document.getElementById('qr-amount');
+            const img = document.getElementById('qr-code-image');
+            const loading = document.getElementById('qr-loading');
             
-            modal.classList.add('active');
-            qrAmount.textContent = formatCurrency(data.total || 0);
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('qr-amount').textContent = formatCurrency(data.total || 0);
             
-            // Show QR code image
             if (data.qr_code) {
-                qrImage.src = data.qr_code;
-                qrImage.style.display = 'block';
-                qrLoading.style.display = 'none';
+                img.src = data.qr_code;
+                img.classList.remove('hidden');
+                loading.classList.add('hidden');
             }
-            
-            // Start countdown timer
-            qrTimeRemaining = 300;
-            startQRTimer();
         }
         
         function hideQRCode() {
             const modal = document.getElementById('qr-modal');
-            modal.classList.remove('active');
-            if (qrTimer) {
-                clearInterval(qrTimer);
-                qrTimer = null;
-            }
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
         }
-        
-        function startQRTimer() {
-            if (qrTimer) clearInterval(qrTimer);
+
+        // ========== REVIEW ==========
+        let reviewActive = false;
+        let reviewTimer = null;
+        let reviewCountdown = 15;
+        let reviewBillId = null;
+
+        function showReview(billId) {
+            if (reviewActive) return;
+            reviewActive = true;
+            reviewBillId = billId;
+            reviewCountdown = 15;
             
-            qrTimer = setInterval(() => {
-                qrTimeRemaining--;
-                
-                const minutes = Math.floor(qrTimeRemaining / 60);
-                const seconds = qrTimeRemaining % 60;
-                document.getElementById('qr-timer').textContent = 
-                    `Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`;
-                
-                if (qrTimeRemaining <= 0) {
-                    clearInterval(qrTimer);
-                    hideQRCode();
-                }
+            const overlay = document.getElementById('review-overlay');
+            const form = document.getElementById('review-form');
+            const thankyou = document.getElementById('review-thankyou');
+            
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            form.style.display = 'block';
+            thankyou.classList.add('hidden');
+            
+            updateReviewTimer();
+            reviewTimer = setInterval(() => {
+                reviewCountdown--;
+                updateReviewTimer();
+                if (reviewCountdown <= 0) hideReview();
             }, 1000);
         }
         
-        // ========== SSE CONNECTION ==========
-        function connectSSE() {
-            const statusEl = document.getElementById('connection-status');
-            statusEl.textContent = 'Connecting...';
-            statusEl.className = 'connection-status status-disconnected';
-            
-            console.log('Attempting SSE connection...');
-            
-            // First, check if API is available
-            fetch(`${API_URL}/health`)
-                .then(response => response.json())
-                .then(health => {
-                    console.log('API health check OK:', health);
-                    startSSE();
-                })
-                .catch(error => {
-                    console.error('API not available:', error.message);
-                    statusEl.textContent = 'API not available';
-                    setTimeout(connectSSE, 3000);
-                });
+        function updateReviewTimer() {
+            document.getElementById('review-timer-text').textContent = `Otomatis tertutup dalam ${reviewCountdown} detik`;
+            document.getElementById('review-timer-bar').style.width = `${(reviewCountdown / 15) * 100}%`;
         }
         
-        function startSSE() {
-            const statusEl = document.getElementById('connection-status');
+        function hideReview() {
+            if (reviewTimer) clearInterval(reviewTimer);
+            reviewActive = false;
+            document.getElementById('review-overlay').classList.add('hidden');
+            document.getElementById('review-overlay').classList.remove('flex');
+        }
+        
+        function submitReview(rating) {
+            if (reviewTimer) clearInterval(reviewTimer);
             
-            try {
-                eventSource = new EventSource(`${API_URL}/api/customer-display/stream`);
-            } catch (e) {
-                console.error('Failed to create EventSource:', e);
-                setTimeout(connectSSE, 3000);
-                return;
-            }
+            document.getElementById('review-form').style.display = 'none';
+            document.getElementById('review-thankyou').classList.remove('hidden');
             
-            eventSource.onopen = function() {
-                console.log('SSE connected');
-                statusEl.textContent = '● Connected';
-                statusEl.className = 'connection-status status-connected';
-            };
+            // Send to API
+            fetch(`${API_URL}/api/customer-display/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rating: rating, bill_id: reviewBillId })
+            }).catch(e => console.error('Review submit failed', e));
             
-            eventSource.onmessage = function(event) {
+            setTimeout(hideReview, 3000);
+        }
+
+        // ========== SSE CONNECTION ==========
+        function connectSSE() {
+            if (eventSource) eventSource.close();
+            
+            eventSource = new EventSource(`${API_URL}/api/customer-display/stream`);
+            
+            eventSource.onopen = () => console.log('SSE Connected');
+            
+            eventSource.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
                     updateDisplay(data);
-                } catch (e) {
-                    console.error('Parse error:', e);
-                }
+                } catch(e) { console.error('SSE Parse Error', e); }
             };
             
-            eventSource.onerror = function(error) {
-                console.warn('SSE disconnected, reconnecting in 3s...');
-                statusEl.textContent = 'Reconnecting...';
-                statusEl.className = 'connection-status status-disconnected';
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
-                }
+            eventSource.onerror = () => {
+                console.log('SSE Error, reconnecting...');
+                eventSource.close();
                 setTimeout(connectSSE, 3000);
             };
         }
-        
-        // ========== INITIALIZATION ==========
-        async function init() {
-            // Clear browser storage to prevent stale data
-            try {
-                localStorage.clear();
-                sessionStorage.clear();
-            } catch (e) { /* ignore */ }
 
-            // Force clear bill panel and modal containers
-            const billPanel = document.getElementById('bill-panel');
-            const modalOverlay = document.getElementById('modal-overlay');
-            const modalContent = document.getElementById('modal-content');
-
-            if (billPanel) billPanel.innerHTML = '';
-            if (modalOverlay) modalOverlay.style.display = 'none';
-            if (modalContent) modalContent.innerHTML = '';
-
-            // Start hidden — containers shown when SSE data arrives
-            hideContainers();
-
-            console.log('[Customer Display] Initialized');
-            await loadConfig();
+        // ========== INIT ==========
+        function init() {
+            loadConfig();
             connectSSE();
         }
         
-        // Start after DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
-        
-        // ========== STUB FUNCTIONS (Prevent errors from cloned HTML) ==========
-        // POS bill panel HTML may reference these — stubs prevent JS errors
-        window.checkShiftActive = function() { return false; };
-        window.openFloorPlanModal = function() {};
-        window.updateCustomerDisplay = function() {};
-        window.closeModal = function() {};
-        window.printReceipt = function() {};
-        
-        // Cleanup
-        window.addEventListener('beforeunload', function() {
-            if (slideInterval) clearInterval(slideInterval);
-            if (eventSource) eventSource.close();
-        });
+        // Stubs for injected HTML
+        window.checkShiftActive = () => false;
+        window.openFloorPlanModal = () => {};
+        window.printReceipt = () => {};
+
+        init();
     </script>
 </body>
 </html>

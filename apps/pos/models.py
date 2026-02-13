@@ -387,6 +387,74 @@ class QRISTransaction(models.Model):
         return f"QRIS {self.transaction_id} - {self.status} - Rp{self.amount}"
 
 
+class QRISAuditLog(models.Model):
+    """
+    Detailed audit log for every QRIS event — for bank analysis & reconciliation.
+
+    Captures: create, status_check, status_change, payment_confirmed, expired,
+    cancelled, simulate, error, auto_cancel, gateway_timeout, etc.
+
+    Each row = 1 event with response_time_ms for performance analysis.
+    """
+    EVENT_CHOICES = [
+        ('create', 'QR Created'),
+        ('status_check', 'Status Polled'),
+        ('status_change', 'Status Changed'),
+        ('payment_confirmed', 'Payment Confirmed'),
+        ('expired', 'Transaction Expired'),
+        ('cancelled', 'Transaction Cancelled'),
+        ('auto_cancel', 'Auto-cancelled (new QR)'),
+        ('simulate', 'Payment Simulated'),
+        ('error', 'Error'),
+        ('gateway_timeout', 'Gateway Timeout'),
+        ('gateway_error', 'Gateway Error'),
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    transaction = models.ForeignKey(
+        QRISTransaction, on_delete=models.CASCADE,
+        related_name='audit_logs', null=True, blank=True,
+    )
+    bill = models.ForeignKey(
+        Bill, on_delete=models.CASCADE,
+        related_name='qris_audit_logs', null=True, blank=True,
+    )
+    event = models.CharField(max_length=30, choices=EVENT_CHOICES)
+    txn_ref = models.CharField(max_length=100, blank=True, db_index=True, help_text='QRIS transaction_id reference')
+    status_before = models.CharField(max_length=20, blank=True)
+    status_after = models.CharField(max_length=20, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    gateway_name = models.CharField(max_length=50, blank=True)
+    response_time_ms = models.IntegerField(
+        null=True, blank=True,
+        help_text='Response time from gateway in milliseconds',
+    )
+    elapsed_since_create_s = models.FloatField(
+        null=True, blank=True,
+        help_text='Seconds since QR was created (wait time)',
+    )
+    error_message = models.TextField(blank=True)
+    extra_data = models.JSONField(default=dict, blank=True)
+    user = models.ForeignKey(
+        'core.User', on_delete=models.SET_NULL,
+        null=True, blank=True,
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'pos_qris_audit_log'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['txn_ref', 'event']),
+            models.Index(fields=['bill', 'created_at']),
+            models.Index(fields=['event', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"[{self.event}] {self.txn_ref} @ {self.created_at}"
+
+
 class StoreProductStock(models.Model):
     """
     Store-level product stock management (independent from HO sync).
