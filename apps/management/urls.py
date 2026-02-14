@@ -57,6 +57,7 @@ urlpatterns = [
     path('payment-profiles/<uuid:profile_id>/edit/', views.payment_profile_edit, name='payment_profile_edit'),
     path('payment-profiles/<uuid:profile_id>/delete/', views.payment_profile_delete, name='payment_profile_delete'),
     path('payment-profiles/<uuid:profile_id>/toggle/', views.payment_profile_toggle, name='payment_profile_toggle'),
+    path('payment-profiles/seed/', views.payment_profile_seed, name='payment_profile_seed'),
 
     # Media Groups
     path('media-groups/', views.media_group_list, name='media_group_list'),

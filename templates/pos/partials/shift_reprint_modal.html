@@ -1,3 +1,4 @@
+{% load l10n %}
 <!-- Reprint Reconciliation Modal -->
 <div id="reprint-modal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
      onclick="if(event.target === this) this.remove()">
@@ -58,10 +59,10 @@
                         <!-- Cash Info -->
                         <div class="text-right flex-shrink-0">
                             <div class="text-[10px] text-gray-400">Expected</div>
-                            <div class="text-xs font-bold text-gray-900 tabular-nums">Rp <span class="amount">{{ shift.expected_cash|floatformat:0 }}</span></div>
+                            <div class="text-xs font-bold text-gray-900 tabular-nums">Rp <span class="amount">{{ shift.expected_cash|unlocalize }}</span></div>
                             {% if shift.cash_difference != 0 %}
                             <div class="text-[10px] font-bold tabular-nums {% if shift.cash_difference > 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                                {% if shift.cash_difference > 0 %}+{% endif %}<span class="amount">{{ shift.cash_difference|floatformat:0 }}</span>
+                                {% if shift.cash_difference > 0 %}+{% endif %}<span class="amount">{{ shift.cash_difference|unlocalize }}</span>
                             </div>
                             {% endif %}
                         </div>
@@ -108,3 +109,9 @@
         </div>
     </div>
 </div>
+<script>
+document.querySelectorAll('#reprint-modal .amount').forEach(function(el) {
+    var v = Math.floor(parseFloat(el.textContent.trim()) || 0);
+    el.textContent = v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+});
+</script>

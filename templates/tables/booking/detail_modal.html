@@ -1,0 +1,208 @@
+{% load l10n %}
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2.5 rounded-t-xl">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold">{{ reservation.reservation_code }}</h3>
+                        <p class="text-green-100 text-[10px]">Detail Booking</p>
+                    </div>
+                </div>
+                <button onclick="closeModal()"
+                        class="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-3">
+            <!-- Status Badge -->
+            <div class="flex items-center gap-2">
+                {% if reservation.status == 'confirmed' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-green-100 text-green-700">CONFIRMED</span>
+                {% elif reservation.status == 'deposit_pending' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-amber-100 text-amber-700">DEPOSIT PENDING</span>
+                {% elif reservation.status == 'checked_in' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-blue-100 text-blue-700">CHECKED IN</span>
+                {% elif reservation.status == 'completed' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-600">COMPLETED</span>
+                {% elif reservation.status == 'cancelled' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-red-100 text-red-700">CANCELLED</span>
+                {% elif reservation.status == 'no_show' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-red-100 text-red-700">NO SHOW</span>
+                {% endif %}
+                {% if reservation.type == 'event' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-purple-100 text-purple-700">EVENT</span>
+                {% elif reservation.type == 'min_spend' %}
+                <span class="text-xs font-bold px-2 py-1 rounded bg-indigo-100 text-indigo-700">MIN SPEND</span>
+                {% endif %}
+            </div>
+
+            <!-- Info Grid -->
+            <div class="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <span class="text-xs text-gray-400">Tamu</span>
+                    <p class="font-semibold text-gray-800">{{ reservation.guest_name }}</p>
+                </div>
+                <div>
+                    <span class="text-xs text-gray-400">No. HP</span>
+                    <p class="font-semibold text-gray-800">{{ reservation.guest_phone|default:"-" }}</p>
+                </div>
+                <div>
+                    <span class="text-xs text-gray-400">Tanggal</span>
+                    <p class="font-semibold text-gray-800">{{ reservation.reservation_date|date:"d M Y" }}</p>
+                </div>
+                <div>
+                    <span class="text-xs text-gray-400">Jam</span>
+                    <p class="font-semibold text-gray-800">{{ reservation.time_start|time:"H:i" }} - {{ reservation.time_end|time:"H:i" }}</p>
+                </div>
+                <div>
+                    <span class="text-xs text-gray-400">Jumlah Tamu</span>
+                    <p class="font-semibold text-gray-800">{{ reservation.party_size }} pax</p>
+                </div>
+                <div>
+                    <span class="text-xs text-gray-400">Meja</span>
+                    <p class="font-semibold text-gray-800">
+                        {% for t in reservation.tables.all %}{{ t.number }}{% if not forloop.last %}, {% endif %}{% empty %}Belum assign{% endfor %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Financial Info -->
+            {% if reservation.deposit_amount > 0 or reservation.minimum_spend > 0 %}
+            <div class="border rounded-lg p-3 bg-gray-50 space-y-1">
+                {% if reservation.minimum_spend > 0 %}
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Minimum Spend</span>
+                    <span class="font-bold text-gray-800">Rp <span class="amount">{{ reservation.minimum_spend|unlocalize }}</span></span>
+                </div>
+                {% endif %}
+                {% if reservation.deposit_amount > 0 %}
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Deposit Required</span>
+                    <span class="font-bold text-gray-800">Rp <span class="amount">{{ reservation.deposit_amount|unlocalize }}</span></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Deposit Paid</span>
+                    <span class="font-bold {% if reservation.deposit_paid >= reservation.deposit_amount %}text-green-600{% else %}text-amber-600{% endif %}">
+                        Rp <span class="amount">{{ reservation.deposit_paid|unlocalize }}</span>
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Deposits History -->
+            {% if deposits %}
+            <div>
+                <span class="text-xs font-bold text-gray-500 uppercase">Deposit Payments</span>
+                {% for dep in deposits %}
+                <div class="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
+                    <div>
+                        <span class="font-semibold text-gray-700">Rp <span class="amount">{{ dep.amount|unlocalize }}</span></span>
+                        <span class="text-xs text-gray-400 ml-1">{{ dep.payment_method }}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        {% if dep.status == 'paid' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-600">PAID</span>
+                        {% elif dep.status == 'refunded' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">REFUNDED</span>
+                        {% elif dep.status == 'forfeited' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-600">FORFEITED</span>
+                        {% endif %}
+                        <span class="text-xs text-gray-400">{{ dep.paid_at|date:"d/m H:i" }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Special Requests -->
+            {% if reservation.special_requests %}
+            <div>
+                <span class="text-xs font-bold text-gray-500 uppercase">Catatan</span>
+                <p class="text-sm text-gray-700 mt-1">{{ reservation.special_requests }}</p>
+            </div>
+            {% endif %}
+
+            <!-- Bill Link -->
+            {% if reservation.bill %}
+            <div class="border rounded-lg p-3 bg-blue-50">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-blue-500">Bill</span>
+                        <p class="font-bold text-blue-800">{{ reservation.bill.bill_number }}</p>
+                    </div>
+                    <span class="text-sm font-bold text-blue-800">Rp <span class="amount">{{ reservation.bill.total|unlocalize }}</span></span>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Cancellation Info -->
+            {% if reservation.status == 'cancelled' %}
+            <div class="border rounded-lg p-3 bg-red-50">
+                <span class="text-xs font-bold text-red-500">Dibatalkan {{ reservation.cancelled_at|date:"d M Y H:i" }}</span>
+                {% if reservation.cancellation_reason %}
+                <p class="text-sm text-red-700 mt-1">{{ reservation.cancellation_reason }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Activity Log -->
+            <div>
+                <span class="text-xs font-bold text-gray-500 uppercase">Activity Log</span>
+                <div class="mt-1 space-y-1">
+                    {% for log in logs %}
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0"></span>
+                        <span class="font-semibold text-gray-600">{{ log.get_action_display }}</span>
+                        <span>{{ log.created_by.username|default:"system" }}</span>
+                        <span class="ml-auto text-gray-400">{{ log.created_at|date:"d/m H:i" }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 py-3 border-t bg-gray-50 rounded-b-xl flex gap-2">
+            <button hx-get="{% url 'tables:booking_dashboard' %}?date={{ reservation.reservation_date|date:'Y-m-d' }}"
+                    hx-target="#modal-container" hx-swap="innerHTML"
+                    class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium text-sm">
+                Kembali
+            </button>
+            {% if reservation.can_cancel %}
+            <button hx-get="{% url 'tables:booking_cancel_form' reservation.id %}"
+                    hx-target="#modal-container" hx-swap="innerHTML"
+                    class="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition font-semibold text-sm">
+                Batalkan
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// Format numbers with comma thousand separator
+document.querySelectorAll('#modal-container .amount').forEach(function(el) {
+    var raw = el.textContent.trim();
+    var num = parseInt(parseFloat(raw) || 0, 10);
+    el.textContent = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+});
+
+function closeModal() {
+    const modal = document.getElementById('modal-container');
+    if (modal) modal.innerHTML = '';
+}
+</script>

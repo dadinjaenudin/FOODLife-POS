@@ -55,15 +55,15 @@ ENDPOINT API (POS Launcher - localhost:5000):
      x-data="printerStatusWidget()"
      x-init="init()">
     <button @click="toggleFlyout()"
-            class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold transition-all duration-200 w-full"
-            :class="status === 'offline' ? 'text-red-600 bg-red-50 hover:bg-red-100' : status === 'warning' ? 'text-amber-600 bg-amber-50 hover:bg-amber-100' : 'text-gray-900 hover:bg-green-50 hover:text-green-600'">
+            class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all duration-200 border"
+            :class="status === 'offline' ? 'text-red-600 bg-red-50 border-red-200 hover:bg-red-100' : status === 'warning' ? 'text-amber-600 bg-amber-50 border-amber-200 hover:bg-amber-100' : 'text-gray-600 bg-gray-50 border-gray-200 hover:bg-green-50 hover:text-green-600 hover:border-green-300'">
         <div class="relative flex-shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
             </svg>
             {# Status dot - heartbeat pulse saat offline, amber saat warning, steady green saat online #}
-            <span class="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white"
+            <span class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-white"
                   :class="{
                       'bg-green-500': status === 'online',
                       'bg-amber-500': status === 'warning',
@@ -71,12 +71,12 @@ ENDPOINT API (POS Launcher - localhost:5000):
                       'bg-gray-400': status === 'checking'
                   }"></span>
         </div>
-        <span class="truncate">Receipt Printer</span>
+        <span>Receipt Prin...</span>
         {# Status badge kecil di samping label #}
         <span x-show="status === 'offline'" x-cloak
-              class="ml-auto text-[9px] font-bold text-red-500 uppercase tracking-wide">OFF</span>
+              class="text-[9px] font-bold text-red-500 uppercase tracking-wide">OFF</span>
         <span x-show="status === 'warning'" x-cloak
-              class="ml-auto text-[9px] font-bold text-amber-500 uppercase tracking-wide">!</span>
+              class="text-[9px] font-bold text-amber-500 uppercase tracking-wide">!</span>
     </button>
 
     {# FLYOUT PANEL: Fixed popup (tidak mempengaruhi sidebar layout) #}
@@ -90,8 +90,7 @@ ENDPOINT API (POS Launcher - localhost:5000):
          x-transition:leave-start="opacity-100 scale-100"
          x-transition:leave-end="opacity-0 scale-95"
          class="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-y-auto"
-         :style="flyoutPosition"
-         style="width: 210px; max-height: calc(100vh - 16px);">
+         style="width: 210px; max-height: calc(100vh - 16px); transform-origin: bottom center;">
 
         {# Flyout Header - compact, color-coded #}
         <div class="flex items-center justify-between px-2.5 py-1.5 border-b"
@@ -184,7 +183,6 @@ ENDPOINT API (POS Launcher - localhost:5000):
 function printerStatusWidget() {
     return {
         flyoutOpen: false,
-        flyoutPosition: '',
         loading: false,
         pollInterval: null,
 
@@ -295,39 +293,28 @@ function printerStatusWidget() {
         },
 
         toggleFlyout() {
-            this.flyoutOpen = !this.flyoutOpen;
             if (this.flyoutOpen) {
-                this.checkAll();
-                // Posisi awal: di samping kanan tombol
-                const btn = this.$el.querySelector('button');
-                if (btn) {
-                    const rect = btn.getBoundingClientRect();
-                    this.flyoutPosition = `top:${rect.top}px; left:${rect.right + 6}px;`;
+                this.flyoutOpen = false;
+                return;
+            }
+            // Pre-position the panel via direct DOM before showing
+            var panel = this.$refs.flyoutPanel;
+            // $el may be the button itself (Alpine v2) or the parent div (v3)
+            var btn = this.$el.querySelector('button') || this.$el;
+            if (panel && btn) {
+                var rect = btn.getBoundingClientRect();
+                var flyoutWidth = 210;
+                var bottom = window.innerHeight - rect.top + 6;
+                var left = rect.left;
+                if (left + flyoutWidth > window.innerWidth - 8) {
+                    left = window.innerWidth - flyoutWidth - 8;
                 }
-                // Setelah render, ukur tinggi asli dan reposisi jika perlu
-                this.$nextTick(() => this.adjustFlyoutPosition());
+                panel.style.bottom = bottom + 'px';
+                panel.style.left = left + 'px';
+                panel.style.top = 'auto';
             }
-        },
-
-        adjustFlyoutPosition() {
-            const btn = this.$el.querySelector('button');
-            const panel = this.$refs.flyoutPanel;
-            if (!btn || !panel) return;
-            const rect = btn.getBoundingClientRect();
-            const panelRect = panel.getBoundingClientRect();
-            const flyoutWidth = 210;
-            let top = rect.top;
-            let left = rect.right + 6;
-            // Jaga agar tidak keluar layar bawah (pakai tinggi asli)
-            if (top + panelRect.height > window.innerHeight - 8) {
-                top = window.innerHeight - panelRect.height - 8;
-            }
-            if (top < 8) top = 8;
-            // Jaga agar tidak keluar layar kanan
-            if (left + flyoutWidth > window.innerWidth) {
-                left = rect.left - flyoutWidth - 6;
-            }
-            this.flyoutPosition = `top:${top}px; left:${left}px;`;
+            this.flyoutOpen = true;
+            this.checkAll();
         },
 
         statusText() {

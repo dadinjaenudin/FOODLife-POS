@@ -74,7 +74,6 @@ CATATAN:
     2. Otomatis buka modal shift setelah 500ms
     {% endcomment %}
     function checkShiftOnLoad() {
-        console.log('Checking shift status on load...');
         fetch('/pos/shift/status-check/', {
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -82,24 +81,18 @@ CATATAN:
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Shift status response:', data);
             if (!data.has_active_shift) {
-                console.log('No active shift detected');
                 updateShiftOverlay(false);
 
                 {# Auto-buka modal shift setelah delay singkat #}
                 setTimeout(() => {
-                    console.log('Opening shift modal after delay...');
                     openShiftModal();
                 }, 500);
             } else {
-                console.log('Active shift detected');
                 updateShiftOverlay(true);
             }
         })
-        .catch(error => {
-            console.error('Error checking shift status:', error);
-        });
+        .catch(() => {});
     }
 
     {% comment %}
@@ -155,21 +148,18 @@ CATATAN:
             modalContainer.id = 'modal-container';
             modalContainer.style.cssText = 'position: relative; z-index: 9999;';
             document.body.appendChild(modalContainer);
-            console.log('Modal container created and appended to body');
         }
 
         {# 2. Load terminal configuration (fungsi di launcher_integration.html) #}
         loadTerminalConfig();
 
         {# 3. Cek status shift #}
-        console.log('Starting shift status check...');
         checkShiftOnLoad();
 
         {# 4. Update customer display jika ada bill aktif #}
         setTimeout(() => {
             const billPanel = document.getElementById('bill-panel');
             if (billPanel && typeof updateCustomerDisplay === 'function') {
-                console.log('Page loaded with active bill, updating customer display...');
                 updateCustomerDisplay([], 0);
             }
         }, 500);
@@ -243,30 +233,7 @@ CATATAN:
     Endpoint: pos:shift_open_form
     {% endcomment %}
     function openShiftModal() {
-        console.log('Opening shift modal...');
         const modalContainer = document.getElementById('modal-container');
-        console.log('Modal container exists:', !!modalContainer);
-
-        {# One-time listener untuk debug setelah modal di-render #}
-        modalContainer.addEventListener('htmx:afterSwap', function checkModal() {
-            console.log('Shift modal HTML swapped');
-            const shiftModal = document.getElementById('shift-open-modal');
-            const sessionModal = document.getElementById('session-required-modal');
-
-            console.log('shift-open-modal exists:', !!shiftModal);
-            console.log('session-required-modal exists:', !!sessionModal);
-
-            if (shiftModal) {
-                console.log('Shift modal rendered successfully');
-            } else if (sessionModal) {
-                console.log('Session required modal shown (no active store session)');
-            } else {
-                console.log('No modal element found!');
-                console.log('Container HTML:', modalContainer.innerHTML.substring(0, 300));
-            }
-
-            modalContainer.removeEventListener('htmx:afterSwap', checkModal);
-        }, { once: true });
 
         htmx.ajax('GET', '{% url "pos:shift_open_form" %}', {
             target: '#modal-container',

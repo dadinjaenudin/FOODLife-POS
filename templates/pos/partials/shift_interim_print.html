@@ -1,3 +1,4 @@
+{% load l10n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -190,16 +191,31 @@
         </div>
         <div class="row bold">
             <span>Total Sales:</span>
-            <span>Rp <span class="amount">{{ total_sales|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ total_sales|unlocalize }}</span></span>
         </div>
         <div class="row">
             <span>Average Bill:</span>
-            <span>Rp <span class="amount">{{ average_bill|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ average_bill|unlocalize }}</span></span>
         </div>
     </div>
-    
+
+    {% if deposit_summary %}
     <div class="divider"></div>
-    
+    <div class="section">
+        <div class="section-title">DEPOSIT RESERVASI</div>
+        <div class="row">
+            <span>Jumlah Reservasi:</span>
+            <span>{{ deposit_summary.count }} rsv</span>
+        </div>
+        <div class="row bold">
+            <span>Total Deposit Applied:</span>
+            <span>Rp <span class="amount">{{ deposit_summary.total }}</span></span>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="divider"></div>
+
     <div class="section">
         <div class="section-title">PAYMENT BREAKDOWN</div>
         {% for payment in payment_methods %}
@@ -210,7 +226,7 @@
             </div>
             <div class="row indent">
                 <span>Total:</span>
-                <span>Rp <span class="amount">{{ payment.total|floatformat:0 }}</span></span>
+                <span>Rp <span class="amount">{{ payment.total|unlocalize }}</span></span>
             </div>
         </div>
         {% empty %}
@@ -238,17 +254,17 @@
         <div class="section-title">CASH TRACKING</div>
         <div class="row">
             <span>Opening Cash:</span>
-            <span>Rp <span class="amount">{{ shift.opening_cash|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ shift.opening_cash|unlocalize }}</span></span>
         </div>
         {% for payment in payment_methods %}
         {% if payment.method == 'cash' %}
         <div class="row">
             <span>Cash Sales:</span>
-            <span>Rp <span class="amount">{{ payment.total|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ payment.total|unlocalize }}</span></span>
         </div>
         <div class="row bold">
             <span>Expected Cash Now:</span>
-            <span>Rp <span class="amount">{{ expected_cash|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ expected_cash|unlocalize }}</span></span>
         </div>
         {% endif %}
         {% endfor %}

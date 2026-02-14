@@ -6397,6 +6397,95 @@ def payment_profile_toggle(request, profile_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@manager_required
+@require_POST
+def payment_profile_seed(request):
+    """Seed EFT Terminals, Media Groups, and Payment Profiles (company-wide)"""
+    from apps.core.management.commands.seed_payment_profiles import MEDIA_GROUPS, PROFILES
+    from apps.core.management.commands.seed_eft_terminals import DEFAULT_EFT_TERMINALS
+
+    store_config, error_response = check_store_config(request, 'management/payment_profiles.html')
+    if error_response:
+        return error_response
+    company = store_config.company
+
+    created_counts = {'eft': 0, 'media': 0, 'profile': 0, 'prompt': 0}
+
+    # 1. Seed EFT Terminals
+    for eft_data in DEFAULT_EFT_TERMINALS:
+        _, created = EFTTerminal.objects.get_or_create(
+            company=company, code=eft_data['code'],
+            defaults={'name': eft_data['name'], 'sort_order': eft_data['sort_order']},
+        )
+        if created:
+            created_counts['eft'] += 1
+
+    # 2. Seed Media Groups
+    mg_map = {}
+    for mg_data in MEDIA_GROUPS:
+        mg, created = MediaGroup.objects.get_or_create(
+            company=company, code=mg_data['code'],
+            defaults={'name': mg_data['name'], 'orafin_group': mg_data['orafin_group']},
+        )
+        mg_map[mg_data['code']] = mg
+        if created:
+            created_counts['media'] += 1
+
+    # 3. Seed Payment Profiles (company-wide, brand=None)
+    for p_data in PROFILES:
+        existing = PaymentMethodProfile.objects.filter(
+            company=company, brand__isnull=True, code=p_data['code']
+        ).first()
+        if existing:
+            continue
+
+        profile = PaymentMethodProfile.objects.create(
+            company=company,
+            brand=None,
+            media_group=mg_map.get(p_data['media_group_code']),
+            media_id=p_data['media_id'],
+            name=p_data['name'],
+            code=p_data['code'],
+            color=p_data['color'],
+            legacy_method_id=p_data['legacy_method_id'],
+            allow_change=p_data['allow_change'],
+            open_cash_drawer=p_data['open_cash_drawer'],
+            smallest_denomination=p_data['smallest_denomination'],
+            sort_order=p_data['sort_order'],
+        )
+        created_counts['profile'] += 1
+
+        for prompt_data in p_data['prompts']:
+            DataEntryPrompt.objects.create(
+                profile=profile,
+                field_name=prompt_data['field_name'],
+                label=prompt_data['label'],
+                field_type=prompt_data['field_type'],
+                min_length=prompt_data['min_length'],
+                max_length=prompt_data['max_length'],
+                placeholder=prompt_data.get('placeholder', ''),
+                use_scanner=prompt_data.get('use_scanner', False),
+                is_required=prompt_data.get('is_required', False),
+                sort_order=prompt_data['sort_order'],
+            )
+            created_counts['prompt'] += 1
+
+    parts = []
+    if created_counts['eft']:
+        parts.append(f"{created_counts['eft']} EFT terminals")
+    if created_counts['media']:
+        parts.append(f"{created_counts['media']} media groups")
+    if created_counts['profile']:
+        parts.append(f"{created_counts['profile']} profiles ({created_counts['prompt']} prompts)")
+
+    if parts:
+        messages.success(request, f"Seeded: {', '.join(parts)}")
+    else:
+        messages.info(request, "All master data already exists, nothing to seed.")
+
+    return redirect('management:payment_profile_list')
+
+
 def _save_prompts_from_post(request, profile):
     """Parse prompt data from POST and save to profile"""
     import json

@@ -179,14 +179,8 @@
                 
                 // Add CSRF token from cookie for all requests
                 const csrfToken = getCookie('csrftoken');
-                console.log('CSRF Token dari cookie:', csrfToken);
-                console.log('All cookies:', document.cookie);
-                
                 if (csrfToken) {
                     event.detail.headers['X-CSRFToken'] = csrfToken;
-                    console.log('CSRF Token ditambahkan ke header');
-                } else {
-                    console.warn('CSRF Token tidak ditemukan di cookie!');
                 }
             });
             

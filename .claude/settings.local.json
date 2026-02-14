@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx @anthropic-ai/mcp-client-playwright@latest navigate:*)",
+      "Bash(git push:*)",
+      "Bash(code --install-extension:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(python manage.py makemigrations:*)",
+      "Bash(docker compose exec:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(python:*)",
+      "Bash(docker network inspect:*)",
+      "Bash(docker system info:*)",
+      "Bash(docker network:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(copy \"D:\\\\YOGYA-FOODLIFE\\\\FoodLife-POS\\\\templates\\\\pos\\\\partials\\\\payment_modal.html\" \"D:\\\\YOGYA-FOODLIFE\\\\FoodLife-POS\\\\templates\\\\pos\\\\partials\\\\payment_modal.html.bak\")",
+      "Bash(docker ps:*)",
+      "Bash(docker cp:*)",
+      "Bash(git checkout:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(forfiles:*)",
+      "Bash(curl:*)",
+      "Bash(Select-String \"Pending item\")",
+      "Bash(ls -la \"d:\\\\YOGYA-FOODLIFE\\\\FoodLife-POS\\\\apps\\\\core\"\" | grep -E \"view)",
+      "Bash(url \")",
+      "Bash(ls -la \"d:\\\\YOGYA-FOODLIFE\\\\FoodLife-POS\\\\apps\\\\pos\\\\migrations\"\" | grep \".py \")",
+      "Bash(docker-compose exec:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(timeout:*)",
+      "Bash(docker-compose config:*)"
+    ]
+  }
+}

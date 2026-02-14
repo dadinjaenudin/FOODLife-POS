@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load l10n %}
 {% comment %}
 ============================================================================
 RECENT BILLS MODAL (recent_bills_modal.html)
@@ -65,7 +65,7 @@ CONTEXT VARIABLES:
                         <span class="text-gray-400 mx-1">&middot;</span>
                         {{ bill.items.count }} items
                     </div>
-                    <span class="font-bold text-gray-900">Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                    <span class="font-bold text-gray-900">Rp <span class="amount">{{ bill.total|unlocalize }}</span></span>
                 </div>
                 <div class="flex items-center justify-between mt-2">
                     <span class="text-xs text-gray-400">{{ bill.created_by.username }} &middot; {{ bill.created_at|date:"d M Y" }}</span>
@@ -96,3 +96,11 @@ CONTEXT VARIABLES:
         </div>
     </div>
 </div>
+<script>
+    // Format numbers with comma thousand separator
+    document.querySelectorAll('#modal-container .amount').forEach(function(el) {
+        var raw = el.textContent.trim();
+        var num = parseInt(parseFloat(raw) || 0, 10);
+        el.textContent = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    });
+</script>

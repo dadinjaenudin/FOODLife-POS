@@ -88,7 +88,13 @@
                                 "bill_created_at": "{{ table.bill_created_at_iso|default:'' }}",
                                 "guest_count": {{ table.bill_guest_count|default:0 }},
                                 "items_count": {{ table.bill_items_count|default:0 }},
-                                "bill_status": "{{ table.bill_status_display|default:'' }}"
+                                "bill_status": "{{ table.bill_status_display|default:'' }}",
+                                "rsv_code": "{{ table.rsv_code|default:'' }}",
+                                "rsv_guest": "{{ table.rsv_guest|default:'' }}",
+                                "rsv_time": "{{ table.rsv_time|default:'' }}",
+                                "rsv_pax": {{ table.rsv_pax|default:0 }},
+                                "rsv_status": "{{ table.rsv_status|default:'' }}",
+                                "rsv_id": "{{ table.rsv_id|default:'' }}"
                             }{% if not forloop.last %},{% endif %}
                             {% endfor %}
                         ]
@@ -160,6 +166,9 @@
             </div>
         {% endif %}
     </div>
+
+    <!-- Booking Modal Container (for HTMX/fetch loaded modals) -->
+    <div id="modal-container"></div>
 
     <!-- Clean Table Confirmation Modal -->
     <div id="clean-table-modal" class="hidden fixed top-20 left-0 right-0 bottom-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
@@ -433,6 +442,7 @@ function createTableElement(table) {
     const isBillHold = table.bill_status === 'hold';
     const shapeClasses = TABLE_SHAPE_CLASSES[table.shape] || TABLE_SHAPE_CLASSES.rect;
 
+    const isReserved = table.status === 'reserved' || (table.rsv_code && table.status === 'available');
     let html = '';
 
     // -- Joined indicator (top-left purple badge) --
@@ -485,10 +495,18 @@ function createTableElement(table) {
     } else {
         // Normal table: form POST to open/resume bill
         const style = TABLE_STATUS_STYLES[getStatusKey(table)];
-        const disabled = table.status === 'reserved' ? 'disabled' : '';
+        const disabled = isReserved && !hasBill ? '' : '';
 
         let innerContent = '';
-        if (hasBill) {
+        if (isReserved && !hasBill) {
+            // Reserved table: show guest name, time, pax
+            innerContent = `<div class="text-center" style="line-height:1.2;">
+                <div style="font-size:13px; font-weight:800;">${table.number}</div>
+                <div style="font-size:8px; font-weight:700; opacity:0.9;">${table.rsv_time || ''}</div>
+                <div style="font-size:8px; opacity:0.85; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${table.rsv_guest || ''}</div>
+                <div style="font-size:8px; opacity:0.7;">${table.rsv_pax || ''}p</div>
+            </div>`;
+        } else if (hasBill) {
             const elapsed = getElapsedTime(table.bill_created_at);
             const totalShort = formatRupiahShort(table.bill_total);
             const holdBadge = isBillHold ? '<div style="font-size:8px; font-weight:800; background:rgba(245,158,11,0.3); border-radius:3px; padding:0 3px; margin-top:1px;">HOLD</div>' : '';
@@ -505,15 +523,26 @@ function createTableElement(table) {
             </div>`;
         }
 
-        html += `<form method="POST" action="/tables/${table.id}/open/" class="table-form">
-            <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
-            <button type="submit" ${disabled}
-                    title="${tooltip.replace(/"/g, '&quot;')}"
-                    style="background-color:${style.bg}; border-color:${style.border}; color:${style.text};"
-                    class="table-button ${shapeClasses} border-3 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center">
-                ${innerContent}
-            </button>
-        </form>`;
+        if (isReserved && !hasBill && table.rsv_id) {
+            // Reserved table: click opens booking detail modal
+            html += `<button type="button"
+                        onclick="openBookingDetail('${table.rsv_id}')"
+                        title="Booking: ${(table.rsv_code || '')} - ${(table.rsv_guest || '')}\nWaktu: ${table.rsv_time || ''}\nPax: ${table.rsv_pax || ''}"
+                        style="background-color:${style.bg}; border-color:${style.border}; color:${style.text};"
+                        class="table-button ${shapeClasses} border-3 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center">
+                    ${innerContent}
+                </button>`;
+        } else {
+            html += `<form method="POST" action="/tables/${table.id}/open/" class="table-form">
+                <input type="hidden" name="csrfmiddlewaretoken" value="${window.CSRF_TOKEN}">
+                <button type="submit" ${disabled}
+                        title="${tooltip.replace(/"/g, '&quot;')}"
+                        style="background-color:${style.bg}; border-color:${style.border}; color:${style.text};"
+                        class="table-button ${shapeClasses} border-3 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center">
+                    ${innerContent}
+                </button>
+            </form>`;
+        }
     }
 
     // -- Occupied badge (top-right): item count or pulsing dot --
@@ -536,6 +565,17 @@ function createTableElement(table) {
                 </span>
             </div>`;
         }
+    }
+
+    // -- Reserved badge (top-right calendar icon) --
+    if (isReserved && !isOccupied) {
+        html += `<div class="absolute -top-1.5 -right-1.5 z-10">
+            <span class="inline-flex items-center justify-center h-5 w-5 bg-amber-500 rounded-full shadow border border-white">
+                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+            </span>
+        </div>`;
     }
 
     div.innerHTML = html;
@@ -887,6 +927,31 @@ function joinTables() {
 
 /* --------------------------------------------------------------------------
    8. NOTIFICATIONS - Simple toast
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   9. BOOKING INTEGRATION - Open booking detail from reserved table
+   -------------------------------------------------------------------------- */
+
+function openBookingDetail(reservationId) {
+    fetch('/tables/booking/' + reservationId + '/', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(resp => resp.text())
+    .then(html => {
+        var container = document.getElementById('modal-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'modal-container';
+            document.body.appendChild(container);
+        }
+        container.innerHTML = html;
+    })
+    .catch(err => showNotification('Error loading booking detail', 'warning'));
+}
+
+/* --------------------------------------------------------------------------
+   10. NOTIFICATIONS - Simple toast
    -------------------------------------------------------------------------- */
 
 function showNotification(message, type) {

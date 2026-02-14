@@ -1,0 +1,151 @@
+{% load l10n %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deposit Receipt - {{ reservation.reservation_code }}</title>
+    <style>
+        @media print {
+            body { margin: 0; padding: 0; }
+            .no-print { display: none; }
+            @page { margin: 0.5cm; }
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 80mm;
+            margin: 0 auto;
+            padding: 10px;
+            font-size: 12px;
+        }
+
+        .receipt {
+            border: 1px solid #ccc;
+            padding: 15px;
+        }
+
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .line { border-top: 1px dashed #000; margin: 10px 0; }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+        }
+
+        .grand-total {
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 5px;
+            padding-top: 5px;
+            border-top: 1px solid #000;
+        }
+
+        .footer {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .no-print {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .no-print button {
+            padding: 10px 30px;
+            font-size: 14px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()" style="background: #4CAF50;">Print</button>
+        <button onclick="window.close()" style="background: #888; margin-left: 10px;">Close</button>
+    </div>
+
+    <div class="receipt">
+        <!-- Header -->
+        <div class="center bold" style="font-size: 14px;">
+            {{ reservation.brand.name }}
+        </div>
+        <div class="center" style="font-size: 11px;">
+            {{ reservation.brand.address|default:"" }}<br>
+            {% if reservation.brand.phone %}Tel: {{ reservation.brand.phone }}{% endif %}
+        </div>
+
+        <div class="line"></div>
+
+        <div class="center bold" style="font-size: 13px; margin-bottom: 8px;">
+            BUKTI DEPOSIT RESERVASI
+        </div>
+
+        <div class="line"></div>
+
+        <!-- Booking Info -->
+        <table style="width:100%; border-collapse:collapse;">
+            <tr><td>Kode</td><td>: {{ reservation.reservation_code }}</td></tr>
+            <tr><td>Tanggal</td><td>: {{ reservation.reservation_date|date:"d/m/Y" }}</td></tr>
+            <tr><td>Jam</td><td>: {{ reservation.time_start|time:"H:i" }} - {{ reservation.time_end|time:"H:i" }}</td></tr>
+            <tr><td>Tamu</td><td>: {{ reservation.guest_name }}</td></tr>
+            <tr><td>Pax</td><td>: {{ reservation.party_size }}</td></tr>
+            {% if reservation.guest_phone %}
+            <tr><td>Telp</td><td>: {{ reservation.guest_phone }}</td></tr>
+            {% endif %}
+            <tr><td>Meja</td><td>: {% for t in reservation.tables.all %}{{ t.number }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</td></tr>
+            {% if reservation.type == 'min_spend' and reservation.minimum_spend > 0 %}
+            <tr><td>Min Spend</td><td>: Rp <span class="amount">{{ reservation.minimum_spend|unlocalize }}</span></td></tr>
+            {% endif %}
+            <tr><td>Kasir</td><td>: {% if reservation.created_by %}{{ reservation.created_by.get_full_name|default:reservation.created_by.username }}{% else %}-{% endif %}</td></tr>
+        </table>
+
+        <div class="line"></div>
+
+        <!-- Deposit Amount -->
+        <div class="total-row grand-total">
+            <span>DEPOSIT</span>
+            <span>Rp <span class="amount">{{ reservation.deposit_paid|unlocalize }}</span></span>
+        </div>
+
+        <div class="line"></div>
+
+        <!-- Payment Details -->
+        <div class="bold" style="margin-bottom: 5px;">PEMBAYARAN:</div>
+        {% for dep in deposits %}
+        <div class="total-row">
+            <span>{% if dep.payment_profile %}{{ dep.payment_profile.name }}{% else %}{{ dep.payment_method|title }}{% endif %}</span>
+            <span>Rp <span class="amount">{{ dep.amount|unlocalize }}</span></span>
+        </div>
+        {% endfor %}
+
+        <div class="line"></div>
+
+        <!-- Footer -->
+        <div class="footer">
+            Deposit diterima pada {{ reservation.created_at|date:"d/m/Y H:i" }}<br>
+            Status: {{ reservation.get_status_display }}<br><br>
+            <small>Bukti ini merupakan tanda terima deposit yang sah.</small><br>
+            <small>Harap simpan sebagai bukti pembayaran.</small>
+        </div>
+    </div>
+
+    <script>
+        // Format numbers with comma thousand separator
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.amount').forEach(function(el) {
+                var raw = el.textContent.trim();
+                var num = parseInt(parseFloat(raw) || 0, 10);
+                el.textContent = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            });
+        });
+
+        window.onload = function() { window.print(); };
+    </script>
+</body>
+</html>

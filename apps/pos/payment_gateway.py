@@ -111,7 +111,7 @@ class MockQRISGateway(PaymentGateway):
 
         logger.info(
             'QRIS_CREATE bill=%s txn_id=%s amount=%s gateway=mock expires_at=%s user=%s',
-            bill.id, transaction_id, amount, expires_at.isoformat(),
+            bill.id if bill else None, transaction_id, amount, expires_at.isoformat(),
             kwargs.get('user'),
         )
 
@@ -161,7 +161,7 @@ class MockQRISGateway(PaymentGateway):
             elapsed = (timezone.now() - txn.created_at).total_seconds()
             logger.info(
                 'QRIS_EXPIRED txn_id=%s bill=%s amount=%s elapsed=%.1fs timeout=%s',
-                txn.transaction_id, txn.bill_id, txn.amount, elapsed, txn.expires_at.isoformat(),
+                txn.transaction_id, txn.bill_id or 'deposit', txn.amount, elapsed, txn.expires_at.isoformat(),
             )
             _audit_log(
                 event='expired',
@@ -182,7 +182,7 @@ class MockQRISGateway(PaymentGateway):
             logger.info(
                 'QRIS_STATUS_CHANGE txn_id=%s bill=%s status=%s prev=%s amount=%s '
                 'elapsed=%.1fs paid_at=%s gateway=%s',
-                txn.transaction_id, txn.bill_id, txn.status, prev_status,
+                txn.transaction_id, txn.bill_id or 'deposit', txn.status, prev_status,
                 txn.amount, elapsed,
                 txn.paid_at.isoformat() if txn.paid_at else None,
                 txn.gateway_name,
@@ -216,7 +216,7 @@ class MockQRISGateway(PaymentGateway):
             txn.save(update_fields=['status'])
             logger.info(
                 'QRIS_CANCELLED txn_id=%s bill=%s amount=%s elapsed=%.1fs',
-                txn.transaction_id, txn.bill_id, txn.amount, elapsed,
+                txn.transaction_id, txn.bill_id or 'deposit', txn.amount, elapsed,
             )
             _audit_log(
                 event='cancelled',
@@ -252,7 +252,7 @@ class MockQRISGateway(PaymentGateway):
             txn.save(update_fields=['status', 'paid_at', 'gateway_response'])
             logger.info(
                 'QRIS_SIMULATED txn_id=%s bill=%s amount=%s elapsed=%.1fs paid_at=%s',
-                txn.transaction_id, txn.bill_id, txn.amount, elapsed, txn.paid_at.isoformat(),
+                txn.transaction_id, txn.bill_id or 'deposit', txn.amount, elapsed, txn.paid_at.isoformat(),
             )
             _audit_log(
                 event='simulate',

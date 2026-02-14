@@ -40,7 +40,6 @@ CATATAN:
         {# Cegah buka ganda #}
         const existingModal = document.getElementById('floor-plan-modal');
         if (existingModal) {
-            console.log('Floor plan already open, skipping...');
             return;
         }
 
@@ -144,12 +143,9 @@ CATATAN:
                     const contentDiv = document.getElementById('floor-plan-content');
                     contentDiv.innerHTML = mainContentDoc.innerHTML;
 
-                    console.log('Content inserted, checking for scripts...');
-
                     {# Hapus script lama untuk mencegah duplikasi #}
                     document.querySelectorAll('script.floor-plan-script').forEach(s => {
                         s.remove();
-                        console.log('Removed old floor plan script');
                     });
 
                     {# Reset flag inisialisasi Alpine #}
@@ -157,12 +153,9 @@ CATATAN:
 
                     {# Cegah double-execution script #}
                     if (window.floorPlanScriptsLoaded) {
-                        console.log('Floor plan scripts already loaded, skipping script execution');
                         window.floorPlanLoading = false;
                         return;
                     }
-
-                    console.log('Executing floor plan scripts for the first time...');
 
                     {# Execute script tags dari response #}
                     const scripts = doc.querySelectorAll('script');
@@ -180,23 +173,18 @@ CATATAN:
                                 document.body.appendChild(newScript);
                                 scriptCount++;
                             } catch (e) {
-                                console.error('Error appending script:', e);
+                                // script append failed
                             }
                         }
                     });
 
-                    console.log(`Executed ${scriptCount} scripts`);
-
                     {# Tandai script sudah di-load #}
                     window.floorPlanScriptsLoaded = true;
                     window.floorPlanLoading = false;
-
-                    console.log('Floor plan loaded successfully');
                 }
             })
             .catch(error => {
                 window.floorPlanLoading = false;
-                console.error('Error loading floor plan:', error);
                 {# Tampilkan error state #}
                 document.getElementById('floor-plan-content').innerHTML = `
                     <div class="flex items-center justify-center h-full">
@@ -232,8 +220,6 @@ CATATAN:
                 window.floorPlanScriptsLoaded = false;
                 window.floorPlanLoading = false;
                 window.floorPlanInitialized = false;
-
-                console.log('Floor plan modal closed, all flags reset for next open');
             }, 300);
         }
     }

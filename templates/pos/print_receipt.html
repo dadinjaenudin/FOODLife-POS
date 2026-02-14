@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load l10n %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -11,7 +11,7 @@
             .no-print { display: none; }
             @page { margin: 0.5cm; }
         }
-        
+
         body {
             font-family: 'Courier New', monospace;
             max-width: 80mm;
@@ -19,40 +19,40 @@
             padding: 10px;
             font-size: 12px;
         }
-        
+
         .receipt {
             border: 1px solid #ccc;
             padding: 15px;
         }
-        
+
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .line { border-top: 1px dashed #000; margin: 10px 0; }
-        
+
         table {
             width: 100%;
             border-collapse: collapse;
         }
-        
+
         .item-row td {
             padding: 3px 0;
         }
-        
+
         .item-name { font-weight: bold; }
         .item-detail { padding-left: 10px; font-size: 11px; }
-        
+
         .total-section {
             margin-top: 10px;
             border-top: 2px solid #000;
             padding-top: 10px;
         }
-        
+
         .total-row {
             display: flex;
             justify-content: space-between;
             margin: 3px 0;
         }
-        
+
         .grand-total {
             font-size: 16px;
             font-weight: bold;
@@ -60,18 +60,32 @@
             padding-top: 5px;
             border-top: 1px solid #000;
         }
-        
+
         .footer {
-            margin-top: 15px;
+            margin-top: 12px;
             text-align: center;
-            font-size: 11px;
+            font-size: 10px;
+            line-height: 1.4;
         }
-        
+        .footer-msg {
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            padding: 4px 0;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            margin-bottom: 4px;
+        }
+        .footer-meta {
+            font-size: 9px;
+            color: #666;
+        }
+
         .no-print {
             text-align: center;
             margin: 20px 0;
         }
-        
+
         .no-print button {
             padding: 10px 30px;
             font-size: 14px;
@@ -81,7 +95,7 @@
             border-radius: 5px;
             cursor: pointer;
         }
-        
+
         .no-print button:hover {
             background: #45a049;
         }
@@ -92,7 +106,7 @@
         <button onclick="window.print()">🖨️ Print Receipt</button>
         <button onclick="window.close()" style="background: #888; margin-left: 10px;">Close</button>
     </div>
-    
+
     <div class="receipt">
         <!-- Header -->
         <div class="center bold" style="font-size: 14px;">
@@ -102,9 +116,9 @@
             {{ bill.outlet.address }}<br>
             Tel: {{ bill.outlet.phone }}
         </div>
-        
+
         <div class="line"></div>
-        
+
         <!-- Bill Info -->
         <table>
             <tr>
@@ -138,9 +152,9 @@
             </tr>
             {% endif %}
         </table>
-        
+
         <div class="line"></div>
-        
+
         <!-- Items -->
         <table>
             {% for item in items %}
@@ -148,9 +162,9 @@
                 <td colspan="3" class="item-name">{{ item.product.name }}</td>
             </tr>
             <tr class="item-row">
-                <td class="item-detail" style="width: 40%;">{{ item.quantity }} x Rp {{ item.unit_price|floatformat:0|intcomma }}</td>
+                <td class="item-detail" style="width: 40%;">{{ item.quantity }} x Rp <span class="amount">{{ item.unit_price|unlocalize }}</span></td>
                 <td></td>
-                <td style="text-align: right;">Rp {{ item.total|floatformat:0|intcomma }}</td>
+                <td style="text-align: right;">Rp <span class="amount">{{ item.total|unlocalize }}</span></td>
             </tr>
             {% if item.notes %}
             <tr>
@@ -161,71 +175,87 @@
             {% endif %}
             {% endfor %}
         </table>
-        
+
         <div class="total-section">
             <div class="total-row">
                 <span>Subtotal</span>
-                <span>Rp {{ bill.subtotal|floatformat:0|intcomma }}</span>
+                <span>Rp <span class="amount">{{ bill.subtotal|unlocalize }}</span></span>
             </div>
-            
+
             {% if bill.discount_amount > 0 %}
             <div class="total-row" style="color: #d9534f;">
                 <span>Discount {% if bill.discount_type == 'percentage' %}({{ bill.discount_value }}%){% endif %}</span>
-                <span>- Rp {{ bill.discount_amount|floatformat:0|intcomma }}</span>
+                <span>- Rp <span class="amount">{{ bill.discount_amount|unlocalize }}</span></span>
             </div>
             {% endif %}
-            
+
             {% if bill.tax_amount > 0 %}
             <div class="total-row">
                 <span>Tax ({{ bill.outlet.tax_rate }}%)</span>
-                <span>Rp {{ bill.tax_amount|floatformat:0|intcomma }}</span>
+                <span>Rp <span class="amount">{{ bill.tax_amount|unlocalize }}</span></span>
             </div>
             {% endif %}
-            
+
             {% if bill.service_charge > 0 %}
             <div class="total-row">
                 <span>Service ({{ bill.outlet.service_charge }}%)</span>
-                <span>Rp {{ bill.service_charge|floatformat:0|intcomma }}</span>
+                <span>Rp <span class="amount">{{ bill.service_charge|unlocalize }}</span></span>
             </div>
             {% endif %}
-            
+
             <div class="total-row grand-total">
                 <span>TOTAL</span>
-                <span>Rp {{ bill.total|floatformat:0|intcomma }}</span>
+                <span>Rp <span class="amount">{{ bill.total|unlocalize }}</span></span>
             </div>
+
+            {% if deposit_applied %}
+            <div class="total-row" style="margin-top: 5px; font-size: 11px;">
+                <span>Deposit ({{ reservation_info.code }})</span>
+                <span>- Rp <span class="amount">{{ deposit_applied|unlocalize }}</span></span>
+            </div>
+            <div class="total-row bold">
+                <span>SISA BAYAR</span>
+                <span>Rp <span class="amount">{{ effective_total|unlocalize }}</span></span>
+            </div>
+            {% endif %}
         </div>
-        
+
         <div class="line"></div>
-        
+
         <!-- Payment -->
         <div class="bold" style="margin-bottom: 5px;">PAYMENT:</div>
         {% for payment in payments %}
         <div class="total-row">
-            <span>{{ payment.get_method_display }}</span>
-            <span>Rp {{ payment.amount|floatformat:0|intcomma }}</span>
+            <span>{% if payment.payment_profile %}{{ payment.payment_profile.name }}{% else %}{{ payment.get_method_display }}{% endif %}</span>
+            <span>Rp <span class="amount">{{ payment.amount|unlocalize }}</span></span>
         </div>
         {% endfor %}
-        
+
         {% if bill.get_change > 0 %}
         <div class="total-row bold" style="margin-top: 5px;">
             <span>CHANGE</span>
-            <span>Rp {{ bill.get_change|floatformat:0|intcomma }}</span>
+            <span>Rp <span class="amount">{{ bill.get_change|unlocalize }}</span></span>
         </div>
         {% endif %}
-        
+
         <div class="line"></div>
-        
+
         <!-- Footer -->
         <div class="footer">
-            {{ bill.outlet.receipt_footer|default:"Thank you for your visit!" }}
-            <br><br>
-            <small>Printed: {{ bill.closed_at|date:"d/m/Y H:i:s" }}</small>
+            <div class="footer-msg">{{ bill.outlet.receipt_footer|default:"Thank you for your visit!" }}</div>
+            <div class="footer-meta">{{ bill.bill_number }} | {{ bill.closed_at|date:"d/m/Y H:i" }}</div>
         </div>
     </div>
-    
+
     <script>
-        // Auto print on load (optional)
-        // window.onload = function() { window.print(); };
+        // Format numbers with comma thousand separator
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.amount').forEach(function(el) {
+                var raw = el.textContent.trim();
+                var num = parseInt(parseFloat(raw) || 0, 10);
+                el.textContent = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            });
+        });
     </script>
 </body>
 </html>

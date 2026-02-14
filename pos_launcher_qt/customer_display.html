@@ -516,6 +516,7 @@ Data source: Flask local_api.py SSE stream + config API
         let reviewBillId = null;
         let reviewTimer = null;
         let reviewDismissedForBill = null; // Track dismissed review to prevent re-show from SSE
+        let reviewShowing = false; // Guard to prevent re-triggering from SSE updates
 
         // Anti-flicker
         let lastBillHash = '';
@@ -741,12 +742,12 @@ Data source: Flask local_api.py SSE stream + config API
 
             // Handle customer review (overlays on top of payment success)
             if (data.show_review) {
-                // Only show if not already dismissed for this bill
-                if (reviewDismissedForBill !== data.review_bill_id) {
+                // Only show if not already dismissed AND not already showing
+                // The reviewShowing guard prevents SSE re-triggers from resetting the overlay
+                if (reviewDismissedForBill !== data.review_bill_id && !reviewShowing) {
                     showReview(data.review_bill_id);
-                    return; // Skip other updates while review is active
                 }
-                // If already dismissed, fall through to handle modal etc.
+                return; // Skip other updates while review is active
             }
 
             // Handle QR code payment (check BEFORE modal — QR takes priority)
@@ -954,6 +955,7 @@ Data source: Flask local_api.py SSE stream + config API
         // ========== CUSTOMER REVIEW ==========
         function showReview(billId) {
             reviewBillId = billId || null;
+            reviewShowing = true; // Set guard to prevent SSE re-triggers
             const overlay = document.getElementById('review-overlay');
             const buttons = document.getElementById('review-buttons');
             const thankyou = document.getElementById('review-thankyou');
@@ -969,8 +971,8 @@ Data source: Flask local_api.py SSE stream + config API
             overlay.style.alignItems = 'center';
             overlay.style.justifyContent = 'center';
 
-            // Auto-dismiss after 3 seconds
-            let remaining = 3;
+            // Auto-dismiss after 15 seconds (enough time for customer to respond)
+            let remaining = 15;
             countdown.textContent = remaining;
             if (reviewTimer) clearInterval(reviewTimer);
             reviewTimer = setInterval(() => {
@@ -986,6 +988,7 @@ Data source: Flask local_api.py SSE stream + config API
 
         function hideReview() {
             if (reviewTimer) { clearInterval(reviewTimer); reviewTimer = null; }
+            reviewShowing = false; // Clear guard
             const overlay = document.getElementById('review-overlay');
             const wasVisible = overlay.style.display === 'flex';
             overlay.style.display = 'none';

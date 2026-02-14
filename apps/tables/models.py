@@ -1,6 +1,9 @@
 ﻿from django.db import models
 import uuid
 
+# Import booking models
+from .models_booking import ReservationConfig, ReservationPackage, Reservation, ReservationDeposit, ReservationLog
+
 
 class TableArea(models.Model):
     """Area/Zone dalam restoran"""

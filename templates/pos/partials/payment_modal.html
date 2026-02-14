@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize l10n %}
 <!--
 ============================================================================
 PAYMENT MODAL (payment_modal.html) — v12
@@ -280,6 +280,7 @@ function paymentModal() {
     var _defaultMethod = '{{ default_method|escapejs }}' || 'cash';  // metode default saat modal dibuka
     var _billId = '{{ bill.id }}';
     var _csrfToken = '{{ csrf_token }}';
+    var _depositApplied = parseInt('{{ deposit_applied|default:0|unlocalize }}') || 0;
 
     return {
         // ===== REACTIVE STATE =====
@@ -290,7 +291,8 @@ function paymentModal() {
         amountDisplay: '',                // Nominal terformat untuk display ('50,000')
         reference: '',                    // Referensi legacy (hanya non-profile mode)
         promptValues: {},                 // Data entry prompts: {field_name: value}
-        total: parseInt('{{ total_int|escapejs }}') || 0,  // Total bill (read-only)
+        depositApplied: _depositApplied,  // Deposit dari reservation yang sudah dibayar
+        total: parseInt('{{ total_int|unlocalize }}') || 0,  // Total bill (read-only)
         payments: [],                     // Array split payments yang sudah di-add
         activeField: 'amount',            // Target numpad: 'amount' atau 'prompt:field_name'
         _syncTimer: null,                 // Debounce timer untuk syncDisplay()
@@ -350,9 +352,14 @@ function paymentModal() {
             return sum;
         },
 
-        /** Sisa yang harus dibayar (total - sudah dibayar) */
+        /** Effective total after deposit deduction */
+        get effectiveTotal() {
+            return Math.max(0, this.total - this.depositApplied);
+        },
+
+        /** Sisa yang harus dibayar (effectiveTotal - sudah dibayar) */
         get remaining() {
-            var r = this.total - this.paidTotal;
+            var r = this.effectiveTotal - this.paidTotal;
             return r > 0 ? r : 0;
         },
 
@@ -368,13 +375,13 @@ function paymentModal() {
          * Non-cash (allow_change=false) TIDAK boleh bayar lebih dari sisa
          */
         get changeAmount() {
-            if (this.payments.length === 0 && this.currentAllowChange && this.amount > this.total) {
-                return this.amount - this.total;
+            if (this.payments.length === 0 && this.currentAllowChange && this.amount > this.effectiveTotal) {
+                return this.amount - this.effectiveTotal;
             }
-            if (this.payments.length > 0 && this.paidTotal > this.total) {
+            if (this.payments.length > 0 && this.paidTotal > this.effectiveTotal) {
                 var lastPmt = this.payments[this.payments.length - 1];
                 var lastMethod = this.paymentMethods.find(function(m) { return m.id === lastPmt.method; });
-                if (lastMethod && lastMethod.allow_change !== false) return this.paidTotal - this.total;
+                if (lastMethod && lastMethod.allow_change !== false) return this.paidTotal - this.effectiveTotal;
             }
             return 0;
         },
@@ -388,12 +395,12 @@ function paymentModal() {
             var h = '';
             for (var i = 0; i < this.payments.length; i++) {
                 var p = this.payments[i];
-                h += '<div class="flex items-center gap-1.5 bg-white border rounded-lg px-2 py-1">';
-                h += '<div class="w-2 h-2 rounded-full flex-shrink-0" style="background:' + this.getMethodColor(p.method) + '"></div>';
-                h += '<span class="text-[11px] font-bold text-gray-700">' + this.getMethodLabel(p.method) + '</span>';
-                h += '<span class="text-[11px] font-bold text-green-600">Rp ' + this.fmt(p.amount) + '</span>';
-                h += '<button type="button" data-rm="' + i + '" class="w-4 h-4 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded">';
-                h += '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+                h += '<div class="flex items-center gap-2 bg-white border rounded-lg px-2.5 py-1.5">';
+                h += '<div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:' + this.getMethodColor(p.method) + '"></div>';
+                h += '<span class="text-xs font-bold text-gray-700">' + this.getMethodLabel(p.method) + '</span>';
+                h += '<span class="text-xs font-bold text-green-600">Rp ' + this.fmt(p.amount) + '</span>';
+                h += '<button type="button" data-rm="' + i + '" class="w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded ml-1 flex-shrink-0">';
+                h += '<svg class="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
                 h += '</button></div>';
             }
             return h;
@@ -435,8 +442,8 @@ function paymentModal() {
         get canPay() {
             // Block manual pay while QRIS is in progress — payment will auto-submit on confirmation
             if (this.qrisState === 'polling' || this.qrisState === 'generating') return false;
-            if (this.payments.length === 0) return this.amount >= this.total && this.amount > 0;
-            return this.paidTotal >= this.total;
+            if (this.payments.length === 0) return this.amount >= this.effectiveTotal && this.amount > 0;
+            return this.paidTotal >= this.effectiveTotal;
         },
 
         // ===== METHODS =====
@@ -880,7 +887,11 @@ function paymentModal() {
 
         /** Hapus split payment dari list berdasarkan index */
         removePayment(idx) {
+            if (idx < 0 || idx >= this.payments.length) return;
             this.payments.splice(idx, 1);
+            this.amount = 0;
+            this.amountDisplay = '';
+            this.activeField = 'amount';
             this.syncDisplay();
         },
 
@@ -901,7 +912,7 @@ function paymentModal() {
         submitPayment() {
             console.log('[Payment] submitPayment called, canPay:', this.canPay, 'amount:', this.amount, 'total:', this.total, 'payments:', this.payments.length);
             if (!this.canPay) return;
-            if (this.payments.length > 0 && this.paidTotal >= this.total) this.amount = 0;
+            if (this.payments.length > 0 && this.paidTotal >= this.effectiveTotal) this.amount = 0;
             var form = document.getElementById('payment-form');
             console.log('[Payment] form found:', !!form);
             if (form) {
@@ -991,22 +1002,37 @@ function closeModal() {
             2. Bayar: jumlah yang sedang/sudah dibayar (hijau jika >= total, amber jika kurang)
             3. Kembalian/Sisa: kembalian (hijau) atau sisa belum bayar (amber)
         -->
-        <div class="grid grid-cols-3 gap-2 p-2.5 bg-gray-50 border-b" style="flex-shrink:0;">
-            <div class="bg-white rounded-lg p-2 border text-center">
-                <div class="text-[10px] font-semibold text-gray-500 uppercase">Total</div>
-                <div class="text-lg font-bold text-gray-900">Rp <span x-text="fmt(total)"></span></div>
-            </div>
-            <div class="bg-white rounded-lg p-2 border text-center">
-                <div class="text-[10px] font-semibold text-gray-500 uppercase">Bayar</div>
-                <div class="text-lg font-bold" :class="displayPaying >= total ? 'text-green-600' : 'text-amber-600'">
-                    Rp <span x-text="fmt(displayPaying)"></span>
+        <div class="p-2.5 bg-gray-50 border-b space-y-2" style="flex-shrink:0;">
+            {% if reservation_info %}
+            <!-- Deposit Applied Banner -->
+            <div class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span class="text-[10px] font-bold text-amber-800">Deposit {{ reservation_info.code }}</span>
                 </div>
+                <span class="text-xs font-bold text-green-700">- Rp <span x-text="fmt(depositApplied)"></span></span>
             </div>
-            <div class="rounded-lg p-2 border text-center" :class="changeAmount > 0 ? 'bg-green-50 border-green-200' : (payments.length > 0 && paidTotal < total ? 'bg-amber-50 border-amber-200' : 'bg-white')">
-                <div class="text-[10px] font-semibold uppercase" :class="changeAmount > 0 ? 'text-green-700' : (payments.length > 0 && paidTotal < total ? 'text-amber-700' : 'text-gray-500')"
-                     x-text="changeAmount > 0 ? 'Kembalian' : (payments.length > 0 && paidTotal < total ? 'Sisa' : 'Kembalian')"></div>
-                <div class="text-lg font-bold" :class="changeAmount > 0 ? 'text-green-600' : (payments.length > 0 && paidTotal < total ? 'text-amber-600' : 'text-gray-400')">
-                    Rp <span x-text="changeAmount > 0 ? fmt(changeAmount) : (payments.length > 0 && paidTotal < total ? fmt(remaining) : fmt(0))"></span>
+            {% endif %}
+            <div class="grid grid-cols-3 gap-2">
+                <div class="bg-white rounded-lg p-2 border text-center">
+                    <div class="text-[10px] font-semibold text-gray-500 uppercase">Total</div>
+                    <div class="text-lg font-bold text-gray-900">Rp <span x-text="fmt(total)"></span></div>
+                    <div x-show="depositApplied > 0" x-cloak class="text-[9px] text-green-600 font-semibold">Sisa: Rp <span x-text="fmt(effectiveTotal)"></span></div>
+                </div>
+                <div class="bg-white rounded-lg p-2 border text-center">
+                    <div class="text-[10px] font-semibold text-gray-500 uppercase">Bayar</div>
+                    <div class="text-lg font-bold" :class="displayPaying >= effectiveTotal ? 'text-green-600' : 'text-amber-600'">
+                        Rp <span x-text="fmt(displayPaying)"></span>
+                    </div>
+                </div>
+                <div class="rounded-lg p-2 border text-center" :class="changeAmount > 0 ? 'bg-green-50 border-green-200' : (payments.length > 0 && paidTotal < effectiveTotal ? 'bg-amber-50 border-amber-200' : 'bg-white')">
+                    <div class="text-[10px] font-semibold uppercase" :class="changeAmount > 0 ? 'text-green-700' : (payments.length > 0 && paidTotal < effectiveTotal ? 'text-amber-700' : 'text-gray-500')"
+                         x-text="changeAmount > 0 ? 'Kembalian' : (payments.length > 0 && paidTotal < effectiveTotal ? 'Sisa' : 'Kembalian')"></div>
+                    <div class="text-lg font-bold" :class="changeAmount > 0 ? 'text-green-600' : (payments.length > 0 && paidTotal < effectiveTotal ? 'text-amber-600' : 'text-gray-400')">
+                        Rp <span x-text="changeAmount > 0 ? fmt(changeAmount) : (payments.length > 0 && paidTotal < effectiveTotal ? fmt(remaining) : fmt(0))"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1018,11 +1044,10 @@ function closeModal() {
             menyebabkan bug Alpine.js initTree saat HTMX swap.
             Tombol X merah untuk hapus payment dari list.
         -->
-        <div x-show="payments.length > 0" x-cloak class="px-2.5 pt-2 pb-1 bg-gray-50 border-b" style="flex-shrink:0;">
-            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Pembayaran Tercatat</div>
-            <div style="display:flex; flex-wrap:wrap; gap:4px;"
+        <div x-show="payments.length > 0" x-cloak class="px-2.5 pt-1.5 pb-1 bg-gray-50 border-b" style="flex-shrink:0;">
+            <div style="display:flex; flex-wrap:wrap; gap:5px;"
                  x-html="paymentsListHtml"
-                 @click="var btn=$event.target.closest('[data-rm]'); if(btn) removePayment(parseInt(btn.dataset.rm))"></div>
+                 @click="let btn=$event.target.closest('[data-rm]'); if(btn) removePayment(parseInt(btn.dataset.rm))"></div>
         </div>
 
         <!--
@@ -1411,7 +1436,7 @@ function closeModal() {
             </button>
             <!-- Tombol + Split: hidden saat QRIS aktif -->
             <button type="button"
-                    x-show="qrisState === 'idle' && amount > 0 && (payments.length > 0 || amount < total)"
+                    x-show="qrisState === 'idle' && amount > 0 && (payments.length > 0 || amount < effectiveTotal)"
                     x-cloak
                     @click="addPayment()"
                     class="px-4 py-2.5 rounded-lg font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white transition-all">

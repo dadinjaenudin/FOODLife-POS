@@ -66,7 +66,6 @@ CATATAN:
 
         {# TARGET: Bill Panel - Update customer display #}
         if (event.detail.target.id === 'bill-panel' || event.detail.target.closest('#bill-panel')) {
-            console.log('Bill panel swapped, updating customer display...');
             setTimeout(() => {
                 if (typeof updateCustomerDisplay === 'function') {
                     updateCustomerDisplay([], 0);
@@ -79,15 +78,6 @@ CATATAN:
     htmx:beforeRequest - Pastikan modal-container ada sebelum request
     {% endcomment %}
     document.addEventListener('htmx:beforeRequest', function (event) {
-        {# Debug logging untuk shift-related requests #}
-        const url = event.detail.pathInfo.requestPath;
-        if (url && url.includes('shift')) {
-            console.log('HTMX Shift Request:', url);
-            console.log('   Triggered by:', event.detail.elt);
-            console.log('   Element ID:', event.detail.elt.id);
-            console.log('   Element classes:', event.detail.elt.className);
-        }
-
         {# Block request ke modal-container jika payment modal sedang aktif (kecuali dari dalam payment modal sendiri) #}
         const targetSelector = event.detail.elt.getAttribute('hx-target');
         if (targetSelector === '#modal-container' && window._paymentModalActive) {
@@ -142,6 +132,12 @@ CATATAN:
     htmx:beforeSwap - Izinkan swap pada modal-container
     {% endcomment %}
     document.addEventListener('htmx:beforeSwap', function (event) {
+        {# 422 = validation error — always allow swap (retargeted via HX-Retarget) #}
+        if (event.detail.xhr.status === 422) {
+            event.detail.shouldSwap = true;
+            event.detail.isError = false;
+            return;
+        }
         if (event.detail.target.id === 'modal-container') {
             {# Block swap ke modal-container jika payment modal aktif (kecuali dari payment modal sendiri) #}
             if (window._paymentModalActive) {
@@ -166,7 +162,6 @@ CATATAN:
                 heldBillsBtn.disabled = false;
                 heldBillsBtn.classList.remove('htmx-request');
             }
-            console.log('Modal content swapped successfully');
 
             {# Re-process HTMX di dalam modal (agar tombol HTMX di modal berfungsi) #}
             const modalContainer = document.getElementById('modal-container');
@@ -190,7 +185,6 @@ CATATAN:
 
                     if (isKioskMode()) {
                         updateCustomerDisplay([], 0);
-                        console.log('Customer display update triggered after bill-panel HTMX swap');
                     }
 
                     {# Re-enable tombol View Held Bills #}
@@ -216,7 +210,6 @@ CATATAN:
             setTimeout(function () {
                 const billPanel = document.getElementById('bill-panel');
                 if (billPanel) {
-                    console.log('Re-processing bill-panel after outerHTML swap');
                     htmx.process(billPanel);
 
                     if (isKioskMode()) {
@@ -235,7 +228,6 @@ CATATAN:
     document.addEventListener('htmx:afterSettle', function (event) {
         const target = event.detail.target;
         if (target && target.id === 'bill-panel') {
-            console.log('htmx:afterSettle - Re-processing bill-panel');
             htmx.process(target);
 
             const modalContainer = document.getElementById('modal-container');
@@ -252,27 +244,13 @@ CATATAN:
     });
 
     {% comment %}
-    htmx:trigger - Debug logging saat request di-trigger
-    {% endcomment %}
-    document.addEventListener('htmx:trigger', function (event) {
-        const url = event.detail.elt.getAttribute('hx-get') ||
-            event.detail.elt.getAttribute('hx-post') ||
-            event.detail.elt.getAttribute('hx-delete');
-        console.log('HTMX Request triggered:', url, event.detail.elt);
-    });
-
-    {% comment %}
     htmx:afterRequest - Handle hold bill completion
     Jika hold bill berhasil, tutup modal dan reload halaman.
     {% endcomment %}
     document.addEventListener('htmx:afterRequest', function(event) {
         const url = event.detail.pathInfo.requestPath;
-        console.log('=== HTMX After Request ===');
-        console.log('URL:', url);
-        console.log('Status:', event.detail.xhr.status);
 
         if (url && url.includes('/hold/') && event.detail.successful) {
-            console.log('Hold bill successful! Reloading page in 300ms...');
 
             {# Tutup modal #}
             const modalContainer = document.getElementById('modal-container');

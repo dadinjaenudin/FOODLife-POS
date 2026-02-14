@@ -34,13 +34,25 @@ setTimeout(() => {
             <span class="font-semibold text-gray-700">{{ profiles|length }}</span> profile{{ profiles|length|pluralize }}
         </p>
     </div>
-    <a href="{% url 'management:payment_profile_create' %}"
-       class="inline-flex items-center px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow transition-colors">
-        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
-        Add Profile
-    </a>
+    <div class="flex items-center gap-2">
+        <form method="post" action="{% url 'management:payment_profile_seed' %}" onsubmit="return confirm('Seed EFT Terminals, Media Groups & Payment Profiles?\n\nExisting data will NOT be overwritten.')">
+            {% csrf_token %}
+            <button type="submit"
+                    class="inline-flex items-center px-3 py-2 bg-gray-600 text-white text-sm font-semibold rounded-lg hover:bg-gray-700 shadow transition-colors">
+                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+                </svg>
+                Seed Master Data
+            </button>
+        </form>
+        <a href="{% url 'management:payment_profile_create' %}"
+           class="inline-flex items-center px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow transition-colors">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Profile
+        </a>
+    </div>
 </div>
 
 {% if profiles %}

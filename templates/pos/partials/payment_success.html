@@ -55,59 +55,59 @@
         showToast('Print preview blocked by popup blocker. Please allow popups for this site.', 'warning');
     }
 
-    // Dispatch payment complete event for listeners (printer, customer display)
+    // Send payment success modal to customer display IMMEDIATELY (no delay)
+    // This prevents the 300ms gap where customer sees idle/empty state flash
+    if (typeof isKioskMode === 'function' && isKioskMode()) {
+        const LOCAL_API = 'http://127.0.0.1:5000';
+
+        // Build a clean success HTML for customer display (no buttons)
+        const successHtml = `
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:50;">
+                <div style="background:white;border-radius:12px;max-width:420px;width:100%;padding:3rem;text-align:center;">
+                    <div style="width:80px;height:80px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;">
+                        <svg width="40" height="40" fill="none" stroke="#16a34a" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <h2 style="font-size:1.75rem;font-weight:bold;color:#16a34a;margin-bottom:0.5rem;">Pembayaran Berhasil!</h2>
+                    <p style="color:#6b7280;margin-bottom:1rem;">{{ bill.bill_number }}</p>
+                    <div style="font-size:2.25rem;font-weight:bold;color:#111827;margin-bottom:1.5rem;">Rp {{ bill.total|floatformat:0|intcomma }}</div>
+                    {% if bill.queue_number %}
+                    <div style="background:#dbeafe;border-radius:12px;padding:1.5rem;margin-bottom:1rem;">
+                        <div style="font-size:0.875rem;color:#2563eb;">Nomor Antrian</div>
+                        <div style="font-size:3rem;font-weight:bold;color:#1d4ed8;">{{ bill.queue_number }}</div>
+                    </div>
+                    {% endif %}
+                    <p style="color:#9ca3af;font-size:0.875rem;">Terima kasih atas kunjungan Anda!</p>
+                </div>
+            </div>`;
+
+        console.log('Sending payment success to customer display (immediate)');
+        fetch(LOCAL_API + '/api/customer-display/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ show_modal: true, modal_html: successHtml })
+        }).catch(err => console.warn('Customer display update failed:', err.message));
+
+        // After 3 seconds: show customer review overlay (on top of success)
+        // Store timer ID globally so closeDone() can cancel it (prevents ghost review)
+        window._reviewTimer = setTimeout(() => {
+            console.log('Triggering customer review on customer display');
+            fetch(LOCAL_API + '/api/customer-display/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ show_review: true, bill_id: billId })
+            }).catch(() => {});
+            window._reviewTimer = null;
+        }, 3000);
+    }
+
+    // Dispatch payment complete event AFTER sending success modal
+    // (listener handles receipt printing only, NOT display clearing)
     document.body.dispatchEvent(new CustomEvent('paymentComplete', {
         detail: { billId: billId }
     }));
     console.log('Payment complete event dispatched');
-
-    // Send payment success modal to customer display
-    setTimeout(() => {
-        if (typeof isKioskMode === 'function' && isKioskMode()) {
-            const LOCAL_API = 'http://127.0.0.1:5000';
-
-            // Build a clean success HTML for customer display (no buttons)
-            const successHtml = `
-                <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:50;">
-                    <div style="background:white;border-radius:12px;max-width:420px;width:100%;padding:3rem;text-align:center;">
-                        <div style="width:80px;height:80px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;">
-                            <svg width="40" height="40" fill="none" stroke="#16a34a" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                            </svg>
-                        </div>
-                        <h2 style="font-size:1.75rem;font-weight:bold;color:#16a34a;margin-bottom:0.5rem;">Pembayaran Berhasil!</h2>
-                        <p style="color:#6b7280;margin-bottom:1rem;">{{ bill.bill_number }}</p>
-                        <div style="font-size:2.25rem;font-weight:bold;color:#111827;margin-bottom:1.5rem;">Rp {{ bill.total|floatformat:0|intcomma }}</div>
-                        {% if bill.queue_number %}
-                        <div style="background:#dbeafe;border-radius:12px;padding:1.5rem;margin-bottom:1rem;">
-                            <div style="font-size:0.875rem;color:#2563eb;">Nomor Antrian</div>
-                            <div style="font-size:3rem;font-weight:bold;color:#1d4ed8;">{{ bill.queue_number }}</div>
-                        </div>
-                        {% endif %}
-                        <p style="color:#9ca3af;font-size:0.875rem;">Terima kasih atas kunjungan Anda!</p>
-                    </div>
-                </div>`;
-
-            console.log('Sending payment success to customer display');
-            fetch(LOCAL_API + '/api/customer-display/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ show_modal: true, modal_html: successHtml })
-            }).catch(err => console.warn('Customer display update failed:', err.message));
-
-            // After 3 seconds: show customer review overlay (on top of success)
-            setTimeout(() => {
-                console.log('Triggering customer review on customer display');
-                fetch(LOCAL_API + '/api/customer-display/update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ show_review: true, bill_id: billId })
-                }).catch(() => {});
-            }, 3000);
-
-            // No auto-clear — display clears only when cashier clicks Done
-        }
-    }, 300);
 })();
 
 // Clear payment modal active flag so other modals can work
@@ -126,6 +126,13 @@ function closeDone() {
     console.log('Done button clicked - clearing modal');
     document.getElementById('modal-container').innerHTML = '';
     window._paymentModalActive = false;
+
+    // Cancel pending review timer (prevents ghost review popup after Done)
+    if (window._reviewTimer) {
+        clearTimeout(window._reviewTimer);
+        window._reviewTimer = null;
+        console.log('Cancelled pending review timer');
+    }
 
     // Clear customer display in one atomic request (prevents flicker from multiple partial updates)
     if (typeof isKioskMode === 'function' && isKioskMode()) {

@@ -16,6 +16,27 @@ from apps.core.minio_client import get_minio_endpoint_for_request
 from apps.tables.models import Table
 
 
+def get_shift_deposit_summary(shift):
+    """Get total deposit applied across all paid bills in a shift."""
+    try:
+        from apps.tables.models_booking import Reservation
+        from django.db.models import Sum
+        result = Reservation.objects.filter(
+            bill__created_by=shift.cashier,
+            bill__created_at__gte=shift.shift_start,
+            bill__status='paid',
+            deposit_paid__gt=0,
+        ).aggregate(
+            total_deposit=Sum('deposit_paid'),
+            count=models.Count('id'),
+        )
+        total = int(result['total_deposit'] or 0)
+        count = result['count'] or 0
+        return {'total': total, 'count': count} if total > 0 else None
+    except Exception:
+        return None
+
+
 def trigger_client_event(response, event_name, data=None):
     """Helper to trigger HTMX client events"""
     if data:
@@ -1735,9 +1756,23 @@ def payment_modal(request, bill_id):
             pass
 
     # Try profile-based payment methods first
+    # Priority: 1) Terminal M2M profiles → 2) Company-wide profiles → 3) Legacy hardcoded
+    from apps.core.models import PaymentMethodProfile
+    profiles_qs = None
+
     if terminal and terminal.payment_profiles.exists():
-        from apps.core.models import PaymentMethodProfile
-        profiles = terminal.payment_profiles.filter(is_active=True).prefetch_related('prompts').order_by('sort_order', 'name')
+        # Terminal has specific profiles assigned via M2M
+        profiles_qs = terminal.payment_profiles.filter(is_active=True)
+    elif terminal:
+        # Fallback: company-wide profiles (brand=NULL)
+        company = terminal.store.brand.company if terminal.store and terminal.store.brand else None
+        if company:
+            profiles_qs = PaymentMethodProfile.objects.filter(
+                company=company, brand__isnull=True, is_active=True
+            )
+
+    if profiles_qs is not None:
+        profiles = profiles_qs.prefetch_related('prompts').order_by('sort_order', 'name')
         profiles_data = []
         for p in profiles:
             prompts = list(p.prompts.order_by('sort_order').values(
@@ -1812,6 +1847,22 @@ def payment_modal(request, bill_id):
                 .values('code', 'name')
             )
 
+    # Check for reservation deposit (reduces effective amount to pay)
+    deposit_applied = 0
+    reservation_info = None
+    try:
+        from apps.tables.models_booking import Reservation
+        rsv = Reservation.objects.filter(bill=bill, deposit_paid__gt=0).first()
+        if rsv:
+            deposit_applied = int(rsv.deposit_paid)
+            reservation_info = {
+                'code': rsv.reservation_code,
+                'guest': rsv.guest_name,
+                'deposit_paid': deposit_applied,
+            }
+    except Exception:
+        pass
+
     context = {
         'bill': bill,
         'amount_int': int(bill.get_remaining()),
@@ -1822,6 +1873,8 @@ def payment_modal(request, bill_id):
         'default_method': default_method,
         'use_profiles': use_profiles,
         'eft_terminals': eft_terminals,
+        'deposit_applied': deposit_applied,
+        'reservation_info': reservation_info,
     }
     return render(request, 'pos/partials/payment_modal.html', context)
 
@@ -1981,7 +2034,8 @@ def process_payment(request, bill_id):
         print("Step 4: Checking for split payments...")
         payment_count = 0
         total_paid = Decimal('0')
-        
+        existing_paid = bill.get_paid_amount()  # Sum of any pre-existing payments
+
         # Helper: resolve profile and build metadata for a payment entry
         def _resolve_profile(profile_id_str, prompt_data_str):
             """Returns (profile_obj_or_None, metadata_dict, reference_str, eft_desc_str)"""
@@ -2032,6 +2086,15 @@ def process_payment(request, bill_id):
 
                 if amount > 0:
                     profile_obj, metadata, ref_summary, eft_desc = _resolve_profile(profile_id, prompt_data)
+
+                    # Cap payment to remaining bill balance (prevents storing cash change as revenue)
+                    effective_remaining = bill.total - existing_paid - total_paid
+                    if amount > effective_remaining and effective_remaining > Decimal('0'):
+                        metadata['tendered'] = float(amount)
+                        amount = effective_remaining
+                    elif effective_remaining <= Decimal('0'):
+                        continue  # Bill already fully covered, skip this payment
+
                     Payment.objects.create(
                         bill=bill,
                         method=method,
@@ -2077,40 +2140,108 @@ def process_payment(request, bill_id):
         if amount > 0:
             print(f"Amount > 0, creating payment...")
             profile_obj, metadata, ref_summary, eft_desc = _resolve_profile(profile_id, prompt_data)
-            Payment.objects.create(
-                bill=bill,
-                method=method,
-                amount=amount,
-                reference=reference or ref_summary,
-                payment_profile=profile_obj,
-                payment_metadata=metadata,
-                eft_desc=eft_desc,
-                created_by=request.user,
-            )
 
-            BillLog.objects.create(
-                bill=bill,
-                action='payment',
-                user=request.user,
-                details={
-                    'method': method,
-                    'amount': float(amount),
-                    'split': payment_count > 0,
-                    'profile': profile_obj.name if profile_obj else None,
-                    'eft_desc': eft_desc
-                }
-            )
-            
-            total_paid += amount
-            payment_count += 1
+            # Cap payment to remaining bill balance (prevents storing cash change as revenue)
+            effective_remaining = bill.total - existing_paid - total_paid
+            if amount > effective_remaining and effective_remaining > Decimal('0'):
+                metadata['tendered'] = float(amount)
+                amount = effective_remaining
+            elif effective_remaining <= Decimal('0'):
+                amount = Decimal('0')
+
+            if amount > 0:
+                Payment.objects.create(
+                    bill=bill,
+                    method=method,
+                    amount=amount,
+                    reference=reference or ref_summary,
+                    payment_profile=profile_obj,
+                    payment_metadata=metadata,
+                    eft_desc=eft_desc,
+                    created_by=request.user,
+                )
+
+                BillLog.objects.create(
+                    bill=bill,
+                    action='payment',
+                    user=request.user,
+                    details={
+                        'method': method,
+                        'amount': float(amount),
+                        'split': payment_count > 0,
+                        'profile': profile_obj.name if profile_obj else None,
+                        'eft_desc': eft_desc
+                    }
+                )
+
+                total_paid += amount
+                payment_count += 1
         
-        # Check if bill is fully paid
+        # Apply reservation deposit as Payment record (if linked and not yet applied)
+        # This MUST happen before get_remaining() so the deposit is counted
+        # Each ReservationDeposit creates a separate Payment with its original payment_profile
+        rsv_for_completion = None
+        try:
+            from apps.tables.models_booking import Reservation, ReservationDeposit, ReservationLog
+            rsv = Reservation.objects.filter(bill=bill, status='checked_in', deposit_paid__gt=0).first()
+            if rsv and not bill.payments.filter(method='deposit').exists():
+                deposits = ReservationDeposit.objects.filter(
+                    reservation=rsv, status='paid'
+                ).select_related('payment_profile')
+                for dep in deposits:
+                    Payment.objects.create(
+                        bill=bill,
+                        method='deposit',
+                        amount=dep.amount,
+                        reference=f'Deposit {rsv.reservation_code}',
+                        payment_profile=dep.payment_profile,
+                        payment_metadata=dep.payment_metadata or {},
+                        created_by=request.user,
+                    )
+                    total_paid += dep.amount
+                    payment_count += 1
+                    profile_name = dep.payment_profile.name if dep.payment_profile else dep.payment_method
+                    print(f"  Applied deposit Rp {dep.amount} ({profile_name}) from {rsv.reservation_code}")
+                if deposits.exists():
+                    BillLog.objects.create(
+                        bill=bill,
+                        action='payment',
+                        user=request.user,
+                        details={
+                            'method': 'deposit',
+                            'amount': float(rsv.deposit_paid),
+                            'reservation_code': rsv.reservation_code,
+                            'deposit_count': deposits.count(),
+                        }
+                    )
+            # Track reservation for completion after bill paid
+            rsv_for_completion = Reservation.objects.filter(bill=bill, status='checked_in').first()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f'Error applying reservation deposit for bill {bill.id}: {e}')
+
+        # Check if bill is fully paid (now includes deposit)
         if bill.get_remaining() <= 0:
             bill.status = 'paid'
             bill.closed_by = request.user
             bill.closed_at = timezone.now()
             bill.save()
-            
+
+            # Complete linked reservation
+            try:
+                if rsv_for_completion:
+                    rsv_for_completion.status = 'completed'
+                    rsv_for_completion.save(update_fields=['status'])
+                    ReservationLog.objects.create(
+                        reservation=rsv_for_completion,
+                        action='completed',
+                        created_by=request.user,
+                        details={'bill_number': bill.bill_number, 'bill_total': float(bill.total)},
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f'Error completing reservation for bill {bill.id}: {e}')
+
             # Update table status and unjoin if part of group
             if bill.table:
                 # Get all tables in the same group
@@ -2617,13 +2748,31 @@ def reprint_receipt(request, bill_id):
 def print_preview(request, bill_id):
     """Print preview - Opens in new window for browser print"""
     bill = get_object_or_404(Bill, id=bill_id)
-    
+
+    # Check for reservation deposit
+    deposit_applied = 0
+    reservation_info = None
+    try:
+        from apps.tables.models_booking import Reservation
+        rsv = Reservation.objects.filter(bill=bill, deposit_paid__gt=0).first()
+        if rsv:
+            deposit_applied = int(rsv.deposit_paid)
+            reservation_info = {
+                'code': rsv.reservation_code,
+                'guest': rsv.guest_name,
+            }
+    except Exception:
+        pass
+
     context = {
         'bill': bill,
         'items': bill.items.filter(is_void=False),
-        'payments': bill.payments.all()
+        'payments': bill.payments.select_related('payment_profile'),
+        'deposit_applied': deposit_applied,
+        'reservation_info': reservation_info,
+        'effective_total': max(0, int(bill.total) - deposit_applied),
     }
-    
+
     return render(request, 'pos/print_receipt.html', context)
 
 
@@ -3083,29 +3232,34 @@ def shift_close_form(request):
     
     # Calculate expected amounts per payment method
     from django.db.models import Sum, Count
-    
+
+    # Use created_at (not closed_at) to scope bills to THIS shift only
+    # Use shift.cashier (not request.user) to be robust
+    shift_bills = Bill.objects.filter(
+        created_by=shift.cashier,
+        created_at__gte=shift.shift_start,
+    )
+
+    paid_bills = shift_bills.filter(status='paid')
+
     payment_breakdown = Payment.objects.filter(
-        bill__created_by=request.user,
-        bill__closed_at__gte=shift.shift_start,
+        bill__created_by=shift.cashier,
+        bill__created_at__gte=shift.shift_start,
         bill__status='paid'
     ).values('method').annotate(
         total=Sum('amount'),
         count=Count('id')
     ).order_by('method')
-    
+
     # Get bills stats
     bills_stats = {
-        'total': Bill.objects.filter(created_by=request.user, created_at__gte=shift.shift_start).count(),
-        'paid': Bill.objects.filter(created_by=request.user, closed_at__gte=shift.shift_start, status='paid').count(),
-        'open': Bill.objects.filter(created_by=request.user, created_at__gte=shift.shift_start, status='open').count(),
-        'held': Bill.objects.filter(created_by=request.user, created_at__gte=shift.shift_start, status='hold').count(),
+        'total': shift_bills.count(),
+        'paid': paid_bills.count(),
+        'open': shift_bills.filter(status='open').count(),
+        'held': shift_bills.filter(status='hold').count(),
     }
-    
-    total_sales = Bill.objects.filter(
-        created_by=request.user,
-        closed_at__gte=shift.shift_start,
-        status='paid'
-    ).aggregate(Sum('total'))['total__sum'] or Decimal('0')
+
+    total_sales = paid_bills.aggregate(Sum('total'))['total__sum'] or Decimal('0')
     
     expected_cash = shift.opening_cash
     cash_payment = next((p for p in payment_breakdown if p['method'] == 'cash'), None)
@@ -3151,7 +3305,7 @@ def shift_close(request):
     ShiftPaymentSummary.objects.filter(cashier_shift=shift).delete()
     
     # Create payment summaries
-    payment_methods = ['cash', 'card', 'qris', 'ewallet', 'transfer', 'voucher']
+    payment_methods = ['cash', 'card', 'debit', 'qris', 'ewallet', 'transfer', 'voucher', 'deposit']
     for method in payment_methods:
         actual_amount_key = f'actual_{method}'
         actual_amount = clean_currency(request.POST.get(actual_amount_key, '0'))
@@ -3217,33 +3371,20 @@ def shift_print_reconciliation(request, shift_id):
     cash_summary = payment_summaries.filter(payment_method='cash').first()
     cash_sales = cash_summary.expected_amount if cash_summary else Decimal('0')
     
-    # Get bills stats
-    bills_stats = {
-        'total': Bill.objects.filter(
-            created_by=shift.cashier, 
-            created_at__gte=shift.shift_start
-        ).count(),
-        'paid': Bill.objects.filter(
-            created_by=shift.cashier, 
-            closed_at__gte=shift.shift_start, 
-            status='paid'
-        ).count(),
-        'open': Bill.objects.filter(
-            created_by=shift.cashier, 
-            created_at__gte=shift.shift_start, 
-            status='open'
-        ).count(),
-        'held': Bill.objects.filter(
-            created_by=shift.cashier, 
-            created_at__gte=shift.shift_start, 
-            status='hold'
-        ).count(),
-    }
-    
-    # Calculate total sales
-    total_sales = Bill.objects.filter(
+    # Get bills stats — use created_at to scope bills to this shift
+    shift_bills = Bill.objects.filter(
         created_by=shift.cashier,
-        closed_at__gte=shift.shift_start,
+        created_at__gte=shift.shift_start,
+    )
+    bills_stats = {
+        'total': shift_bills.count(),
+        'paid': shift_bills.filter(status='paid').count(),
+        'open': shift_bills.filter(status='open').count(),
+        'held': shift_bills.filter(status='hold').count(),
+    }
+
+    # Calculate total sales
+    total_sales = shift_bills.filter(
         status='paid'
     ).aggregate(Sum('total'))['total__sum'] or Decimal('0')
     
@@ -3261,8 +3402,9 @@ def shift_print_reconciliation(request, shift_id):
         'bills_stats': bills_stats,
         'total_sales': total_sales,
         'duration_hours': duration_hours,
+        'deposit_summary': get_shift_deposit_summary(shift),
     }
-    
+
     return render(request, 'pos/partials/shift_reconciliation_print.html', context)
 
 
@@ -3460,8 +3602,9 @@ def shift_my_dashboard(request):
             'payment_methods': payment_methods_list,
             'top_items': top_items_list,
             'hourly_sales': hourly_sales,
+            'deposit_summary': get_shift_deposit_summary(shift),
         }
-        
+
         return render(request, 'pos/partials/shift_dashboard_modal.html', context)
         
     except Exception as e:
@@ -3558,8 +3701,9 @@ def shift_print_interim(request, shift_id):
         'payment_methods': list(payment_methods),
         'expected_cash': expected_cash,
         'top_items': top_items_list,
+        'deposit_summary': get_shift_deposit_summary(shift),
     }
-    
+
     return render(request, 'pos/partials/shift_interim_print.html', context)
 
 

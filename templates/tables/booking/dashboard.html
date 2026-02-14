@@ -1,0 +1,260 @@
+{% load l10n %}
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+     onclick="if(event.target === this) closeModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2.5 rounded-t-xl">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold">Booking</h3>
+                        <p class="text-green-100 text-[10px]">{{ view_date|date:"l, d M Y" }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button hx-get="{% url 'tables:booking_create' %}"
+                            hx-target="#modal-container" hx-swap="innerHTML"
+                            class="px-3 py-1.5 bg-white text-green-600 hover:bg-green-50 rounded-lg text-xs font-bold transition">
+                        + Booking Baru
+                    </button>
+                    <button onclick="closeModal()"
+                            class="w-7 h-7 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Date Navigation -->
+        <div class="px-4 py-2 border-b bg-gray-50 flex items-center gap-2">
+            {% with yesterday=view_date|date:"Y-m-d" %}
+            <button hx-get="{% url 'tables:booking_dashboard' %}?date={{ today|date:'Y-m-d' }}"
+                    hx-target="#modal-container" hx-swap="innerHTML"
+                    class="px-2.5 py-1 rounded text-xs font-semibold {% if view_date == today %}bg-green-500 text-white{% else %}bg-white border text-gray-600 hover:bg-gray-100{% endif %} transition">
+                Hari Ini
+            </button>
+            {% endwith %}
+            <input type="date" value="{{ view_date|date:'Y-m-d' }}"
+                   hx-get="{% url 'tables:booking_dashboard' %}"
+                   hx-target="#modal-container" hx-swap="innerHTML"
+                   hx-trigger="change" name="date"
+                   class="px-2.5 py-1 rounded border text-xs text-gray-700">
+            <div class="ml-auto flex items-center gap-3 text-xs text-gray-500">
+                <span>{{ reservations|length }} booking</span>
+                <span class="text-gray-300">|</span>
+                <span>{{ total_pax }} pax</span>
+                {% if deposit_count %}
+                <span class="text-gray-300">|</span>
+                <span>{{ deposit_count }} DP</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Booking List -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-2" id="booking-list">
+            {% for r in reservations %}
+            <div class="border rounded-lg p-3 hover:bg-gray-50 transition {% if r.status == 'checked_in' %}border-green-200 bg-green-50/30{% elif r.is_past_grace_period %}border-red-200 bg-red-50/30{% elif r.status == 'deposit_pending' %}border-amber-200 bg-amber-50/30{% endif %}">
+                <div class="flex items-start justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold px-2 py-0.5 rounded" style="color:#d97706; background-color:#fffbeb;">
+                            {{ r.time_start|time:"H:i" }}
+                        </span>
+                        <span class="font-mono text-xs font-bold text-gray-700">{{ r.reservation_code }}</span>
+                        {% if r.status == 'confirmed' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#dcfce7; color:#15803d;">CONFIRMED</span>
+                        {% elif r.status == 'deposit_pending' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#fef3c7; color:#b45309;">DEPOSIT PENDING</span>
+                        {% elif r.status == 'checked_in' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#dbeafe; color:#1d4ed8;">CHECKED IN</span>
+                        {% elif r.status == 'no_show' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#fee2e2; color:#b91c1c;">NO SHOW</span>
+                        {% elif r.status == 'completed' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#f3f4f6; color:#4b5563;">COMPLETED</span>
+                        {% endif %}
+                        {% if r.type == 'event' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#f3e8ff; color:#7e22ce;">EVENT</span>
+                        {% elif r.type == 'min_spend' %}
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background-color:#e0e7ff; color:#4338ca;">MIN SPEND</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-sm mb-1">
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold text-gray-800">{{ r.guest_name }}</span>
+                        <span class="text-gray-400">|</span>
+                        <span class="text-gray-600">{{ r.party_size }} pax</span>
+                        <span class="text-gray-400">|</span>
+                        <span class="text-gray-600">
+                            {% for t in r.tables.all %}{{ t.number }}{% if not forloop.last %}, {% endif %}{% empty %}No table{% endfor %}
+                        </span>
+                    </div>
+                    {% if r.deposit_paid > 0 %}
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold" style="color:#16a34a;">DP: Rp <span class="amount">{{ r.deposit_paid|unlocalize }}</span></span>
+                        <button onclick="printDepositReceipt('{{ r.id }}')"
+                                class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 hover:bg-blue-500 hover:text-white text-gray-500 transition" title="Print bukti DP">
+                            <svg class="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                            Print
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if r.guest_phone %}
+                <div class="text-xs text-gray-400 mb-2">{{ r.guest_phone }}</div>
+                {% endif %}
+
+                {% if r.special_requests %}
+                <div class="text-xs text-gray-500 italic mb-2">{{ r.special_requests|truncatewords:15 }}</div>
+                {% endif %}
+
+                {% if r.is_past_grace_period %}
+                <div class="text-xs text-red-600 font-bold mb-2">{{ r.time_until_reservation }}</div>
+                {% endif %}
+
+                <!-- Actions -->
+                <div class="flex items-center gap-2 mt-2">
+                    {% if r.status == 'confirmed' %}
+                    <form hx-post="{% url 'tables:booking_checkin' r.id %}" hx-target="#modal-container" hx-swap="innerHTML">
+                        {% csrf_token %}
+                        <input type="hidden" name="actual_pax" value="{{ r.party_size }}">
+                        <button type="submit" class="px-3 py-1.5 rounded-md text-xs font-bold transition"
+                                style="background-color:#16a34a; color:#fff;">
+                            Check-in
+                        </button>
+                    </form>
+                    {% elif r.status == 'deposit_pending' %}
+                    <button hx-get="{% url 'tables:booking_deposit_form' r.id %}"
+                            hx-target="#modal-container" hx-swap="innerHTML"
+                            class="px-3 py-1.5 rounded-md text-xs font-bold transition"
+                            style="background-color:#f59e0b; color:#fff;">
+                        Bayar Deposit
+                    </button>
+                    {% endif %}
+
+                    <button hx-get="{% url 'tables:booking_detail' r.id %}"
+                            hx-target="#modal-container" hx-swap="innerHTML"
+                            class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-xs font-semibold hover:bg-gray-200 transition">
+                        Detail
+                    </button>
+
+                    {% if r.can_cancel %}
+                    <button hx-get="{% url 'tables:booking_cancel_form' r.id %}"
+                            hx-target="#modal-container" hx-swap="innerHTML"
+                            class="px-3 py-1.5 rounded-md text-xs font-semibold transition"
+                            style="background-color:#fff; border:1px solid #fecaca; color:#dc2626;">
+                        Cancel
+                    </button>
+                    {% endif %}
+
+                    {% if r.status == 'confirmed' and r.is_past_grace_period %}
+                    <form hx-post="{% url 'tables:booking_noshow' r.id %}" hx-target="#modal-container" hx-swap="innerHTML"
+                          hx-confirm="Tandai {{ r.guest_name }} sebagai No-Show?">
+                        {% csrf_token %}
+                        <button type="submit" class="px-3 py-1.5 rounded-md text-xs font-bold transition"
+                                style="background-color:#ef4444; color:#fff;">
+                            No-Show
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-12 text-gray-400">
+                <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                <p class="text-sm font-medium">Tidak ada booking</p>
+                <p class="text-xs text-gray-300 mt-1">{{ view_date|date:"d M Y" }}</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 py-3 border-t bg-gray-50 rounded-b-xl">
+            <button onclick="closeModal()"
+                    class="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition font-medium text-sm">
+                Tutup
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Format numbers with comma thousand separator
+document.querySelectorAll('#modal-container .amount').forEach(function(el) {
+    var raw = el.textContent.trim();
+    var num = parseInt(parseFloat(raw) || 0, 10);
+    el.textContent = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+});
+
+function closeModal() {
+    const modal = document.getElementById('modal-container');
+    if (modal) modal.innerHTML = '';
+}
+var _depositFormUrlTpl = '{% url "tables:booking_deposit_form" "00000000-0000-0000-0000-000000000000" %}';
+document.addEventListener('bookingCreated', (e) => {
+    var d = e.detail || {};
+    if (d.needs_deposit && d.id) {
+        // Auto-open deposit payment modal
+        var url = _depositFormUrlTpl.replace('00000000-0000-0000-0000-000000000000', d.id);
+        htmx.ajax('GET', url, {target: '#modal-container', swap: 'innerHTML'});
+    } else {
+        htmx.ajax('GET', '{% url "tables:booking_dashboard" %}?date={{ view_date|date:"Y-m-d" }}', '#modal-container');
+    }
+});
+document.addEventListener('depositPaid', () => {
+    htmx.ajax('GET', '{% url "tables:booking_dashboard" %}?date={{ view_date|date:"Y-m-d" }}', '#modal-container');
+});
+document.addEventListener('bookingCancelled', () => {
+    htmx.ajax('GET', '{% url "tables:booking_dashboard" %}?date={{ view_date|date:"Y-m-d" }}', '#modal-container');
+});
+document.addEventListener('bookingNoShow', () => {
+    htmx.ajax('GET', '{% url "tables:booking_dashboard" %}?date={{ view_date|date:"Y-m-d" }}', '#modal-container');
+});
+
+var _depositDataUrlTpl = '{% url "tables:booking_deposit_data" "00000000-0000-0000-0000-000000000000" %}';
+function printDepositReceipt(reservationId) {
+    var url = _depositDataUrlTpl.replace('00000000-0000-0000-0000-000000000000', reservationId);
+    var LOCAL_API = 'http://127.0.0.1:5000';
+
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            // Try local printer first (kiosk mode)
+            if (typeof isKioskMode === 'function' && isKioskMode()) {
+                fetch(LOCAL_API + '/api/print/receipt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res.success) {
+                        if (typeof showToast === 'function') showToast('Bukti DP dikirim ke printer', 'success');
+                    } else {
+                        window.open('/tables/booking/' + reservationId + '/deposit/print-preview/', 'PrintDP', 'width=400,height=600');
+                    }
+                })
+                .catch(function() {
+                    window.open('/tables/booking/' + reservationId + '/deposit/print-preview/', 'PrintDP', 'width=400,height=600');
+                });
+            } else {
+                // Non-kiosk: open browser print preview
+                window.open('/tables/booking/' + reservationId + '/deposit/print-preview/', 'PrintDP', 'width=400,height=600');
+            }
+        })
+        .catch(function(err) {
+            console.warn('Failed to fetch deposit data:', err);
+            if (typeof showToast === 'function') showToast('Gagal mengambil data deposit', 'error');
+        });
+}
+</script>

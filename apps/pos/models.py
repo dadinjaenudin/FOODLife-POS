@@ -230,10 +230,11 @@ class Payment(models.Model):
         ('transfer', 'Bank Transfer'),
         ('ewallet', 'E-Wallet'),
         ('voucher', 'Voucher'),
+        ('deposit', 'Deposit (Reservation)'),
     ]
 
     bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='payments')
-    method = models.CharField(max_length=50)
+    method = models.CharField(max_length=50, choices=METHOD_CHOICES)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     reference = models.CharField(max_length=100, blank=True)
 
@@ -361,7 +362,7 @@ class QRISTransaction(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='qris_transactions')
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='qris_transactions', null=True, blank=True)
     transaction_id = models.CharField(max_length=100, unique=True, db_index=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     qr_string = models.TextField(blank=True)

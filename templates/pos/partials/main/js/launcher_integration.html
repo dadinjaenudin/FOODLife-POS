@@ -47,7 +47,6 @@ CATATAN:
                 const elem = document.documentElement;
                 if (elem.requestFullscreen) {
                     elem.requestFullscreen().catch(err => {
-                        console.log('Fullscreen failed:', err);
                     });
                 } else if (elem.webkitRequestFullscreen) {
                     elem.webkitRequestFullscreen();
@@ -96,15 +95,8 @@ CATATAN:
             }
 
             if (!terminalCode) {
-                console.warn('Terminal code not found in localStorage or URL parameters');
                 return;
             }
-
-            console.log('Loading terminal config:');
-            console.log('   Terminal:', terminalCode);
-            console.log('   Company:', companyCode || 'N/A');
-            console.log('   Brand:', brandCode || 'N/A');
-            console.log('   Store:', storeCode || 'N/A');
 
             {# Build API URL dengan semua kode yang tersedia untuk validasi #}
             let apiUrl = `/api/terminal/config?terminal_code=${terminalCode}`;
@@ -117,15 +109,8 @@ CATATAN:
 
             if (data.success) {
                 terminalConfig = data;
-                console.log('Terminal config loaded and validated:', terminalConfig);
-                console.log('   Auto Print Receipt:', terminalConfig.device_config?.auto_print_receipt);
-                console.log('   Auto Print Kitchen:', terminalConfig.device_config?.auto_print_kitchen_order);
-                console.log('   Print To:', terminalConfig.device_config?.print_to);
-            } else {
-                console.error('Failed to load terminal config:', data.error);
             }
         } catch (error) {
-            console.error('Error loading terminal config:', error);
         }
     }
 
@@ -155,20 +140,13 @@ CATATAN:
     6. Kirim HTML ke local API
     {% endcomment %}
     function sendModalToCustomerDisplay() {
-        console.log('sendModalToCustomerDisplay() called');
-        console.log('Kiosk mode:', isKioskMode());
-
         if (!isKioskMode()) {
-            console.log('Not in kiosk mode, skipping modal sync');
             return;
         }
 
         const modalContainer = document.getElementById('modal-container');
-        console.log('Modal container:', modalContainer);
-        console.log('Modal container innerHTML length:', modalContainer ? modalContainer.innerHTML.trim().length : 0);
 
         if (!modalContainer || !modalContainer.innerHTML.trim()) {
-            console.log('Modal container empty, clearing modal on customer display...');
             fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -187,7 +165,6 @@ CATATAN:
                             modalContent.includes('z-[60]');
 
         if (isQuickOrder) {
-            console.log('Quick Order modal detected - Skipping customer display sync (staff-only)');
             fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -200,7 +177,6 @@ CATATAN:
         const isPaymentSuccess = modalContent.includes('Payment Successful') ||
                                 modalContent.includes('Pembayaran Berhasil');
         if (isPaymentSuccess) {
-            console.log('Payment success modal detected - skipping (handles its own customer display)');
             return;
         }
 
@@ -209,7 +185,6 @@ CATATAN:
                               (modalContent.includes('payment-form') && modalContent.includes('Metode Pembayaran'));
 
         if (!isPaymentModal) {
-            console.log('Not a payment modal - Skipping customer display sync');
             fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -218,24 +193,11 @@ CATATAN:
             return;
         }
 
-        console.log('Modal is customer-facing (Payment related), proceeding with clone...');
-        console.log('Cloning modal for customer display...');
-
         {# Capture Alpine.js data dari modal asli (sebelum clone) #}
         const originalModal = modalContainer.querySelector('[x-data]');
         let alpineData = null;
         if (originalModal && originalModal._x_dataStack && originalModal._x_dataStack.length > 0) {
             alpineData = originalModal._x_dataStack[0];
-            console.log('Alpine.js data captured:', {
-                amount: alpineData.amount,
-                amountDisplay: alpineData.amountDisplay,
-                remaining: alpineData.remaining,
-                changeAmount: alpineData.changeAmount,
-                method: alpineData.method,
-                payments: alpineData.payments
-            });
-        } else {
-            console.error('Failed to capture Alpine.js data!');
         }
 
         {# Clone modal #}
@@ -248,7 +210,6 @@ CATATAN:
                     const func = new Function(...Object.keys(context), `return ${expr}`);
                     return func(...Object.values(context));
                 } catch (e) {
-                    console.warn('Failed to eval:', expr, e);
                     return null;
                 }
             };
@@ -357,7 +318,6 @@ CATATAN:
                 }
             });
         });
-        console.log('Cleaned all Alpine.js attributes and event handlers from clone');
 
         {# Set input values SETELAH remove Alpine attributes #}
         if (alpineData) {
@@ -379,7 +339,6 @@ CATATAN:
                 }
                 amountInput.value = displayValue;
                 amountInput.setAttribute('value', displayValue);
-                console.log('Amount input value set:', displayValue);
             }
 
             {# 2. Set prompt field values (EFT no, approval code, account no, etc.) #}
@@ -405,7 +364,6 @@ CATATAN:
                             fieldEl.setAttribute('value', val);
                         }
                     });
-                    if (fieldEls.length > 0) console.log('Prompt field set:', fieldName, '=', val, '(' + fieldEls.length + ' elements)');
                 }
             }
 
@@ -423,7 +381,6 @@ CATATAN:
         let modalHTML = modalClone.innerHTML;
         modalHTML = modalHTML.replace(/src="\/(media|static)\//g, `src="${window.location.origin}/$1/`);
         modalHTML = modalHTML.replace(/src='\/(media|static)\//g, `src='${window.location.origin}/$1/`);
-        console.log('Cloned modal HTML length:', modalHTML.length);
 
         {# Kirim ke local API #}
         fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
@@ -433,10 +390,8 @@ CATATAN:
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Modal sent to customer display:', data);
         })
         .catch(error => {
-            console.error('Failed to send modal to customer display:', error);
         });
     }
 
@@ -451,17 +406,12 @@ CATATAN:
     @param {Boolean} clearDisplay - Jika true, kirim sinyal clear ke customer display
     {% endcomment %}
     function updateCustomerDisplay(items, total, paymentAmount = 0, paymentMethod = 'cash', clearDisplay = false) {
-        console.log('updateCustomerDisplay() called', clearDisplay ? '(CLEAR MODE)' : '');
-
         if (!isKioskMode()) {
             return;
         }
 
-        console.log('Kiosk mode active');
-
         {# Jika clearDisplay=true, kirim sinyal clear #}
         if (clearDisplay) {
-            console.log('Sending CLEAR signal to customer display...');
             fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -469,35 +419,26 @@ CATATAN:
             })
             .then(response => response.json())
             .then(data => {
-                console.log('Customer display cleared successfully:', data);
             })
             .catch(error => {
-                console.error('Failed to clear customer display:', error);
             });
             return;
         }
 
-        console.log('Capturing bill panel...');
-
         const billPanel = document.getElementById('bill-panel');
         if (!billPanel) {
-            console.warn('Bill panel not found in DOM');
             return;
         }
-
-        console.log('Bill panel found, cloning HTML...');
 
         {# Clone bill panel dan bersihkan interactivity #}
         const billPanelClone = billPanel.cloneNode(true);
 
         {# HAPUS semua button dari clone (customer display tidak butuh tombol) #}
         const cloneButtons = billPanelClone.querySelectorAll('button');
-        console.log(`Removing ${cloneButtons.length} buttons from customer display...`);
         cloneButtons.forEach(btn => btn.remove());
 
         {# Hapus atribut interaktif #}
         const cloneInteractive = billPanelClone.querySelectorAll('[hx-get], [hx-post], [onclick]');
-        console.log(`Cleaning ${cloneInteractive.length} interactive elements...`);
 
         cloneInteractive.forEach(el => {
             el.removeAttribute('hx-get');
@@ -514,10 +455,8 @@ CATATAN:
         let billPanelHTML = billPanelClone.outerHTML;
         billPanelHTML = billPanelHTML.replace(/src="\/(media|static)\//g, `src="${origin}/$1/`);
         billPanelHTML = billPanelHTML.replace(/src='\/(media|static)\//g, `src='${origin}/$1/`);
-        console.log(`Bill panel HTML captured (${billPanelHTML.length} chars)`);
 
         {# Kirim ke local API #}
-        console.log('Sending to local API...', LOCAL_API_URL);
 
         fetch(`${LOCAL_API_URL}/api/customer-display/update`, {
             method: 'POST',
@@ -526,11 +465,8 @@ CATATAN:
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Customer display updated successfully:', data);
         })
         .catch(error => {
-            console.error('Customer display update failed:', error.message);
-            console.error('   Make sure POS Launcher is running!');
         });
     }
 
@@ -547,16 +483,12 @@ CATATAN:
     {% endcomment %}
     function sendReceiptToLocalPrinter(bill) {
         if (!terminalConfig?.device_config?.auto_print_receipt) {
-            console.log('Auto print receipt disabled in terminal config');
             return;
         }
 
         if (!isKioskMode()) {
-            console.log('Not in kiosk mode, skipping auto print');
             return;
         }
-
-        console.log('Auto print receipt enabled, sending to printer...');
 
         setTimeout(() => {
             fetch(`/pos/bill/${bill.id}/data/`, {
@@ -592,10 +524,8 @@ CATATAN:
             })
             .then(response => response.json())
             .then(data => {
-                console.log('Receipt sent to local printer:', data);
             })
             .catch(error => {
-                console.warn('Local print failed (local API not available):', error.message);
             });
         }, 500);
     }
@@ -607,11 +537,8 @@ CATATAN:
     2. Kirim receipt ke printer lokal (jika auto_print aktif)
     {% endcomment %}
     document.body.addEventListener('paymentComplete', function(e) {
-        console.log('Payment complete, sending to local printer...');
-
-        {# Clear customer display setelah bayar #}
-        console.log('Clearing customer display after payment (from listener)');
-        updateCustomerDisplay([], 0, 0, 'cash', true);
+        {# Don't clear customer display here — payment_success.html sends the #}
+        {# success modal directly. Display clears when cashier clicks Done. #}
 
         {# Kirim receipt ke printer lokal #}
         const modalContainer = document.getElementById('modal-container');

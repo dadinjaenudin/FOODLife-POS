@@ -32,7 +32,6 @@ EVENT LISTENERS:
         if (modalContainer) {
             modalContainer.innerHTML = '';
             htmx.process(modalContainer);
-            console.log('Held Bills modal closed and processed');
         }
     }
 
@@ -166,7 +165,6 @@ EVENT LISTENERS:
                 }, 100);
             })
             .catch(error => {
-                console.error('Error loading shift history:', error);
                 showToast('Failed to load shift history', 'error');
             });
     }
@@ -236,8 +234,6 @@ EVENT LISTENERS:
                 }, 100);
             })
             .catch(error => {
-                console.error('Error loading shift dashboard:', error);
-
                 {# Tampilkan toast error #}
                 const toast = document.createElement('div');
                 toast.className = 'fixed top-4 right-4 bg-white border border-red-200 text-gray-900 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2.5 z-50';
@@ -273,7 +269,6 @@ EVENT LISTENERS:
 
         const shiftId = modal.dataset.shiftId;
         if (!shiftId) {
-            console.error('No shift ID found');
             return;
         }
 

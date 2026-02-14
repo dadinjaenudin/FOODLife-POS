@@ -51,6 +51,49 @@ def table_map(request):
             table.bill_guest_count = 0
             table.bill_items_count = 0
             table.bill_status_display = ''
+            table.rsv_code = ''
+            table.rsv_guest = ''
+            table.rsv_time = ''
+            table.rsv_pax = 0
+            table.rsv_status = ''
+            table.rsv_id = ''
+
+    # Enrich tables with today's reservation data
+    try:
+        from django.utils import timezone as tz
+        from .models_booking import Reservation
+        today = tz.localdate()
+        today_reservations = Reservation.objects.filter(
+            brand=request.user.brand,
+            reservation_date=today,
+            status__in=['confirmed', 'deposit_pending', 'checked_in'],
+        ).prefetch_related('tables')
+
+        table_reservation_map = {}
+        for rsv in today_reservations:
+            for t in rsv.tables.all():
+                table_reservation_map[str(t.id)] = {
+                    'code': rsv.reservation_code,
+                    'guest': rsv.guest_name,
+                    'time': rsv.time_start.strftime('%H:%M') if rsv.time_start else '',
+                    'pax': rsv.party_size,
+                    'status': rsv.status,
+                    'id': str(rsv.id),
+                }
+
+        for area in unique_areas:
+            for table in getattr(area, 'active_tables', []):
+                rsv_info = table_reservation_map.get(str(table.id))
+                if rsv_info:
+                    table.rsv_code = rsv_info['code']
+                    table.rsv_guest = rsv_info['guest']
+                    table.rsv_time = rsv_info['time']
+                    table.rsv_pax = rsv_info['pax']
+                    table.rsv_status = rsv_info['status']
+                    table.rsv_id = rsv_info['id']
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'Error enriching floor plan reservation data: {e}')
 
     # Enrich tables that have active bills
     try:

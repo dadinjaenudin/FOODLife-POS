@@ -47,8 +47,23 @@ def create_receipt_job(bill, terminal_id='POS-001'):
         'tax': float(bill.tax_amount),
         'service': float(bill.service_charge),
         'total': float(bill.total),
-        'footer': bill.brand.receipt_footer or 'Terima Kasih!'
+        'footer': bill.brand.receipt_footer or 'Terima Kasih!',
     }
+
+    # Add deposit info if reservation has deposit
+    try:
+        from apps.tables.models_booking import Reservation
+        rsv = Reservation.objects.filter(bill=bill, deposit_paid__gt=0).first()
+        if rsv:
+            deposit = float(rsv.deposit_paid)
+            content['deposit'] = {
+                'amount': deposit,
+                'reservation_code': rsv.reservation_code,
+                'guest_name': rsv.guest_name,
+            }
+            content['effective_total'] = max(0, float(bill.total) - deposit)
+    except Exception:
+        pass
     
     job = PrintJob.objects.create(
         terminal_id=terminal_id,

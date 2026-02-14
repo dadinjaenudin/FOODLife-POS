@@ -1,3 +1,4 @@
+{% load l10n %}
 <!-- My Shift Dashboard Modal -->
 <div id="my-shift-modal" data-shift-id="{{ shift.id }}" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
      onclick="if(event.target === this) this.remove()">
@@ -46,7 +47,7 @@
         <div class="p-3 overflow-y-auto bg-gray-50" style="max-height: calc(90vh - 100px);">
 
             <!-- Key Metrics Row -->
-            <div class="grid grid-cols-4 gap-2 mb-3">
+            <div class="grid grid-cols-3 gap-2 mb-3">
                 <!-- Duration -->
                 <div class="bg-white border border-gray-200 rounded-lg p-2.5">
                     <div class="flex items-center gap-2">
@@ -72,7 +73,7 @@
                         </div>
                         <div class="min-w-0">
                             <div class="text-[10px] text-gray-500 font-medium">Total Sales</div>
-                            <div class="text-base font-bold text-green-700 truncate">Rp <span class="amount">{{ total_sales|floatformat:0 }}</span></div>
+                            <div class="text-base font-bold text-green-700 truncate">Rp <span class="amount">{{ total_sales|unlocalize }}</span></div>
                         </div>
                     </div>
                 </div>
@@ -92,22 +93,24 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Average Bill -->
-                <div class="bg-white border border-gray-200 rounded-lg p-2.5">
-                    <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
-                            </svg>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-[10px] text-gray-500 font-medium">Avg. Bill</div>
-                            <div class="text-base font-bold text-gray-900 truncate">Rp <span class="amount">{{ average_bill|floatformat:0 }}</span></div>
-                        </div>
+            {% if deposit_summary %}
+            <!-- Deposit Reservation Banner -->
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-amber-700 font-medium">Deposit Reservasi ({{ deposit_summary.count }} rsv)</div>
+                        <div class="text-sm font-bold text-amber-800">Rp <span class="amount">{{ deposit_summary.total }}</span></div>
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Payment Methods + Top Items (side by side) -->
             <div class="grid grid-cols-2 gap-2 mb-3">
@@ -127,7 +130,7 @@
                                 <span class="font-medium text-gray-700">{{ payment.method|title }}</span>
                                 <span class="text-[10px] text-gray-400">&times;{{ payment.count }}</span>
                             </div>
-                            <span class="font-bold text-gray-900 tabular-nums">Rp <span class="amount">{{ payment.total|floatformat:0 }}</span></span>
+                            <span class="font-bold text-gray-900 tabular-nums">Rp <span class="amount">{{ payment.total|unlocalize }}</span></span>
                         </div>
                         {% empty %}
                         <p class="text-xs text-gray-400 text-center py-3">No transactions yet</p>
@@ -155,7 +158,7 @@
                                 </div>
                                 <span class="text-[10px] text-gray-400 flex-shrink-0">&times;{{ item.quantity }}</span>
                             </div>
-                            <span class="font-bold text-gray-900 ml-3 tabular-nums">Rp <span class="amount">{{ item.revenue|floatformat:0 }}</span></span>
+                            <span class="font-bold text-gray-900 ml-3 tabular-nums">Rp <span class="amount">{{ item.revenue|unlocalize }}</span></span>
                         </div>
                         {% empty %}
                         <p class="text-xs text-gray-400 text-center py-3">No items sold yet</p>
@@ -204,3 +207,9 @@
         </div>
     </div>
 </div>
+<script>
+document.querySelectorAll('#my-shift-modal .amount').forEach(function(el) {
+    var v = Math.floor(parseFloat(el.textContent.trim()) || 0);
+    el.textContent = v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+});
+</script>

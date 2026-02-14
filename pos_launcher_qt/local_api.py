@@ -1382,10 +1382,8 @@ def update_customer_display():
 
     with display_lock:
         # Full display reset (single atomic clear — prevents flicker from multiple partial updates)
-        # NOTE: Preserve show_review if active — review closes by customer tap or timer, not by cashier Done
+        # Clears EVERYTHING including review — called when cashier clicks Done
         if data.get('clear_display'):
-            review_active = display_data.get('show_review', False)
-            review_bill = display_data.get('review_bill_id')
             display_data.update({
                 'items': [],
                 'total': 0,
@@ -1398,8 +1396,8 @@ def update_customer_display():
                 'has_bill': False,
                 'show_modal': False,
                 'modal_html': None,
-                'show_review': review_active,
-                'review_bill_id': review_bill if review_active else None,
+                'show_review': False,
+                'review_bill_id': None,
                 'updated_at': time.time()
             })
         # Check if we're triggering customer review

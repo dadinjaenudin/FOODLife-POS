@@ -165,14 +165,14 @@ class CashierShift(models.Model):
     def get_expected_cash(self):
         """Calculate expected cash from cash payments"""
         from apps.pos.models import Payment
-        
+
         cash_payments = Payment.objects.filter(
             bill__created_by=self.cashier,
-            bill__closed_at__gte=self.shift_start,
+            bill__created_at__gte=self.shift_start,
             bill__status='paid',
             method='cash'
         ).aggregate(models.Sum('amount'))
-        
+
         total_cash = cash_payments['amount__sum'] or Decimal('0')
         return self.opening_cash + total_cash
     
@@ -189,7 +189,7 @@ class CashierShift(models.Model):
         from apps.pos.models import Bill
         return Bill.objects.filter(
             created_by=self.cashier,
-            closed_at__gte=self.shift_start,
+            created_at__gte=self.shift_start,
             status='paid'
         ).aggregate(
             models.Sum('total')
@@ -224,10 +224,12 @@ class ShiftPaymentSummary(models.Model):
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('card', 'Credit/Debit Card'),
+        ('debit', 'Debit Card'),
         ('qris', 'QRIS'),
         ('transfer', 'Bank Transfer'),
         ('ewallet', 'E-Wallet'),
         ('voucher', 'Voucher'),
+        ('deposit', 'Deposit (Reservation)'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -251,14 +253,15 @@ class ShiftPaymentSummary(models.Model):
     def calculate_expected(self):
         """Calculate expected amount from payments"""
         from apps.pos.models import Payment
-        
+
         # Get the cashier user instance
         cashier = self.cashier_shift.cashier
         shift_start = self.cashier_shift.shift_start
-        
+
+        # Use created_at to scope bills to this shift only
         payments = Payment.objects.filter(
             bill__created_by=cashier,
-            bill__closed_at__gte=shift_start,
+            bill__created_at__gte=shift_start,
             bill__status='paid',
             method=self.payment_method
         ).aggregate(

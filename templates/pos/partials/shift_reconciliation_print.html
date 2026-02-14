@@ -1,3 +1,4 @@
+{% load l10n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -216,12 +217,27 @@
         </div>
         <div class="row bold">
             <span>Total Sales:</span>
-            <span>Rp <span class="amount">{{ total_sales|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ total_sales|unlocalize }}</span></span>
         </div>
     </div>
-    
+
+    {% if deposit_summary %}
     <div class="divider"></div>
-    
+    <div class="section">
+        <div class="section-title">DEPOSIT RESERVASI</div>
+        <div class="row">
+            <span>Jumlah Reservasi:</span>
+            <span>{{ deposit_summary.count }} rsv</span>
+        </div>
+        <div class="row bold">
+            <span>Total Deposit Applied:</span>
+            <span>Rp <span class="amount">{{ deposit_summary.total }}</span></span>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="divider"></div>
+
     <div class="section">
         <div class="section-title">PAYMENT RECONCILIATION</div>
         {% for payment in payment_summaries %}
@@ -232,15 +248,15 @@
             </div>
             <div class="row indent">
                 <span>Expected:</span>
-                <span>Rp <span class="amount">{{ payment.expected_amount|floatformat:0 }}</span></span>
+                <span>Rp <span class="amount">{{ payment.expected_amount|unlocalize }}</span></span>
             </div>
             <div class="row indent">
                 <span>Actual:</span>
-                <span>Rp <span class="amount">{{ payment.actual_amount|floatformat:0 }}</span></span>
+                <span>Rp <span class="amount">{{ payment.actual_amount|unlocalize }}</span></span>
             </div>
             <div class="row indent" style="{% if payment.difference != 0 %}font-weight: bold; color: {% if payment.difference > 0 %}green{% else %}red{% endif %};{% endif %}">
                 <span>Difference:</span>
-                <span>Rp <span class="amount">{{ payment.difference|floatformat:0 }}</span></span>
+                <span>Rp <span class="amount">{{ payment.difference|unlocalize }}</span></span>
             </div>
         </div>
         {% endfor %}
@@ -252,23 +268,23 @@
         <div class="section-title">CASH SUMMARY</div>
         <div class="row">
             <span>Opening Cash:</span>
-            <span>Rp <span class="amount">{{ shift.opening_cash|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ shift.opening_cash|unlocalize }}</span></span>
         </div>
         <div class="row">
             <span>Cash Sales:</span>
-            <span>Rp <span class="amount">{{ cash_sales|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ cash_sales|unlocalize }}</span></span>
         </div>
         <div class="row bold">
             <span>Expected Cash:</span>
-            <span>Rp <span class="amount">{{ shift.expected_cash|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ shift.expected_cash|unlocalize }}</span></span>
         </div>
         <div class="row bold">
             <span>Actual Cash:</span>
-            <span>Rp <span class="amount">{{ shift.actual_cash|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ shift.actual_cash|unlocalize }}</span></span>
         </div>
         <div class="row total" style="{% if shift.cash_difference != 0 %}color: {% if shift.cash_difference > 0 %}green{% else %}red{% endif %};{% endif %}">
             <span>CASH DIFFERENCE:</span>
-            <span>Rp <span class="amount">{{ shift.cash_difference|floatformat:0 }}</span></span>
+            <span>Rp <span class="amount">{{ shift.cash_difference|unlocalize }}</span></span>
         </div>
     </div>
     
